@@ -161,7 +161,7 @@ func run() error {
 			Password: cfg.AdminPassword, Store: store, Switch: completer, Embedder: embedder,
 			Rewrite: rewriteLLM, RewriteModel: cfg.RewriteModel,
 			Knowledge: kb, Profiles: adminProfiles, Tester: b, Location: cfg.Location, Timeout: cfg.LLMTimeout,
-			Tokens: mcpTokens(mcpStore), Apps: oauthApps(oauthStore), MCPURL: cfg.MCPPublicURL,
+			Tokens: mcpTokens(mcpStore), Apps: oauthApps(oauthStore), MCPURL: cfg.MCPPublicURL, MCPOff: !cfg.MCPEnabled,
 			TeamSignIn: cfg.CFAccessAUD != "", Owners: cfg.Owners, AdminAccess: adminAccess(cfg),
 			Events: adminEvents(profiles, cfg.AuditRetentionDays),
 			Web:    webStore(profiles), WebSync: webSyncer, Places: adminPlaces(placeStore), Logger: logger,

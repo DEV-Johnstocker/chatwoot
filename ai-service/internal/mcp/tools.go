@@ -491,3 +491,13 @@ func (s *Server) window(start, last string) (time.Time, time.Time, error) {
 	}
 	return from, until.AddDate(0, 0, 1), nil
 }
+
+// ToolNames lists every tool this server can offer, read and write, so the
+// admin guide can be checked against it.
+func ToolNames() []string {
+	out := make([]string, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, t.Name)
+	}
+	return out
+}

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>MCP guide</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "connections"}}
+<main>
+  <div class="page-head">
+    <div>
+      <p class="hint" style="margin:0 0 4px"><a href="/admin/connections?account={{.AccountID}}">← Connect AI tools</a></p>
+      <h1>MCP guide</h1>
+      <p class="lead">How Claude, ChatGPT, Codex and other AI tools work with your knowledge base, and what they are allowed to do.</p>
+    </div>
+  </div>
+
+  {{if .Off}}
+  <div class="alert warn" role="status"><strong>MCP is off on this ai-service.</strong> AI tools can't connect until it is turned on: set <code>MCP_ENABLED=true</code> (it also needs <code>DATABASE_URL</code>), restart, and give <code>/mcp</code> a public route. Ask whoever runs your server.</div>
+  {{end}}
+
+  <div class="guide">
+  <section class="card" aria-labelledby="what-h">
+    <h2 id="what-h">What MCP is</h2>
+    <p>MCP (Model Context Protocol) is an open standard that lets an AI app use tools on another system. Here, the tools are your knowledge base and a test version of your support bot. You ask in plain words, for example “Which documents are expired?”, and the AI calls the right tool.</p>
+    <p>Each connection works for <strong>one account</strong>, with either read-only or read-and-write access. Nothing an AI does here sends a message to a customer.</p>
+    <dl class="facts">
+      <dt>Address</dt><dd><code>{{.URL}}</code></dd>
+      <dt>Status</dt><dd>{{if .Off}}Off{{else}}On{{end}}</dd>
+    </dl>
+  </section>
+
+  <section class="card" aria-labelledby="how-h">
+    <h2 id="how-h">Two ways to connect</h2>
+    <table>
+      <thead><tr><th scope="col">Way</th><th scope="col">For</th><th scope="col">How</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Access token</strong></td><td data-label="For">Claude Code, Codex, scripts</td><td data-label="How">Create a token on <a href="/admin/connections?account={{.AccountID}}">Connect AI tools</a>. The page shows the token once, with copy-ready setup lines. Tokens expire (90 days by default) and can be revoked at any time.</td></tr>
+        <tr><td><strong>Sign in</strong></td><td data-label="For">Claude and ChatGPT apps</td><td data-label="How">Add a custom connector with the address above. The app opens a sign-in page here, where you choose the account and the access. Works only when this ai-service has a public https address.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card" aria-labelledby="tools-h">
+    <h2 id="tools-h">What a connected AI can do</h2>
+    <table>
+      <thead><tr><th scope="col">Tool</th><th scope="col">Access</th><th scope="col">What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>list_documents</code></td><td data-label="Access">Read</td><td data-label="What it does">Lists documents with their status (active, scheduled, expired), dates, and how often customer questions used them. <span class="ask">“List knowledge nobody has used.”</span></td></tr>
+        <tr><td><code>get_document</code></td><td data-label="Access">Read</td><td data-label="What it does">Reads one document in full, by key (like <code>product-017</code>) or ID. <span class="ask">“Show me product-017.”</span></td></tr>
+        <tr><td><code>find_similar</code></td><td data-label="Access">Read</td><td data-label="What it does">Finds documents that probably say the same thing (85%+ similar), to avoid duplicates. <span class="ask">“Do we already have something about refunds?”</span></td></tr>
+        <tr><td><code>test_bot</code></td><td data-label="Access">Read</td><td data-label="What it does">Asks the real support bot a customer question without sending anything to customers. Returns the reply, whether it would hand over to staff, and the knowledge it used. <span class="ask">“How would the bot answer ‘how much is it?’”</span></td></tr>
+        <tr><td><code>upsert_document</code></td><td data-label="Access">Write</td><td data-label="What it does">Adds a document, or replaces one with the same key. Refuses a near-copy of an existing document unless told otherwise. Can set start and end dates. <span class="ask">“Add an FAQ: Do you ship abroad? Yes, to…”</span></td></tr>
+        <tr><td><code>delete_document</code></td><td data-label="Access">Write</td><td data-label="What it does">Deletes a document. A copy is kept in the audit log so it can be restored. <span class="ask">“Delete the old summer promotion.”</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card" aria-labelledby="safe-h">
+    <h2 id="safe-h">Staying safe</h2>
+    <ul class="sources">
+      <li>Start with <strong>read only</strong>. Give write access only when you want the AI to change what customers are told.</li>
+      <li>Treat a token like a password: keep it out of chats, screenshots and shared files. Lost one? Revoke it and create another.</li>
+      <li>Ask the AI to show a change before it saves it, then check the answer with <code>test_bot</code>.</li>
+      <li>Every change and deletion is recorded with the old version, so a mistake can be undone.</li>
+      <li>Limits: 60 calls a minute per connection, and 10 bot tests a minute per account.</li>
+    </ul>
+  </section>
+
+  <section class="card" aria-labelledby="fix-h">
+    <h2 id="fix-h">When something doesn't work</h2>
+    <table>
+      <thead><tr><th scope="col">You see</th><th scope="col">Usually means</th></tr></thead>
+      <tbody>
+        <tr><td>Can't connect, or the address is not found</td><td data-label="Usually means">MCP is off, or <code>/mcp</code> has no public route yet.</td></tr>
+        <tr><td>Unauthorized (401)</td><td data-label="Usually means">The token is wrong, expired or revoked. Create a new one.</td></tr>
+        <tr><td>The AI can't add or delete</td><td data-label="Usually means">The connection is read-only. Make a read-and-write token.</td></tr>
+        <tr><td>Too many requests (429)</td><td data-label="Usually means">A limit was reached. Wait a minute.</td></tr>
+        <tr><td>“Similar document exists”</td><td data-label="Usually means">Update that document's key instead of adding a new one.</td></tr>
+      </tbody>
+    </table>
+  </section>
+  </div>
+</main>
+</div>
+</body>
+</html>
