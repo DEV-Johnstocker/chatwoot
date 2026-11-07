@@ -44,6 +44,7 @@ type connectionsData struct {
 	Team      []memberView
 	TeamOn    bool // approvals by team members through Cloudflare Access
 	Enabled   bool
+	MCPOff    bool // tokens can be made, but /mcp is not served yet
 	AccountID int64
 	URL       string
 	Tokens    []tokenView
@@ -79,6 +80,7 @@ func (h *Handler) showConnections(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) renderConnections(w http.ResponseWriter, r *http.Request, status int, d connectionsData) {
 	d.URL = h.mcpURL(r)
+	d.MCPOff = h.MCPOff
 	d.Once = h.newOnce()
 	if h.Tokens != nil {
 		d.Enabled = true

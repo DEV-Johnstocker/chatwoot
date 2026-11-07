@@ -11,7 +11,7 @@
   <div class="page-head">
     <div>
       <h1>Connect AI tools</h1>
-      <p class="lead">Let Claude, Codex or another AI tool read, update and test this knowledge base for you (MCP). Each access token works for one account only.</p>
+      <p class="lead">Let Claude, Codex or another AI tool read, update and test this knowledge base for you (MCP). Each access token works for one account only. New to this? Read the <a href="/admin/connections/guide?account={{.AccountID}}">MCP guide</a>.</p>
     </div>
     {{template "account-picker" (dict "Action" "/admin/connections" "Current" .AccountID)}}
   </div>
@@ -19,6 +19,7 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>Connections are off.</strong> Set <code>DATABASE_URL</code> for ai-service and restart it.</div>
   {{else}}
+  {{if .MCPOff}}<div class="alert warn" role="status"><strong>AI tools can't connect yet.</strong> This ai-service does not serve <code>/mcp</code>: set <code>MCP_ENABLED=true</code> and give <code>/mcp</code> a public route. Tokens made now start working once it is on. See the <a href="/admin/connections/guide?account={{.AccountID}}">MCP guide</a>.</div>{{end}}
   {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 

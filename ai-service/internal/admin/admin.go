@@ -97,6 +97,9 @@ type Handler struct {
 	Apps oauth.Store
 	// TeamSignIn: apps are approved by team members through Cloudflare Access.
 	TeamSignIn bool
+	// MCPOff: /mcp is not served (MCP_ENABLED is not true), so the
+	// connections pages say tokens will not work yet.
+	MCPOff bool
 	// MCPURL is the public MCP address shown in setup steps; empty derives it from the request.
 	MCPURL string
 	// Location is the business time zone for knowledge dates; nil is UTC.
@@ -122,6 +125,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/static/admin.js", wrap(serveScript))
 	mux.Handle("GET /admin/connections", wrap(h.showConnections))
 	mux.Handle("POST /admin/connections", wrap(h.submitConnections))
+	mux.Handle("GET /admin/connections/guide", wrap(h.showGuide))
 	mux.Handle("GET /admin/test", wrap(h.showTest))
 	mux.Handle("POST /admin/test", wrap(h.submitTest))
 	mux.Handle("GET /admin/knowledge", wrap(h.showKnowledge))
