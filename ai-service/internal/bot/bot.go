@@ -55,8 +55,9 @@ type Profiles interface {
 const (
 	ReasonCustomerAsked = "ai-handoff:customer-request"
 	ReasonLLMError      = "ai-handoff:llm-error"
-	ReasonAttachment    = "ai-handoff:attachment" // files only; the bot cannot read them
-	ReasonAIRequest     = "ai-handoff:ai-request" // the model decided a person is needed
+	ReasonAttachment    = "ai-handoff:attachment"    // files only; the bot cannot read them
+	ReasonAIRequest     = "ai-handoff:ai-request"    // the model decided a person is needed
+	ReasonStaffReplied  = "ai-handoff:staff-replied" // someone else answered while the bot owned the chat
 )
 
 // MaxInputRunes caps one customer message before it reaches the model, so a
@@ -205,6 +206,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	case webhook.Pause:
 		b.cancelPending(acct, conv)
 		log.Debug("staff took the chat, waiting reply dropped")
+		b.stepBackIfStaffReplied(ctx, log, ev)
 	case webhook.Forget:
 		b.cancelPending(acct, conv)
 		b.opts.History.Forget(acct, conv)
@@ -216,6 +218,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			role = "assistant"
 		}
 		b.opts.History.Append(acct, conv, memory.Turn{Role: role, Content: capText(ev.Content)})
+		b.stepBackIfStaffReplied(ctx, log, ev)
 	case webhook.HandOff, webhook.Reply:
 		tr := b.startTurn(ev, customerText(ev))
 		defer b.finishTurn(tr)
@@ -441,6 +444,19 @@ func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, c
 		return
 	}
 	log.Info("handed off to human", "reason", reason)
+}
+
+// stepBackIfStaffReplied hands the chat to staff, silently, when someone
+// other than the bot answered the customer while the bot still owned it: an
+// admin typing in Chatwoot without taking the chat, or replying straight from
+// Facebook Messenger (Chatwoot stores those echoes with no sender). Otherwise
+// the bot and the admin would both answer the next message.
+func (b *Bot) stepBackIfStaffReplied(ctx context.Context, log *slog.Logger, ev webhook.Event) {
+	if ev.Event != "message_created" || ev.MessageType != "outgoing" || ev.Private ||
+		ev.Sender.Type == "agent_bot" || ev.Conversation.Status != "pending" {
+		return
+	}
+	b.handoff(ctx, log, ev.Account.ID, ev.ConversationID(), "", ReasonStaffReplied, nil)
 }
 
 // retrievalQueries searches the latest customer message on its own, plus

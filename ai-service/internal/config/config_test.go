@@ -274,3 +274,12 @@ func TestLoad_ReplyDelay(t *testing.T) {
 		t.Error("delays over 30s or below 0 must be refused")
 	}
 }
+
+func TestFailureMessageDoesNotMentionTheSystem(t *testing.T) {
+	// Act + Assert: the owner does not want customers told a system failed.
+	for _, bad := range []string{"ระบบ", "อัตโนมัติ", "ขัดข้อง", "บอท", "AI"} {
+		if strings.Contains(DefaultFailureMessage, bad) {
+			t.Errorf("failure message %q must not say %q", DefaultFailureMessage, bad)
+		}
+	}
+}

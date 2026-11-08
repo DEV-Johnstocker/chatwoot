@@ -37,6 +37,7 @@ var reasonLabels = map[string]string{
 	ReasonLLMError:      "ระบบ AI ขัดข้อง ตอบเองไม่ได้",
 	ReasonAttachment:    "ลูกค้าส่งไฟล์ที่บอทเปิดไม่ได้",
 	ReasonAIRequest:     "บอทตอบเองไม่ได้ หรือเรื่องนี้ต้องให้ทีมงานดูแล",
+	ReasonStaffReplied:  "แอดมินตอบลูกค้าโดยตรง บอทหยุดตอบแชทนี้แล้ว (ปิดแชทเมื่อเสร็จ บอทจะกลับมาตอบ)",
 }
 
 // Card and Thai ID numbers never belong in a note, even if a model copies them.
@@ -50,6 +51,9 @@ var noteSecrets = []*regexp.Regexp{
 // on. Without a note model it is the bare reason code; if the model fails it
 // is a readable label.
 func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) string {
+	if reason == ReasonStaffReplied {
+		return "🤖 " + reasonLabels[reason] + "\n" + reason // staff are already in the chat
+	}
 	if b.opts.NoteLLM == nil {
 		return reason
 	}

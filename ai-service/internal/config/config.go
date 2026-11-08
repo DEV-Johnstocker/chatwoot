@@ -117,7 +117,7 @@ const DefaultHandoffMessage = "ได้เลยครับ กำลังส
 const DefaultAttachmentMessage = "ได้รับไฟล์แล้วครับ ไฟล์แบบนี้ผมเปิดดูเองไม่ได้ กำลังส่งต่อให้เจ้าหน้าที่ที่ดูแลเรื่องนี้โดยเฉพาะเข้ามาดูแลในแชทนี้ครับ"
 
 // DefaultFailureMessage is sent when the AI cannot answer (LLM error) before handing off.
-const DefaultFailureMessage = "ขออภัยครับ ตอนนี้ระบบตอบอัตโนมัติขัดข้อง กำลังส่งต่อให้เจ้าหน้าที่เข้ามาดูแลในแชทนี้ครับ 🙏"
+const DefaultFailureMessage = "ขออภัยครับ เรื่องนี้ขอส่งต่อให้เจ้าหน้าที่ที่ดูแลโดยเฉพาะเข้ามาดูแลในแชทนี้นะครับ 🙏"
 
 // Load reads Config from the given lookup function (os.LookupEnv in production).
 func Load(lookup func(string) (string, bool)) (Config, error) {
