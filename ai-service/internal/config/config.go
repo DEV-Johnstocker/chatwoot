@@ -110,13 +110,13 @@ var DefaultHandoffKeywords = []string{
 // default messages speak as the page does (ครับ) and promise no reply time:
 // staff may be offline. HANDOFF_MESSAGE, ATTACHMENT_MESSAGE and
 // FAILURE_MESSAGE override them.
-const DefaultHandoffMessage = "ได้เลยครับ ส่งต่อให้ทีมงานแล้ว ทีมจะตอบในแชทนี้ครับ ระหว่างนี้พิมพ์รายละเอียดทิ้งไว้ได้เลย 🙏"
+const DefaultHandoffMessage = "ได้เลยครับ กำลังส่งต่อให้เจ้าหน้าที่ที่ดูแลเรื่องนี้โดยเฉพาะเข้ามาดูแลในแชทนี้ครับ ระหว่างนี้พิมพ์รายละเอียดทิ้งไว้ได้เลย 🙏"
 
 // DefaultAttachmentMessage acknowledges files the bot cannot read before handing off.
-const DefaultAttachmentMessage = "ได้รับไฟล์แล้วครับ ไฟล์แบบนี้ผมเปิดดูเองไม่ได้ เลยส่งให้ทีมงานดู ทีมจะตอบในแชทนี้ครับ"
+const DefaultAttachmentMessage = "ได้รับไฟล์แล้วครับ ไฟล์แบบนี้ผมเปิดดูเองไม่ได้ กำลังส่งต่อให้เจ้าหน้าที่ที่ดูแลเรื่องนี้โดยเฉพาะเข้ามาดูแลในแชทนี้ครับ"
 
 // DefaultFailureMessage is sent when the AI cannot answer (LLM error) before handing off.
-const DefaultFailureMessage = "ขออภัยครับ ตอนนี้ระบบตอบอัตโนมัติขัดข้อง ส่งต่อให้ทีมงานแล้ว ทีมจะตอบในแชทนี้ครับ 🙏"
+const DefaultFailureMessage = "ขออภัยครับ ตอนนี้ระบบตอบอัตโนมัติขัดข้อง กำลังส่งต่อให้เจ้าหน้าที่เข้ามาดูแลในแชทนี้ครับ 🙏"
 
 // Load reads Config from the given lookup function (os.LookupEnv in production).
 func Load(lookup func(string) (string, bool)) (Config, error) {
