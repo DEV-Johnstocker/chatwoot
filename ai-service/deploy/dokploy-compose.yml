@@ -124,6 +124,11 @@ services:
       EMBED_BASE_URL: ${EMBED_BASE_URL:-}
       EMBED_API_KEY: ${EMBED_API_KEY:-}
       EMBED_MODEL: ${EMBED_MODEL:-}
+      # Same embedding model through another provider, so knowledge search
+      # survives a primary outage (e.g. OpenRouter + openai/text-embedding-3-large).
+      EMBED_FALLBACK_BASE_URL: ${EMBED_FALLBACK_BASE_URL:-}
+      EMBED_FALLBACK_API_KEY: ${EMBED_FALLBACK_API_KEY:-}
+      EMBED_FALLBACK_MODEL: ${EMBED_FALLBACK_MODEL:-}
       # Langfuse tracing (off unless all three are set). Customer text is
       # redacted; TRACE_TEXT=off sends no chat text at all.
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}

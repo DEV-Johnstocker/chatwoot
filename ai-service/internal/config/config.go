@@ -39,13 +39,16 @@ type Config struct {
 	SettingsPath  string
 
 	// Knowledge base (RAG). Off when DatabaseURL is empty.
-	DatabaseURL   string // Postgres with pgvector (secret: contains a password)
-	EmbedBaseURL  string // initial embeddings provider; the admin page can override it
-	EmbedAPIKey   string // secret
-	EmbedModel    string
-	RAGTopK       int
-	RAGMinScore   float64
-	RAGChunkRunes int
+	DatabaseURL          string // Postgres with pgvector (secret: contains a password)
+	EmbedBaseURL         string // initial embeddings provider; the admin page can override it
+	EmbedAPIKey          string // secret
+	EmbedModel           string
+	EmbedFallbackBaseURL string // same embedding model through another provider (optional)
+	EmbedFallbackAPIKey  string // secret
+	EmbedFallbackModel   string
+	RAGTopK              int
+	RAGMinScore          float64
+	RAGChunkRunes        int
 
 	HandoffKeywords []string
 	HandoffMessage  string
@@ -129,36 +132,39 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	cfg := Config{
-		ListenAddr:         get("LISTEN_ADDR", ":8080"),
-		ChatwootBaseURL:    strings.TrimRight(get("CHATWOOT_BASE_URL", ""), "/"),
-		ChatwootPublicURL:  strings.TrimRight(get("CHATWOOT_PUBLIC_URL", ""), "/"),
-		ChatwootBotToken:   get("CHATWOOT_BOT_TOKEN", ""),
-		WebhookSecret:      get("CHATWOOT_WEBHOOK_SECRET", ""),
-		LLMBaseURL:         strings.TrimRight(get("LLM_BASE_URL", "https://openrouter.ai/api/v1"), "/"),
-		LLMAPIKey:          get("LLM_API_KEY", ""),
-		LLMModel:           get("LLM_MODEL", ""),
-		LLMFallbackBaseURL: strings.TrimRight(get("LLM_FALLBACK_BASE_URL", ""), "/"),
-		LLMFallbackAPIKey:  get("LLM_FALLBACK_API_KEY", ""),
-		LLMFallbackModel:   get("LLM_FALLBACK_MODEL", ""),
-		AdminPassword:      get("ADMIN_PASSWORD", ""),
-		SettingsPath:       get("SETTINGS_PATH", "/data/settings.json"),
-		DatabaseURL:        get("DATABASE_URL", ""),
-		EmbedBaseURL:       strings.TrimRight(get("EMBED_BASE_URL", ""), "/"),
-		EmbedAPIKey:        get("EMBED_API_KEY", ""),
-		EmbedModel:         get("EMBED_MODEL", ""),
-		SystemPrompt:       get("SYSTEM_PROMPT", DefaultSystemPrompt),
-		HandoffMessage:     get("HANDOFF_MESSAGE", DefaultHandoffMessage),
-		FailureMessage:     get("FAILURE_MESSAGE", DefaultFailureMessage),
-		AttachmentMessage:  get("ATTACHMENT_MESSAGE", DefaultAttachmentMessage),
-		LangfuseBaseURL:    strings.TrimRight(get("LANGFUSE_BASE_URL", ""), "/"),
-		LangfusePublicKey:  get("LANGFUSE_PUBLIC_KEY", ""),
-		LangfuseSecretKey:  get("LANGFUSE_SECRET_KEY", ""),
-		TraceText:          get("TRACE_TEXT", "redacted"),
-		TraceEnvironment:   get("TRACE_ENVIRONMENT", "production"),
-		RewriteModel:       get("REWRITE_MODEL", ""),
-		TranscribeModel:    get("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
-		LogLevel:           get("LOG_LEVEL", "info"),
-		HandoffKeywords:    DefaultHandoffKeywords,
+		ListenAddr:           get("LISTEN_ADDR", ":8080"),
+		ChatwootBaseURL:      strings.TrimRight(get("CHATWOOT_BASE_URL", ""), "/"),
+		ChatwootPublicURL:    strings.TrimRight(get("CHATWOOT_PUBLIC_URL", ""), "/"),
+		ChatwootBotToken:     get("CHATWOOT_BOT_TOKEN", ""),
+		WebhookSecret:        get("CHATWOOT_WEBHOOK_SECRET", ""),
+		LLMBaseURL:           strings.TrimRight(get("LLM_BASE_URL", "https://openrouter.ai/api/v1"), "/"),
+		LLMAPIKey:            get("LLM_API_KEY", ""),
+		LLMModel:             get("LLM_MODEL", ""),
+		LLMFallbackBaseURL:   strings.TrimRight(get("LLM_FALLBACK_BASE_URL", ""), "/"),
+		LLMFallbackAPIKey:    get("LLM_FALLBACK_API_KEY", ""),
+		LLMFallbackModel:     get("LLM_FALLBACK_MODEL", ""),
+		AdminPassword:        get("ADMIN_PASSWORD", ""),
+		SettingsPath:         get("SETTINGS_PATH", "/data/settings.json"),
+		DatabaseURL:          get("DATABASE_URL", ""),
+		EmbedBaseURL:         strings.TrimRight(get("EMBED_BASE_URL", ""), "/"),
+		EmbedAPIKey:          get("EMBED_API_KEY", ""),
+		EmbedModel:           get("EMBED_MODEL", ""),
+		EmbedFallbackBaseURL: strings.TrimRight(get("EMBED_FALLBACK_BASE_URL", ""), "/"),
+		EmbedFallbackAPIKey:  get("EMBED_FALLBACK_API_KEY", ""),
+		EmbedFallbackModel:   get("EMBED_FALLBACK_MODEL", ""),
+		SystemPrompt:         get("SYSTEM_PROMPT", DefaultSystemPrompt),
+		HandoffMessage:       get("HANDOFF_MESSAGE", DefaultHandoffMessage),
+		FailureMessage:       get("FAILURE_MESSAGE", DefaultFailureMessage),
+		AttachmentMessage:    get("ATTACHMENT_MESSAGE", DefaultAttachmentMessage),
+		LangfuseBaseURL:      strings.TrimRight(get("LANGFUSE_BASE_URL", ""), "/"),
+		LangfusePublicKey:    get("LANGFUSE_PUBLIC_KEY", ""),
+		LangfuseSecretKey:    get("LANGFUSE_SECRET_KEY", ""),
+		TraceText:            get("TRACE_TEXT", "redacted"),
+		TraceEnvironment:     get("TRACE_ENVIRONMENT", "production"),
+		RewriteModel:         get("REWRITE_MODEL", ""),
+		TranscribeModel:      get("TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe"),
+		LogLevel:             get("LOG_LEVEL", "info"),
+		HandoffKeywords:      DefaultHandoffKeywords,
 	}
 
 	if raw := get("HANDOFF_KEYWORDS", ""); raw != "" {

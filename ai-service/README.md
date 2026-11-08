@@ -40,6 +40,11 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
 - **History**: the last `HISTORY_LIMIT` messages per conversation are kept in
   memory from webhook events, because Chatwoot does not let bot tokens list
   messages. History is lost on restart (persistent store comes with RAG).
+- **Backup AI**: `LLM_FALLBACK_*` answers when the main model fails, the
+  question rewrite falls back to it too, and `EMBED_FALLBACK_*` reaches the
+  same embedding model another way (for example OpenRouter with
+  `openai/text-embedding-3-large`), so knowledge search keeps working in an
+  outage. Use a different provider from the main one.
 - **Quick messages**: each message is read at once (photos, voice, email,
   "talk to a person"), but the reply waits until the customer has been quiet
   for `REPLY_DELAY` (default `4s`, `0s` turns it off), so a burst gets one
