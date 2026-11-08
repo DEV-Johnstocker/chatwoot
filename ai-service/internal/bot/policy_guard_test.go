@@ -58,3 +58,24 @@ func TestPolicy_MediaDoesItsPartBeforeHandoff(t *testing.T) {
 		}
 	}
 }
+
+func TestPolicy_SellsBeforeAskingAndUsesEmojiSparingly(t *testing.T) {
+	// Arrange
+	p := policyPrompt(time.Now())
+
+	// Act + Assert
+	for _, want := range []string{
+		"add one short reason it is worth it",
+		"using only a feature or fact stated in the business profile or knowledge excerpts",
+		"Never create urgency or scarcity",
+		"never promise results, sales or income",
+		"Never ask a question you already asked",
+		"Emoji: at most one, at the end",
+		"Never use one on prices, payment, refunds",
+		"no business facts, no question, no handoff",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("policy is missing %q", want)
+		}
+	}
+}
