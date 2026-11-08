@@ -83,6 +83,7 @@ type Options struct {
 	Fetcher        Fetcher     // downloads attachments from the Chatwoot host
 	Transcriber    Transcriber // voice notes → text
 	StickerLLM     Completer   // small vision model: is this image a sticker?
+	NoteLLM        Completer   // optional; small vision model that writes the staff note at a handoff
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -215,7 +216,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 				msg = b.opts.HandoffMessage
 			}
 			tr.Input, tr.Outcome, tr.Output = ev.AttachmentNote(), "handoff:"+ReasonAttachment, msg
-			b.handoff(ctx, log, acct, conv, msg, ReasonAttachment)
+			b.handoff(ctx, log, acct, conv, msg, ReasonAttachment, nil)
 			return
 		}
 		tr.Input = in.text
@@ -223,7 +224,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		if b.opts.Handoff.Wants(in.text) {
 			tr.Outcome, tr.Output = "handoff:"+ReasonCustomerAsked, b.opts.HandoffMessage
-			b.handoff(ctx, log, acct, conv, b.opts.HandoffMessage, ReasonCustomerAsked)
+			b.handoff(ctx, log, acct, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)
 			return
 		}
 		b.reply(ctx, log, acct, ev.Inbox.ID, conv, tr, in.images)
@@ -271,7 +272,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	if err != nil {
 		log.Error("llm completion failed", "error", err, "latency_ms", latency.Milliseconds())
 		tr.Outcome, tr.Output = "handoff:"+ReasonLLMError, b.opts.FailureMessage
-		b.handoff(ctx, log, acct, conv, b.opts.FailureMessage, ReasonLLMError)
+		b.handoff(ctx, log, acct, conv, b.opts.FailureMessage, ReasonLLMError, images)
 		return
 	}
 
@@ -283,7 +284,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		}
 		tr.Outcome, tr.Output = "handoff:"+ReasonAIRequest, text
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: text})
-		b.handoff(ctx, log, acct, conv, text, ReasonAIRequest)
+		b.handoff(ctx, log, acct, conv, text, ReasonAIRequest, images)
 		return
 	}
 	if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
@@ -402,14 +403,15 @@ func (b *Bot) now() time.Time {
 	return now().In(loc)
 }
 
-func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, customerMsg, reason string) {
+func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, customerMsg, reason string, images []string) {
 	cw := b.opts.Chatwoot
 	if customerMsg != "" {
 		if err := cw.SendMessage(ctx, acct, conv, customerMsg); err != nil {
 			log.Error("send handoff message failed", "error", err)
 		}
 	}
-	if err := cw.SendPrivateNote(ctx, acct, conv, reason); err != nil {
+	note := b.staffNote(ctx, log, acct, conv, customerMsg, reason, images)
+	if err := cw.SendPrivateNote(ctx, acct, conv, note); err != nil {
 		log.Warn("handoff note failed", "error", err)
 	}
 	if err := cw.Handoff(ctx, acct, conv); err != nil {

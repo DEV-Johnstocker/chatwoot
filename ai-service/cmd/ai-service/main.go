@@ -129,6 +129,7 @@ func run() error {
 		Fetcher:           attachmentFetcher(cfg),
 		Transcriber:       liveTranscriber{store: store, model: cfg.TranscribeModel},
 		StickerLLM:        rewriteLLM,
+		NoteLLM:           rewriteLLM,
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),

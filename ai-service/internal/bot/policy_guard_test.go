@@ -41,3 +41,20 @@ func TestPolicy_ChatsLikeAPerson(t *testing.T) {
 		}
 	}
 }
+
+func TestPolicy_MediaDoesItsPartBeforeHandoff(t *testing.T) {
+	// Arrange
+	p := policyPrompt(time.Now())
+
+	// Act + Assert: slips are read and checked, never confirmed; error screens are helped first.
+	for _, want := range []string{
+		"say the amount, date and who received it",
+		"never say the payment is confirmed",
+		"then hand off",
+		"If a photo shows an error or a problem screen",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("policy is missing %q", want)
+		}
+	}
+}
