@@ -32,6 +32,7 @@ type Config struct {
 	LLMFallbackAPIKey  string // secret
 	LLMFallbackModel   string
 	LLMTimeout         time.Duration // per provider call
+	ReplyDelay         time.Duration // wait after a customer's last message, so quick messages get one reply
 	SystemPrompt       string
 
 	AdminPassword string // enables /admin when set (secret)
@@ -166,6 +167,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 
 	var errs []error
 	var err error
+	if cfg.ReplyDelay, err = time.ParseDuration(get("REPLY_DELAY", "4s")); err != nil || cfg.ReplyDelay < 0 || cfg.ReplyDelay > 30*time.Second {
+		errs = append(errs, fmt.Errorf("REPLY_DELAY must be a duration from 0s to 30s"))
+	}
 	if cfg.LLMTimeout, err = time.ParseDuration(get("LLM_TIMEOUT", "45s")); err != nil {
 		errs = append(errs, fmt.Errorf("LLM_TIMEOUT: %w", err))
 	}

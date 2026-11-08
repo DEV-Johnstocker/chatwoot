@@ -246,3 +246,31 @@ func TestDefaultMessagesMatchThePageVoice(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_ReplyDelay(t *testing.T) {
+	// Arrange
+	lookup := func(extra map[string]string) func(string) (string, bool) {
+		m := map[string]string{"CHATWOOT_BASE_URL": "http://x", "CHATWOOT_BOT_TOKEN": "t", "CHATWOOT_WEBHOOK_SECRET": "s"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return func(k string) (string, bool) { v, ok := m[k]; return v, ok }
+	}
+
+	// Act
+	def, errDef := Load(lookup(nil))
+	off, errOff := Load(lookup(map[string]string{"REPLY_DELAY": "0s"}))
+	_, errBad := Load(lookup(map[string]string{"REPLY_DELAY": "2m"}))
+	_, errNeg := Load(lookup(map[string]string{"REPLY_DELAY": "-1s"}))
+
+	// Assert
+	if errDef != nil || def.ReplyDelay != 4*time.Second {
+		t.Errorf("default = %v %v, want 4s", def.ReplyDelay, errDef)
+	}
+	if errOff != nil || off.ReplyDelay != 0 {
+		t.Errorf("0s must turn waiting off: %v %v", off.ReplyDelay, errOff)
+	}
+	if errBad == nil || errNeg == nil {
+		t.Error("delays over 30s or below 0 must be refused")
+	}
+}

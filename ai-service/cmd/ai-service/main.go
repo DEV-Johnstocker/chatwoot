@@ -138,6 +138,7 @@ func run() error {
 		FailureMessage:    cfg.FailureMessage,
 		AttachmentMessage: cfg.AttachmentMessage,
 		Location:          cfg.Location,
+		ReplyDelay:        cfg.ReplyDelay,
 		Logger:            logger,
 		// Primary + fallback calls, plus Chatwoot API calls.
 		Timeout: 2*cfg.LLMTimeout + 30*time.Second,

@@ -96,6 +96,9 @@ type Options struct {
 	Location *time.Location
 	Logger   *slog.Logger
 	Timeout  time.Duration // per-event processing budget
+	// ReplyDelay waits this long after a customer's last message before
+	// replying, so quick messages get one answer (batch.go). 0 replies at once.
+	ReplyDelay time.Duration
 }
 
 // Job is one event to process plus its delivery id for log correlation.
@@ -103,6 +106,7 @@ type Job struct {
 	Event      webhook.Event
 	Decision   webhook.Decision
 	DeliveryID string
+	flush      uint64 // set on the job that answers a burst (batch.go)
 }
 
 // Bot processes jobs on a fixed pool of workers. Jobs for the same
@@ -111,6 +115,9 @@ type Bot struct {
 	opts   Options
 	queues []chan Job
 	wg     sync.WaitGroup
+
+	mu      sync.Mutex
+	pending map[convKey]*pendingReply // replies waiting for a burst to end
 }
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
@@ -189,12 +196,18 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	)
 	ctx, cancel := context.WithTimeout(parent, b.opts.Timeout)
 	defer cancel()
+	if j.flush != 0 {
+		b.flush(ctx, log, j)
+		return
+	}
 
 	switch j.Decision {
 	case webhook.Forget:
+		b.cancelPending(acct, conv)
 		b.opts.History.Forget(acct, conv)
 		log.Debug("conversation resolved, history cleared")
 	case webhook.Record:
+		b.cancelPending(acct, conv) // staff are handling the chat
 		role := "user"
 		if ev.MessageType == "outgoing" {
 			role = "assistant"
@@ -225,6 +238,11 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		if b.opts.Handoff.Wants(in.text) {
 			tr.Outcome, tr.Output = "handoff:"+ReasonCustomerAsked, b.opts.HandoffMessage
 			b.handoff(ctx, log, acct, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)
+			return
+		}
+		if b.opts.ReplyDelay > 0 {
+			tr.Outcome = "waiting"
+			b.deferReply(log, ev, j.DeliveryID, in.images)
 			return
 		}
 		b.reply(ctx, log, acct, ev.Inbox.ID, conv, tr, in.images)
@@ -404,6 +422,7 @@ func (b *Bot) now() time.Time {
 }
 
 func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, customerMsg, reason string, images []string) {
+	b.cancelPending(acct, conv)
 	cw := b.opts.Chatwoot
 	if customerMsg != "" {
 		if err := cw.SendMessage(ctx, acct, conv, customerMsg); err != nil {
