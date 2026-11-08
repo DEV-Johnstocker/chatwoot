@@ -248,7 +248,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		}
 		if b.opts.ReplyDelay > 0 {
 			tr.Outcome = "waiting"
-			b.deferReply(log, ev, j.DeliveryID, in.images)
+			b.deferReply(log, ev, j.DeliveryID, in.text, in.images)
 			return
 		}
 		b.reply(ctx, log, acct, ev.Inbox.ID, conv, tr, in.images)
@@ -264,7 +264,7 @@ func (b *Bot) startTurn(ev webhook.Event, input string) *trace.Turn {
 }
 
 func (b *Bot) finishTurn(tr *trace.Turn) {
-	if b.opts.Tracer == nil {
+	if b.opts.Tracer == nil || tr.Outcome == "waiting" { // a burst is traced once, when it is answered
 		return
 	}
 	tr.End = time.Now()

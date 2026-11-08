@@ -197,3 +197,30 @@ func TestPauseCancelsAWaitingReply(t *testing.T) {
 		t.Fatalf("bot answered after staff took the chat: calls=%d %s", calls, cw.joined())
 	}
 }
+
+func TestBurstIsOneTraceWithEveryMessage(t *testing.T) {
+	// Arrange
+	b, _, tracer := tracedBot(&fakeLLM{reply: "ตอบรวมครับ"})
+	b.opts.ReplyDelay = 60 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	b.Start(ctx)
+
+	// Act
+	_ = b.Enqueue(msgN(1, "ใช้ Windows ได้ไหม"))
+	time.Sleep(15 * time.Millisecond)
+	_ = b.Enqueue(msgN(2, "ราคาเท่าไหร่"))
+	waitFor(t, func() bool { tracer.mu.Lock(); defer tracer.mu.Unlock(); return len(tracer.turns) > 0 })
+	time.Sleep(100 * time.Millisecond)
+
+	// Assert
+	tracer.mu.Lock()
+	defer tracer.mu.Unlock()
+	if len(tracer.turns) != 1 {
+		t.Fatalf("traces = %d, want 1 for the burst", len(tracer.turns))
+	}
+	in := tracer.turns[0].Input
+	if !strings.Contains(in, "ใช้ Windows ได้ไหม") || !strings.Contains(in, "ราคาเท่าไหร่") || tracer.turns[0].Outcome != "replied" {
+		t.Errorf("trace = %+v, want both messages and a reply", tracer.turns[0])
+	}
+}

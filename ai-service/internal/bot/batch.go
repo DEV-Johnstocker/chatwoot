@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webhook"
@@ -25,11 +26,12 @@ type StatusReader interface {
 type pendingReply struct {
 	timer  *time.Timer
 	images []string // photos from every message in the burst
+	texts  []string // what each message said, for the reply's trace
 	seq    uint64   // bumped by each new message; only the latest timer replies
 }
 
 // deferReply (re)starts the conversation's wait and keeps its photos.
-func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID string, images []string) {
+func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID, text string, images []string) {
 	key := convKey{ev.Account.ID, ev.ConversationID()}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -44,6 +46,7 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID string, 
 		p.timer.Stop()
 	}
 	p.images = append(p.images, images...)
+	p.texts = append(p.texts, text)
 	if len(p.images) > maxImages {
 		p.images = p.images[len(p.images)-maxImages:]
 	}
@@ -57,16 +60,16 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID string, 
 	})
 }
 
-// takePending returns the burst's photos if seq is still the latest wait.
-func (b *Bot) takePending(acct, conv int64, seq uint64) ([]string, bool) {
+// takePending returns the burst's photos and texts if seq is still the latest wait.
+func (b *Bot) takePending(acct, conv int64, seq uint64) ([]string, []string, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	p := b.pending[convKey{acct, conv}]
 	if p == nil || p.seq != seq {
-		return nil, false
+		return nil, nil, false
 	}
 	delete(b.pending, convKey{acct, conv})
-	return p.images, true
+	return p.images, p.texts, true
 }
 
 // cancelPending drops a waiting reply: staff stepped in, the chat was
@@ -84,7 +87,7 @@ func (b *Bot) cancelPending(acct, conv int64) {
 func (b *Bot) flush(ctx context.Context, log *slog.Logger, j Job) {
 	ev := j.Event
 	acct, conv := ev.Account.ID, ev.ConversationID()
-	images, ok := b.takePending(acct, conv, j.flush)
+	images, texts, ok := b.takePending(acct, conv, j.flush)
 	if !ok {
 		return // a newer message restarted the wait, or staff took over
 	}
@@ -100,7 +103,7 @@ func (b *Bot) flush(ctx context.Context, log *slog.Logger, j Job) {
 			return
 		}
 	}
-	tr := b.startTurn(ev, customerText(ev))
+	tr := b.startTurn(ev, strings.Join(texts, "\n"))
 	defer b.finishTurn(tr)
 	b.reply(ctx, log, acct, ev.Inbox.ID, conv, tr, images)
 }
