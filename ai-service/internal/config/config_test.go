@@ -221,3 +221,28 @@ func TestNormalizeEmail_ConfigMatchesAccess(t *testing.T) {
 		t.Fatal("non-ASCII owner email accepted")
 	}
 }
+
+func TestDefaultMessagesMatchThePageVoice(t *testing.T) {
+	// Arrange: the page speaks as ครับ, and nobody may be online to answer
+	// "in a moment" (night, weekend).
+	msgs := map[string]string{
+		"handoff":    DefaultHandoffMessage,
+		"attachment": DefaultAttachmentMessage,
+		"failure":    DefaultFailureMessage,
+	}
+
+	// Act + Assert
+	for name, m := range msgs {
+		if !strings.Contains(m, "ครับ") {
+			t.Errorf("%s message %q must use ครับ", name, m)
+		}
+		for _, bad := range []string{"ค่ะ", "นะคะ", "รอสักครู่", "โดยเร็ว"} {
+			if strings.Contains(m, bad) {
+				t.Errorf("%s message %q must not say %q", name, m, bad)
+			}
+		}
+		if !strings.Contains(m, "ในแชทนี้") {
+			t.Errorf("%s message %q must say staff answer in this chat", name, m)
+		}
+	}
+}
