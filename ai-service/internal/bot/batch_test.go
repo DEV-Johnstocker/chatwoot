@@ -151,3 +151,49 @@ func TestAskingForAPersonIsNotDelayed(t *testing.T) {
 		t.Fatalf("a request for a person must hand off at once: %s", cw.joined())
 	}
 }
+
+// statusChatwoot reports a conversation status, like Chatwoot's GET conversation.
+type statusChatwoot struct {
+	*fakeChatwoot
+	status string
+}
+
+func (s statusChatwoot) ConversationStatus(context.Context, int64, int64) (string, error) {
+	return s.status, nil
+}
+
+func TestWaitingReplyChecksTheChatIsStillTheBots(t *testing.T) {
+	// Arrange: staff assigned the chat to themselves without typing.
+	b, cw, l := batchingBot(t, 60*time.Millisecond)
+	b.opts.Chatwoot = statusChatwoot{fakeChatwoot: cw, status: "open"}
+
+	// Act
+	_ = b.Enqueue(msgN(1, "ราคาเท่าไหร่"))
+	time.Sleep(250 * time.Millisecond)
+
+	// Assert
+	if calls, _ := l.snapshot(); calls != 0 || strings.Contains(cw.joined(), "msg:") {
+		t.Fatalf("bot answered a chat staff own: calls=%d %s", calls, cw.joined())
+	}
+}
+
+func TestPauseCancelsAWaitingReply(t *testing.T) {
+	// Arrange
+	b, cw, l := batchingBot(t, 100*time.Millisecond)
+	pause := Job{Decision: webhook.Pause, Event: webhook.Event{
+		Event: "conversation_status_changed", Status: "open",
+		Account: webhook.Account{ID: 1}, Conversation: webhook.Conversation{ID: 7},
+	}}
+	pause.Event.ID = 7
+
+	// Act
+	_ = b.Enqueue(msgN(1, "ราคาเท่าไหร่"))
+	time.Sleep(20 * time.Millisecond)
+	_ = b.Enqueue(pause)
+	time.Sleep(250 * time.Millisecond)
+
+	// Assert
+	if calls, _ := l.snapshot(); calls != 0 || strings.Contains(cw.joined(), "msg:") {
+		t.Fatalf("bot answered after staff took the chat: calls=%d %s", calls, cw.joined())
+	}
+}

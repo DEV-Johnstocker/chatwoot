@@ -202,6 +202,9 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	}
 
 	switch j.Decision {
+	case webhook.Pause:
+		b.cancelPending(acct, conv)
+		log.Debug("staff took the chat, waiting reply dropped")
 	case webhook.Forget:
 		b.cancelPending(acct, conv)
 		b.opts.History.Forget(acct, conv)

@@ -60,6 +60,33 @@ func (c *Client) SetConversationAttributes(ctx context.Context, accountID, conve
 	return c.post(ctx, c.convPath(accountID, conversationID, "/custom_attributes"), map[string]any{"custom_attributes": attrs, "merge": true})
 }
 
+// ConversationStatus returns a conversation's status ("pending" while the
+// bot owns it, "open" once staff have it, "resolved", "snoozed").
+func (c *Client) ConversationStatus(ctx context.Context, accountID, conversationID int64) (string, error) {
+	path := c.convPath(accountID, conversationID, "")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("api_access_token", c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("chatwoot %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", &APIError{Path: path, Status: resp.StatusCode, Body: string(snippet)}
+	}
+	var conv struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&conv); err != nil {
+		return "", fmt.Errorf("chatwoot %s: %w", path, err)
+	}
+	return conv.Status, nil
+}
+
 func (c *Client) convPath(accountID, conversationID int64, suffix string) string {
 	return fmt.Sprintf("/api/v1/accounts/%d/conversations/%d%s", accountID, conversationID, suffix)
 }

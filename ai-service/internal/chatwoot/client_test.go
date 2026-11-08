@@ -119,3 +119,42 @@ func TestSetConversationAttributes_MergesOnly(t *testing.T) {
 		t.Fatalf("err=%v path=%q body=%v", err, got.path, got.body)
 	}
 }
+
+func TestConversationStatus(t *testing.T) {
+	// Arrange
+	var path, token string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, token = r.URL.Path, r.Header.Get("api_access_token")
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":7,"status":"open","meta":{}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "bot-token", nil)
+
+	// Act
+	status, err := c.ConversationStatus(context.Background(), 1, 7)
+
+	// Assert
+	if err != nil || status != "open" || path != "/api/v1/accounts/1/conversations/7" || token != "bot-token" {
+		t.Fatalf("status=%q err=%v path=%q token=%q", status, err, path, token)
+	}
+}
+
+func TestConversationStatusError(t *testing.T) {
+	// Arrange
+	var got captured
+	srv := newServer(t, http.StatusNotFound, &got)
+	c := New(srv.URL, "bot-token", nil)
+
+	// Act
+	_, err := c.ConversationStatus(context.Background(), 1, 7)
+
+	// Assert
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+		t.Fatalf("err = %v, want APIError 404", err)
+	}
+}

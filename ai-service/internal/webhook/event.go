@@ -100,6 +100,10 @@ const (
 	// HandOff means a customer sent only files (a payment slip, a photo, a
 	// voice note) that the bot cannot read: acknowledge and pass to a human.
 	HandOff
+	// Pause means staff took the chat without a public reply (opened it, or
+	// wrote a private note or sent a file): drop any reply the bot is waiting
+	// to send.
+	Pause
 )
 
 // Classify decides how to handle an event. It answers only public customer
@@ -109,16 +113,28 @@ func Classify(ev Event) Decision {
 	switch ev.Event {
 	case "conversation_resolved":
 		return Forget
+	case "conversation_status_changed", "conversation_updated":
+		if ev.Status != "" && ev.Status != "pending" {
+			return Pause
+		}
+		return Ignore
 	case "message_created":
 	default:
 		return Ignore
 	}
+	staff := ev.MessageType == "outgoing" && ev.Sender.Type != "agent_bot"
 	if ev.Private {
+		if staff {
+			return Pause
+		}
 		return Ignore
 	}
 	if strings.TrimSpace(ev.Content) == "" {
 		if ev.MessageType == "incoming" && len(ev.Attachments) > 0 && ev.Conversation.Status == "pending" {
 			return HandOff
+		}
+		if staff {
+			return Pause
 		}
 		return Ignore
 	}

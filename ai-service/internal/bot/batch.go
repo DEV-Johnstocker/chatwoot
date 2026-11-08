@@ -15,6 +15,12 @@ import (
 
 type convKey struct{ acct, conv int64 }
 
+// StatusReader reads a conversation's status (chatwoot.Client). Before sending
+// a reply that waited, the bot checks staff have not taken the chat.
+type StatusReader interface {
+	ConversationStatus(ctx context.Context, accountID, conversationID int64) (string, error)
+}
+
 // pendingReply is a reply waiting for the customer to stop typing.
 type pendingReply struct {
 	timer  *time.Timer
@@ -81,6 +87,18 @@ func (b *Bot) flush(ctx context.Context, log *slog.Logger, j Job) {
 	images, ok := b.takePending(acct, conv, j.flush)
 	if !ok {
 		return // a newer message restarted the wait, or staff took over
+	}
+	if sr, ok := b.opts.Chatwoot.(StatusReader); ok {
+		status, err := sr.ConversationStatus(ctx, acct, conv)
+		switch {
+		case err != nil:
+			// Same risk as replying at once, which is what the bot did before
+			// replies waited; the webhook Pause still covers most takeovers.
+			log.Warn("conversation status check failed, replying", "error", err)
+		case status != "pending":
+			log.Info("waiting reply dropped: staff have the chat", "status", status)
+			return
+		}
 	}
 	tr := b.startTurn(ev, customerText(ev))
 	defer b.finishTurn(tr)
