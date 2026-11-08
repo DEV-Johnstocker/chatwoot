@@ -224,3 +224,23 @@ func TestBurstIsOneTraceWithEveryMessage(t *testing.T) {
 		t.Errorf("trace = %+v, want both messages and a reply", tracer.turns[0])
 	}
 }
+
+func TestEndlessBurstKeepsABoundedTrace(t *testing.T) {
+	// Arrange
+	b, _, _ := batchingBot(t, time.Hour)
+	log := b.opts.Logger
+
+	// Act
+	for i := 0; i < maxBurstTexts+15; i++ {
+		b.deferReply(log, msgN(int64(i+1), "spam").Event, "", "spam", nil)
+	}
+
+	// Assert
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	p := b.pending[convKey{1, 7}]
+	if p == nil || len(p.texts) != maxBurstTexts {
+		t.Fatalf("texts kept = %v, want %d", p, maxBurstTexts)
+	}
+	p.timer.Stop()
+}

@@ -16,6 +16,11 @@ import (
 
 type convKey struct{ acct, conv int64 }
 
+// maxBurstTexts bounds what a burst keeps for its trace, so a customer who
+// never stops typing cannot grow it without limit (each text is already
+// capped at MaxInputRunes).
+const maxBurstTexts = 20
+
 // StatusReader reads a conversation's status (chatwoot.Client). Before sending
 // a reply that waited, the bot checks staff have not taken the chat.
 type StatusReader interface {
@@ -47,6 +52,9 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID, text st
 	}
 	p.images = append(p.images, images...)
 	p.texts = append(p.texts, text)
+	if len(p.texts) > maxBurstTexts {
+		p.texts = p.texts[len(p.texts)-maxBurstTexts:]
+	}
 	if len(p.images) > maxImages {
 		p.images = p.images[len(p.images)-maxImages:]
 	}
