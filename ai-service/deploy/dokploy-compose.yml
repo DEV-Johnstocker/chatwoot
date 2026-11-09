@@ -107,6 +107,9 @@ services:
       # Public HTTPS URL: Rails runs with FORCE_SSL, so plain http://rails:3000
       # calls get redirected to https://rails:3000, which nothing serves.
       CHATWOOT_BASE_URL: ${FRONTEND_URL:?set in Dokploy}
+      # Optional: an agent account token ("AI Reader") so the bot can re-read a
+      # chat after a restart or when a closed chat reopens. Bot tokens cannot.
+      CHATWOOT_READER_TOKEN: ${CHATWOOT_READER_TOKEN:-}
       CHATWOOT_BOT_TOKEN: ${CHATWOOT_BOT_TOKEN:-}
       CHATWOOT_WEBHOOK_SECRET: ${CHATWOOT_WEBHOOK_SECRET:-}
       ADMIN_PASSWORD: ${AI_ADMIN_PASSWORD:-}

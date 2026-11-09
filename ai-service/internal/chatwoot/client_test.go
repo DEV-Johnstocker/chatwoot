@@ -158,3 +158,60 @@ func TestConversationStatusError(t *testing.T) {
 		t.Fatalf("err = %v, want APIError 404", err)
 	}
 }
+
+func TestRecentTurns_KeepsTheChatSkipsNotesAndActivity(t *testing.T) {
+	// Arrange: Chatwoot's message list, oldest first, as the API returns it.
+	var path, token string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, token = r.URL.Path, r.Header.Get("api_access_token")
+		_, _ = w.Write([]byte(`{"payload":[
+			{"id":1,"message_type":0,"private":false,"content":"ราคาเท่าไหร่"},
+			{"id":2,"message_type":1,"private":false,"content":"3,900 บาทครับ","sender":{"type":"agent_bot"}},
+			{"id":3,"message_type":1,"private":true,"content":"🤖 สรุปจากบอท ...","sender":{"type":"agent_bot"}},
+			{"id":4,"message_type":2,"private":false,"content":"Conversation was reopened"},
+			{"id":5,"message_type":1,"private":false,"content":"แอดมินตอบจาก Messenger"},
+			{"id":6,"message_type":0,"private":false,"content":"","attachments":[{"file_type":"image"}]},
+			{"id":7,"message_type":0,"private":false,"content":"ข้อความปัจจุบัน"}
+		]}`))
+	}))
+	defer srv.Close()
+	r := NewReader(srv.URL, "reader-token", nil)
+
+	// Act
+	turns, err := r.RecentTurns(context.Background(), 1, 76, 7)
+
+	// Assert
+	if err != nil || path != "/api/v1/accounts/1/conversations/76/messages" || token != "reader-token" {
+		t.Fatalf("err=%v path=%q token=%q", err, path, token)
+	}
+	want := []struct{ role, content string }{
+		{"user", "ราคาเท่าไหร่"},
+		{"assistant", "3,900 บาทครับ"},
+		{"assistant", "แอดมินตอบจาก Messenger"},
+		{"user", "[The customer sent a file]"},
+	}
+	if len(turns) != len(want) {
+		t.Fatalf("turns = %+v, want %d (no private notes, no activity, not the current message)", turns, len(want))
+	}
+	for i, w := range want {
+		if turns[i].Role != w.role || turns[i].Content != w.content {
+			t.Errorf("turn %d = %+v, want %s %q", i, turns[i], w.role, w.content)
+		}
+	}
+}
+
+func TestRecentTurns_ErrorStatus(t *testing.T) {
+	// Arrange
+	var got captured
+	srv := newServer(t, http.StatusUnauthorized, &got)
+	r := NewReader(srv.URL, "wrong", nil)
+
+	// Act
+	_, err := r.RecentTurns(context.Background(), 1, 76, 0)
+
+	// Assert
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+		t.Fatalf("err = %v, want APIError 401", err)
+	}
+}

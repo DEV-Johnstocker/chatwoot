@@ -119,6 +119,11 @@ func run() error {
 			Events: adminEvents(profiles, cfg.AuditRetentionDays), Logger: logger.With("component", "websync"), Location: cfg.Location}
 	}
 
+	var historyReader bot.HistoryReader
+	if cfg.ChatwootReaderToken != "" {
+		historyReader = chatwoot.NewReader(cfg.ChatwootBaseURL, cfg.ChatwootReaderToken, nil)
+		logger.Info("chat recall from chatwoot on")
+	}
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
 		LLM:               completer,
@@ -130,6 +135,7 @@ func run() error {
 		Transcriber:       liveTranscriber{store: store, model: cfg.TranscribeModel},
 		StickerLLM:        rewriteLLM,
 		NoteLLM:           rewriteLLM,
+		HistoryReader:     historyReader,
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),

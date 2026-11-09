@@ -88,7 +88,9 @@ func TestPolicy_ObjectionsGetOneHelpfulCounterThenRespect(t *testing.T) {
 	for _, want := range []string{
 		"accept it warmly first, then once give one or two helpful facts",
 		"No pressure, no urgency, no question. If they say no again, stop selling.",
-		"up to 6 short lines when the customer is deciding",
+		"usually 3-6 short lines with each point on its own line",
+		"address the customer as \"คุณลูกค้า\", or \"คุณ\" followed by their name",
+		"never the bare word \"คุณ\" on its own",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("policy is missing %q", want)

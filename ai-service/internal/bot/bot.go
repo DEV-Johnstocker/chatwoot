@@ -71,6 +71,12 @@ type UsageRecorder interface {
 	MarkUsed(ctx context.Context, accountID int64, hits []knowledge.Hit) error
 }
 
+// HistoryReader reads a conversation's recent messages as chat turns,
+// leaving out skipID (the message being answered). chatwoot.Reader.
+type HistoryReader interface {
+	RecentTurns(ctx context.Context, accountID, conversationID, skipID int64) ([]memory.Turn, error)
+}
+
 // Options configures a Bot.
 type Options struct {
 	Chatwoot  Chatwoot
@@ -81,10 +87,13 @@ type Options struct {
 	Tracer    Tracer        // optional; receives one trace per customer message
 	Usage     UsageRecorder // optional; counts which documents customer questions reach
 	// Media (each optional; a feature also needs its switch on the business profile).
-	Fetcher        Fetcher     // downloads attachments from the Chatwoot host
-	Transcriber    Transcriber // voice notes → text
-	StickerLLM     Completer   // small vision model: is this image a sticker?
-	NoteLLM        Completer   // optional; small vision model that writes the staff note at a handoff
+	Fetcher     Fetcher     // downloads attachments from the Chatwoot host
+	Transcriber Transcriber // voice notes → text
+	StickerLLM  Completer   // small vision model: is this image a sticker?
+	NoteLLM     Completer   // optional; small vision model that writes the staff note at a handoff
+	// HistoryReader recalls a chat from Chatwoot when the bot has no memory of
+	// it (after a restart, or a closed chat reopened). Optional.
+	HistoryReader  HistoryReader
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -239,6 +248,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			return
 		}
 		tr.Input = in.text
+		b.recall(ctx, log, acct, conv, ev.ID)
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "user", Content: in.text})
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		if b.opts.Handoff.Wants(in.text) {
@@ -444,6 +454,28 @@ func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, c
 		return
 	}
 	log.Info("handed off to human", "reason", reason)
+}
+
+// recall fills an empty memory from Chatwoot, so a restart or a reopened chat
+// keeps its context (what staff said included). Its own memory is kept when
+// it has one: that also holds voice transcripts and photo notes.
+func (b *Bot) recall(ctx context.Context, log *slog.Logger, acct, conv, current int64) {
+	if b.opts.HistoryReader == nil || len(b.opts.History.Get(acct, conv)) > 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	turns, err := b.opts.HistoryReader.RecentTurns(ctx, acct, conv, current)
+	if err != nil {
+		log.Warn("chat recall from chatwoot failed", "error", err)
+		return
+	}
+	for _, t := range turns {
+		b.opts.History.Append(acct, conv, memory.Turn{Role: t.Role, Content: capText(t.Content)})
+	}
+	if len(turns) > 0 {
+		log.Info("chat recalled from chatwoot", "turns", len(turns))
+	}
 }
 
 // stepBackIfStaffReplied hands the chat to staff, silently, when someone

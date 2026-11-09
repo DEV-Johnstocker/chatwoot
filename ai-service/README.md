@@ -39,7 +39,11 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   `kb_chunk_ids` and `kb_scores` (no content).
 - **History**: the last `HISTORY_LIMIT` messages per conversation are kept in
   memory from webhook events, because Chatwoot does not let bot tokens list
-  messages. History is lost on restart (persistent store comes with RAG).
+  messages. With `CHATWOOT_READER_TOKEN` (an agent account, e.g. "AI Reader",
+  with access to the bot's inboxes) the bot re-reads a chat from Chatwoot
+  when it has no memory of it: after a restart or when a closed chat reopens.
+  Staff and Messenger replies are included; private notes are not. Without
+  it, history is lost on restart.
 - **Backup AI**: `LLM_FALLBACK_*` answers when the main model fails, the
   question rewrite falls back to it too, and `EMBED_FALLBACK_*` reaches the
   same embedding model another way (for example OpenRouter with
