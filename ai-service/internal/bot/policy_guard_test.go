@@ -70,6 +70,8 @@ func TestPolicy_SellsBeforeAskingAndUsesEmojiSparingly(t *testing.T) {
 		"Never create urgency or scarcity",
 		"never promise results, sales or income",
 		"Never ask a question you already asked",
+		"at most two questions about the customer's own situation",
+		"Do not end two replies in a row with a question",
 		"Emoji: at most one, at the end",
 		"Never use one on prices, payment, refunds",
 		"no business facts, no question, no handoff",
