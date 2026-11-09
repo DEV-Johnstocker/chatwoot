@@ -119,3 +119,6 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
 - 2026-11-10, local:
   - `gofmt -l .` clean, `go vet ./...` clean, `go test -race ./...` all pass.
   - The full suite passes against a throwaway local `pgvector/pgvector:pg17` container (`go test -p 1 ./...` with `TEST_DATABASE_URL`).
+  - After the review fixes, both runs pass again, and govulncheck finds no vulnerabilities.
+  - Live local run (branch binary, scratch DB at schema v13). Five signed `feed` deliveries to `/webhooks/meta` each got 200 and stored 4 rows: the Page's own comment was skipped. An unsigned POST got 401.
+  - `/admin/comments` renders at 1280 px and 390 px (Chrome device emulation). The owner review page holds the before/after screenshots.
