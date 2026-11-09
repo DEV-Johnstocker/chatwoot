@@ -224,9 +224,13 @@ func (b *Bot) Process(parent context.Context, j Job) {
 
 	switch j.Decision {
 	case webhook.Pause:
+		takeover := b.staffTookOver(ev)
+		if automated(ev, takeover) {
+			return
+		}
 		b.cancelPending(acct, conv)
 		log.Debug("staff took the chat, waiting reply dropped")
-		if b.staffTookOver(ev) {
+		if takeover {
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonStaffReplied, nil)
 		}
 	case webhook.Forget:
@@ -234,8 +238,10 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.opts.History.Forget(acct, conv)
 		log.Debug("conversation resolved, history cleared")
 	case webhook.Record:
-		b.cancelPending(acct, conv)     // staff are handling the chat
 		takeover := b.staffTookOver(ev) // decided before this message joins the memory
+		if !automated(ev, takeover) {
+			b.cancelPending(acct, conv) // staff are handling the chat
+		}
 		role := "user"
 		if ev.MessageType == "outgoing" {
 			role = "assistant"
@@ -495,6 +501,13 @@ func (b *Bot) recall(ctx context.Context, log *slog.Logger, acct, conv, current 
 	if len(turns) > 0 {
 		log.Info("chat recalled from chatwoot", "turns", len(turns))
 	}
+}
+
+// automated is an outgoing message from no one in Chatwoot that does not
+// mean a takeover (a page Instant Reply, an automation message): it must
+// not cancel the reply the bot is about to send.
+func automated(ev webhook.Event, takeover bool) bool {
+	return ev.Event == "message_created" && ev.MessageType == "outgoing" && ev.Sender.Type == "" && !takeover
 }
 
 // staffTookOver says whether a public reply that is not the bot's means a

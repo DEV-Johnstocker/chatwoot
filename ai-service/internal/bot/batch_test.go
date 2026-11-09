@@ -263,3 +263,24 @@ func TestCloseDuringAWaitingReplyDoesNotCrash(t *testing.T) {
 		t.Errorf("no reply may be sent after Close: %s", cw.joined())
 	}
 }
+
+func TestInstantReplyDoesNotCancelTheWaitingReply(t *testing.T) {
+	// Arrange: the page's auto-greeting echo arrives while the bot waits.
+	b, cw, l := batchingBot(t, 80*time.Millisecond)
+	greeting := Job{Decision: webhook.Record, Event: webhook.Event{
+		Event: "message_created", ID: 9, Content: "ขอบคุณที่ติดต่อมา", MessageType: "outgoing",
+		Account: webhook.Account{ID: 1}, Conversation: webhook.Conversation{ID: 7, Status: "pending"},
+	}}
+	greeting.Event.ContentAttributes.ExternalEcho = true
+
+	// Act
+	_ = b.Enqueue(msgN(1, "สนใจคอร์ส"))
+	time.Sleep(20 * time.Millisecond)
+	_ = b.Enqueue(greeting)
+	waitFor(t, func() bool { n, _ := l.snapshot(); return n > 0 })
+
+	// Assert
+	if calls, _ := l.snapshot(); calls != 1 || !strings.Contains(cw.joined(), "msg:ตอบรวมครับ") {
+		t.Fatalf("the bot must still answer the customer: calls=%d %s", calls, cw.joined())
+	}
+}
