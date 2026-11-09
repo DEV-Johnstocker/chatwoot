@@ -242,11 +242,14 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		if !automated(ev, takeover) {
 			b.cancelPending(acct, conv) // staff are handling the chat
 		}
-		role := "user"
+		role, content := "user", capText(ev.Content)
 		if ev.MessageType == "outgoing" {
 			role = "assistant"
 		}
-		b.opts.History.Append(acct, conv, memory.Turn{Role: role, Content: capText(ev.Content)})
+		if ev.ContentAttributes.ExternalEcho && automated(ev, takeover) {
+			content = memory.PageMessagePrefix + content
+		}
+		b.opts.History.Append(acct, conv, memory.Turn{Role: role, Content: content})
 		if takeover {
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonStaffReplied, nil)
 		}
@@ -516,8 +519,9 @@ func automated(ev webhook.Event, takeover bool) bool {
 //   - A Chatwoot user (staff typing in Chatwoot) always counts.
 //   - A reply with no sender counts only when Chatwoot marks it as a Messenger
 //     echo, the bot has already been chatting here, and it is not the bot's
-//     own last reply echoed back. So a page's Instant Reply (sent before the
-//     bot speaks) and Chatwoot automation messages (not echoes) do not.
+//     own last reply echoed back. So a page's Instant Reply or an ad's
+//     welcome message (sent before the bot speaks, even several of them) and
+//     Chatwoot automation messages (not echoes) do not.
 func (b *Bot) staffTookOver(ev webhook.Event) bool {
 	if ev.Event != "message_created" || ev.MessageType != "outgoing" || ev.Private ||
 		ev.Conversation.Status != "pending" {
@@ -535,7 +539,7 @@ func (b *Bot) staffTookOver(ev webhook.Event) bool {
 	}
 	lastBot := ""
 	for _, t := range b.opts.History.Get(ev.Account.ID, ev.ConversationID()) {
-		if t.Role == "assistant" {
+		if t.Role == "assistant" && !strings.HasPrefix(t.Content, memory.PageMessagePrefix) {
 			lastBot = t.Content
 		}
 	}

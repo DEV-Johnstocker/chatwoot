@@ -108,3 +108,44 @@ func TestAutomatedMessagesDoNotSwitchTheBotOff(t *testing.T) {
 		})
 	}
 }
+
+func TestTwoPageMessagesBeforeTheBotSpeaksDoNotSwitchItOff(t *testing.T) {
+	// Arrange: a Click-to-Messenger ad's welcome message arrives as an echo,
+	// then the page's Instant Reply arrives as a second echo. The bot has not
+	// said anything yet, so neither is an admin taking over.
+	cw := &fakeChatwoot{}
+	b, _ := newBot(cw, &fakeLLM{reply: "x"})
+	welcome := staffReply("pending", "", false)
+	welcome.Event.Content = "สวัสดีค่ะ สนใจคอร์ส AutoCut ไหมคะ"
+	instant := staffReply("pending", "", false)
+	instant.Event.ID, instant.Event.Content = 31, "ขอบคุณที่ทักมานะคะ"
+
+	// Act
+	b.Process(context.Background(), welcome)
+	b.Process(context.Background(), instant)
+
+	// Assert
+	if got := cw.joined(); strings.Contains(got, "handoff") {
+		t.Errorf("the bot must keep the chat, got %s", got)
+	}
+}
+
+func TestAdminEchoAfterAPageMessageAndABotReplyStillStepsBack(t *testing.T) {
+	// Arrange: Instant Reply (page), then the bot answered, then an admin replies.
+	cw := &fakeChatwoot{}
+	b, h := newBot(cw, &fakeLLM{reply: "x"})
+	instant := staffReply("pending", "", false)
+	instant.Event.Content = "ขอบคุณที่ทักมานะคะ"
+	b.Process(context.Background(), instant)
+	h.Append(1, 7, memory.Turn{Role: "assistant", Content: "3,900 บาทครับ"})
+	admin := staffReply("pending", "", false)
+	admin.Event.ID = 32
+
+	// Act
+	b.Process(context.Background(), admin)
+
+	// Assert
+	if got := cw.joined(); !strings.Contains(got, "handoff") {
+		t.Errorf("an admin reply after the bot spoke must hand off, got %s", got)
+	}
+}

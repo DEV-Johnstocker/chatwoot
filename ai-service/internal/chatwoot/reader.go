@@ -39,6 +39,12 @@ type listedMessage struct {
 	Private     bool              `json:"private"`
 	Content     string            `json:"content"`
 	Attachments []json.RawMessage `json:"attachments"`
+	Sender      *struct {
+		Type string `json:"type"`
+	} `json:"sender"`
+	ContentAttributes struct {
+		ExternalEcho bool `json:"external_echo"`
+	} `json:"content_attributes"`
 }
 
 // RecentTurns returns the conversation's latest messages (Chatwoot's newest
@@ -68,10 +74,21 @@ func (r *Reader) RecentTurns(ctx context.Context, accountID, conversationID, ski
 		return nil, fmt.Errorf("chatwoot %s: %w", path, err)
 	}
 	var turns []memory.Turn
+	botSpoke := false
 	for _, m := range page.Payload {
-		if t, ok := toTurn(m, skipID); ok {
-			turns = append(turns, t)
+		t, ok := toTurn(m, skipID)
+		if !ok {
+			continue
 		}
+		// An echo before the bot's first reply is the page's own automatic
+		// message (Instant Reply, an ad's welcome); later echoes are admins.
+		if m.ContentAttributes.ExternalEcho && !botSpoke {
+			t.Content = memory.PageMessagePrefix + t.Content
+		}
+		if m.Sender != nil && m.Sender.Type == "agent_bot" {
+			botSpoke = true
+		}
+		turns = append(turns, t)
 	}
 	return turns, nil
 }

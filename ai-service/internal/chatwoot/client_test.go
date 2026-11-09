@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -314,5 +315,41 @@ func TestAssignPostsAssignee(t *testing.T) {
 	// Assert
 	if err != nil || got.path != "/api/v1/accounts/1/conversations/7/assignments" || got.body["assignee_id"] != float64(5) {
 		t.Errorf("err=%v path=%q body=%v", err, got.path, got.body)
+	}
+}
+
+func TestRecentTurns_MarksPageMessagesSentBeforeTheBotSpoke(t *testing.T) {
+	// Arrange: an ad's welcome message and an Instant Reply (echoes, before the
+	// bot's first reply), then the bot, then an admin echo from Messenger.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"payload":[
+			{"id":1,"message_type":1,"private":false,"content":"สนใจคอร์สไหมคะ","content_attributes":{"external_echo":true}},
+			{"id":2,"message_type":0,"private":false,"content":"ราคาเท่าไหร่?"},
+			{"id":3,"message_type":1,"private":false,"content":"ขอบคุณที่ทักมานะคะ","content_attributes":{"external_echo":true}},
+			{"id":4,"message_type":1,"private":false,"content":"3,900 บาทครับ","sender":{"type":"agent_bot"}},
+			{"id":5,"message_type":1,"private":false,"content":"แอดมินตอบเองครับ","content_attributes":{"external_echo":true}}
+		]}`))
+	}))
+	defer srv.Close()
+	r := NewReader(srv.URL, "reader-token", nil)
+
+	// Act
+	turns, err := r.RecentTurns(context.Background(), 1, 76, 0)
+
+	// Assert
+	want := []string{
+		memory.PageMessagePrefix + "สนใจคอร์สไหมคะ",
+		"ราคาเท่าไหร่?",
+		memory.PageMessagePrefix + "ขอบคุณที่ทักมานะคะ",
+		"3,900 บาทครับ",
+		"แอดมินตอบเองครับ",
+	}
+	if err != nil || len(turns) != len(want) {
+		t.Fatalf("turns = %+v err=%v", turns, err)
+	}
+	for i, w := range want {
+		if turns[i].Content != w {
+			t.Errorf("turn %d = %q, want %q", i, turns[i].Content, w)
+		}
 	}
 }
