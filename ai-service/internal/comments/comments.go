@@ -19,6 +19,12 @@ import (
 // ReplyWindow is how long after a comment Meta accepts a private reply.
 const ReplyWindow = 7 * 24 * time.Hour
 
+// MaxScoreAttempts is how many scoring passes a comment gets.
+const MaxScoreAttempts = 3
+
+// UnscoredReason is shown when the model could not read a comment.
+const UnscoredReason = "Could not be sorted automatically. Read it and decide."
+
 // KeepFor is how long a comment is kept before it is deleted (personal data).
 const KeepFor = 30 * 24 * time.Hour
 
@@ -40,7 +46,12 @@ const (
 	StatusSent      Status = "sent"      // Meta accepted the private reply
 	StatusDismissed Status = "dismissed" // the owner chose not to reply
 	StatusFailed    Status = "failed"    // Meta refused for good (already replied, too old, deleted)
+	StatusRemoved   Status = "removed"   // deleted on Facebook; kept blank so it cannot come back
 )
+
+// MaxWaitingShown caps the admin queue, so a flood of comments cannot make
+// the page unusable.
+const MaxWaitingShown = 100
 
 // Intent is the scorer's reading of a comment.
 type Intent string
@@ -70,6 +81,9 @@ var (
 	ErrChanged = errors.New("the comment changed after you opened it")
 	// ErrExpired means Meta no longer accepts a private reply to it.
 	ErrExpired = errors.New("the 7-day reply window has passed")
+	// ErrRejected means the database refused the row for good (a value it
+	// cannot hold); retrying the same delivery cannot help.
+	ErrRejected = errors.New("the comment could not be stored")
 )
 
 // Comment is one comment on the Page, and what happened to it.
@@ -95,6 +109,7 @@ type Comment struct {
 	DecidedAt time.Time
 	Error     string // the last send failure, for the owner
 	Version   int
+	Attempts  int // failed scoring passes
 	Received  time.Time
 }
 
@@ -107,15 +122,23 @@ type Store interface {
 	// nothing, when the comment ID is already stored (Meta retries and
 	// replayed requests).
 	Add(ctx context.Context, c Comment) (bool, error)
-	// Forget deletes a comment that has not been answered, when the person
-	// deletes it on Facebook.
-	Forget(ctx context.Context, commentID string) error
-	// Unscored returns up to limit comments with StatusNew, oldest first.
+	// Forget records that the person deleted the comment on Facebook: the
+	// row keeps only its IDs and StatusRemoved, whatever its status was, so a
+	// later Add of the same comment changes nothing. c needs AccountID,
+	// PageID and CommentID.
+	Forget(ctx context.Context, c Comment) error
+	// Unscored returns up to limit comments with StatusNew, fewest failed
+	// passes first, then oldest.
 	Unscored(ctx context.Context, limit int) ([]Comment, error)
 	// Score records the scorer's result on a StatusNew comment and moves it
 	// to StatusWaiting or StatusIgnored. It bumps Version.
 	Score(ctx context.Context, id int64, intent Intent, reason, draft string) error
-	// Waiting returns the account's comments that wait for the owner, newest first.
+	// Retry records a failed scoring pass on a StatusNew comment. After
+	// MaxScoreAttempts the comment waits for the owner unscored, so one
+	// comment the model cannot read never holds up the others.
+	Retry(ctx context.Context, id int64) error
+	// Waiting returns the account's comments that wait for the owner,
+	// newest first, at most MaxWaitingShown.
 	Waiting(ctx context.Context, accountID int64) ([]Comment, error)
 	// Recent returns up to limit decided or ignored comments, newest first.
 	Recent(ctx context.Context, accountID int64, limit int) ([]Comment, error)

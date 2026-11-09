@@ -240,3 +240,31 @@ func TestComments_OffAndSendingOff(t *testing.T) {
 		t.Fatalf("no token page/post wrong: %d", noTokenPost.Code)
 	}
 }
+
+func TestComments_OversizedFormIsRefused(t *testing.T) {
+	// Arrange
+	e := newCommentsEnv(t, true, true)
+	c := e.waiting(t, 2, "c1", "ราคา", time.Now())
+
+	// Act
+	res := serve(e.mux, commentsPost(decide(c, 2, "send", strings.Repeat("ก", 20000))))
+
+	// Assert
+	if res.Code != http.StatusBadRequest || len(e.sender.sent) != 0 {
+		t.Fatalf("status %d sent %v", res.Code, e.sender.sent)
+	}
+}
+
+func TestComments_DraftIsLabelledAsAnAISuggestion(t *testing.T) {
+	// Arrange
+	e := newCommentsEnv(t, true, true)
+	e.waiting(t, 2, "c1", "ราคา", time.Now())
+
+	// Act
+	body := serve(e.mux, commentsGet("account=2")).Body.String()
+
+	// Assert
+	if !strings.Contains(body, "AI suggestion: check it before sending") {
+		t.Fatal("draft not labelled")
+	}
+}

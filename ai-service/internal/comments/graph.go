@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -64,7 +65,12 @@ func (g *Graph) SendPrivateReply(ctx context.Context, commentID, text string) er
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("send private reply: %w", err)
+		// Keep the host, not the full URL, out of logs and the admin page.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
+		return fmt.Errorf("send private reply via %s: %w", req.URL.Host, err)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))

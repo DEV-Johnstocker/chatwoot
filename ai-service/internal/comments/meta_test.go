@@ -1,6 +1,7 @@
 package comments
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -154,5 +155,26 @@ func TestParse_ClipsLongText(t *testing.T) {
 	// Assert
 	if err != nil || len(got) != 1 || len([]rune(got[0].Comment.Message)) != MaxMessageRunes {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestParse_SkipsIDsTheTableCannotHoldAndDropsNUL(t *testing.T) {
+	// Arrange
+	long := strings.Repeat("9", 129)
+	oversized := []byte(`{"object":"page","entry":[{"id":"1111","changes":[{"field":"feed","value":{"item":"comment","verb":"add",
+		"comment_id":"` + long + `","message":"hi","created_time":1767225600,"from":{"id":"9"}}}]}]}`)
+	withNUL := []byte(`{"object":"page","entry":[{"id":"1111","changes":[{"field":"feed","value":{"item":"comment","verb":"add",
+		"comment_id":"c1","message":"สน\u0000ใจ","created_time":1767225600,"from":{"id":"9","name":"A\u0000B"}}}]}]}`)
+
+	// Act
+	skipped, err1 := Parse(oversized, testPage)
+	cleaned, err2 := Parse(withNUL, testPage)
+
+	// Assert
+	if err1 != nil || len(skipped) != 0 {
+		t.Fatalf("oversized: %+v %v", skipped, err1)
+	}
+	if err2 != nil || len(cleaned) != 1 || cleaned[0].Comment.Message != "สนใจ" || cleaned[0].Comment.FromName != "AB" {
+		t.Fatalf("nul: %+v %v", cleaned, err2)
 	}
 }

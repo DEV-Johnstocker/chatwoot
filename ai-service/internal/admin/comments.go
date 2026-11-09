@@ -53,6 +53,7 @@ type commentRow struct {
 var intentLabels = map[comments.Intent]string{
 	comments.IntentLead: "Likely buyer", comments.IntentQuestion: "Question",
 	comments.IntentComplaint: "Complaint", comments.IntentOther: "Not a lead",
+	"": "Not sorted",
 }
 
 var statusLabels = map[comments.Status]string{
@@ -73,6 +74,8 @@ func (h *Handler) submitComments(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "page comments are off: set META_APP_SECRET, META_VERIFY_TOKEN, META_PAGE_ID and DATABASE_URL", http.StatusServiceUnavailable)
 		return
 	}
+	// A 2,000-character Thai reply is about 6 KB; nothing legitimate is bigger.
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
@@ -113,6 +116,8 @@ func (h *Handler) submitComments(w http.ResponseWriter, r *http.Request) {
 func commentError(err error) (int, string) {
 	var refused *comments.SendError
 	switch {
+	case errors.Is(err, comments.ErrNotRecorded):
+		return http.StatusInternalServerError, "Sent, but saving that failed. Do not send it again; it shows as Sending in the history."
 	case errors.Is(err, comments.ErrEmptyReply):
 		return http.StatusUnprocessableEntity, "Write a reply before sending."
 	case errors.Is(err, comments.ErrLongReply):

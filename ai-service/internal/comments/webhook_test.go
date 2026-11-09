@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -172,5 +174,67 @@ func TestComment_Expired(t *testing.T) {
 	// Act / Assert
 	if fresh.Expired(now) || !old.Expired(now) {
 		t.Fatal("window wrong")
+	}
+}
+
+func TestWebhook_DeleteBeforeTheAddStillKeepsItOut(t *testing.T) {
+	// Arrange: Meta delivers the delete first, then retries the add
+	store := &Memory{}
+	mux, _ := newWebhook(store)
+	remove, add := feedBody("remove", "9999"), feedBody("add", "9999")
+
+	// Act
+	r1 := post(mux, remove, Sign(testSecret, remove))
+	r2 := post(mux, add, Sign(testSecret, add))
+
+	// Assert
+	got, _ := store.Unscored(context.Background(), 10)
+	if r1.Code != http.StatusOK || r2.Code != http.StatusOK || len(got) != 0 {
+		t.Fatalf("codes %d %d stored %d", r1.Code, r2.Code, len(got))
+	}
+}
+
+func TestWebhook_OversizedBodyIsRefusedAndStoresNothing(t *testing.T) {
+	// Arrange
+	store := &Memory{}
+	mux, _ := newWebhook(store)
+	body := append(feedBody("add", "9999"), bytes.Repeat([]byte(" "), MaxBodyBytes)...)
+
+	// Act
+	res := post(mux, body, Sign(testSecret, body))
+
+	// Assert
+	got, _ := store.Unscored(context.Background(), 10)
+	if res.Code != http.StatusRequestEntityTooLarge || len(got) != 0 {
+		t.Fatalf("status %d stored %d", res.Code, len(got))
+	}
+}
+
+// rejectingStore refuses one comment for good, like a database CHECK would.
+type rejectingStore struct{ Memory }
+
+func (s *rejectingStore) Add(ctx context.Context, c Comment) (bool, error) {
+	if c.CommentID == "bad" {
+		return false, fmt.Errorf("insert: %w", ErrRejected)
+	}
+	return s.Memory.Add(ctx, c)
+}
+
+func TestWebhook_APermanentlyRefusedCommentDoesNotBlockTheBatch(t *testing.T) {
+	// Arrange
+	store := &rejectingStore{}
+	mux, _ := newWebhook(store)
+	change := func(id string) string {
+		return `{"field":"feed","value":{"item":"comment","verb":"add","comment_id":"` + id + `","message":"x","created_time":1767225600,"from":{"id":"9"}}}`
+	}
+	body := []byte(`{"object":"page","entry":[{"id":"1111","changes":[` + strings.Join([]string{change("bad"), change("good")}, ",") + `]}]}`)
+
+	// Act
+	res := post(mux, body, Sign(testSecret, body))
+
+	// Assert
+	got, _ := store.Unscored(context.Background(), 10)
+	if res.Code != http.StatusOK || len(got) != 1 || got[0].CommentID != "good" {
+		t.Fatalf("status %d stored %+v", res.Code, got)
 	}
 }

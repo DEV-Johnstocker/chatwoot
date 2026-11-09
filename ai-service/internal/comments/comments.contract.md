@@ -12,20 +12,24 @@ become customers.
   - Only `feed` / `comment` / `add` events for `META_PAGE_ID` by someone other than the Page are stored. `remove` deletes an unanswered comment.
 - Storage on schema v13 (`fb_comments`):
   - one row per Meta comment ID, so retries and replays add nothing;
+  - a comment deleted on Facebook keeps a blank `removed` row whatever its status, so a late retry or a replay cannot bring it back, and its text leaves the history too;
+  - a row the database refuses for good (an ID over its length, say) is logged and skipped, so it never blocks the rest of a delivery;
   - row level security on, `anon`/`authenticated` revoked;
   - rows deleted 30 days after they arrive.
 - A background worker (every 20 s) asks the main LLM to classify each new comment as `lead`, `question`, `complaint` or `other`, give a one-line reason, and draft a reply in the business's tone (`profile.Prompt`).
   - `other` is ignored.
-  - A failed model call leaves the comment for the next pass.
-- `/admin/comments` (same auth and cross-origin protection as every admin page):
-  - waiting comments, newest first, each with the time left in Meta's 7-day window;
+  - A failed model call leaves the comment for a later pass, behind comments that have not failed. After 3 failures it goes to the owner unscored ("Not sorted").
+  - The comment and the commenter's name are inside `<comment>` tags with tag look-alikes removed. The page labels every draft as an AI suggestion to check, because a comment can still steer what the model writes.
+- `/admin/comments` (same auth and cross-origin protection as every admin page, form capped at 16 KiB):
+  - waiting comments, newest first (at most 100), each with the time left in Meta's 7-day window;
   - an editable draft, **Send private reply** and **Dismiss**;
   - a history of the last 20.
 - Sending:
   - Graph `POST /{page-id}/messages` with `recipient.comment_id`, the token in the `Authorization` header (never in the URL).
   - The comment is claimed at the version the owner saw, so double clicks and two tabs send once.
   - Meta's permanent refusals (10900 already replied, 10903 cannot reply, 551 unavailable) move it to history.
-  - Other failures leave it waiting with the error shown.
+  - Other failures leave it waiting with the error shown; network errors name the Graph host only, never the full URL.
+  - If Meta accepts the reply but recording it fails, the page says so ("Sent, but saving that failed") and the comment stays `sending` in the history; it cannot be sent again.
 - Off unless `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ID` and `DATABASE_URL` are set. Without `META_PAGE_TOKEN` the queue fills but Send is refused.
 
 ## Not in scope (later, each needs the owner's decision)
@@ -38,6 +42,12 @@ become customers.
 - Knowledge-base lookups in drafts. Drafts use the business profile only, and the owner reviews every one.
 - The Meta app itself, App Review and the public route (phase 2, below).
 
+## Accepted risks (owner to confirm)
+
+- A captured, signed `add` replayed **after** the 30-day purge is stored again. It cannot be sent, because the 7-day window uses Meta's signed `created_time`; it costs one model call and shows as too late to reply.
+- Meta puts `hub.verify_token` in the subscription check's query string, so proxy access logs may record it. It only lets someone complete the handshake. Rotate it if those logs are shared.
+- One Page per service: `comment_id` is unique across the table and `Forget` is not account-scoped. Make both per account before adding a second Page.
+
 ## Acceptance gates
 
 Run from `ai-service/`:
@@ -47,7 +57,8 @@ gofmt -l . && go vet ./... && go test -race ./...
 TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/knowledge/ ./internal/admin/
 ```
 
-1. A signed comment is stored once. A replay, Meta's retry, or a signature that is missing, wrong or for another body changes nothing; the bad signatures get 401 (`webhook_test.go`).
+1. A signed comment is stored once. A replay, Meta's retry, or a signature that is missing, wrong or for another body changes nothing; the bad signatures get 401, an oversized body 413 (`webhook_test.go`).
+   - A deleted comment stays out, even when the delete arrives before the add. One refused row does not block the rest of the batch (`webhook_test.go`, `store_test.go`).
 2. The subscription check refuses a wrong token, a wrong mode and a non-token challenge (`meta_test.go`, `webhook_test.go`).
 3. The Page's own comments, edits, other Pages and non-comment events are skipped (`meta_test.go`).
 4. Send refuses, without calling Meta and leaving the comment waiting, when any of these holds (`queue_test.go`, `comments_test.go`):
@@ -85,6 +96,23 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
    - comment → shows on `/admin/comments` → Send → private reply arrives in Messenger → their reply lands in Chatwoot.
    - Record the screencast for App Review.
 7. **App Review** for `pages_messaging`, `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement` and `pages_read_user_content`, then switch the app to Live.
+
+## Reviews
+
+- 2026-11-10: `ai-service-migration-reviewer` gave **changes required**.
+  - Fixed: a refused row blocked the whole delivery; unreadable comments stalled scoring (added the `attempts` column); no tests at the length limits; no restore-check note in `deploy/README.md`.
+  - Account scoping (one Page per service) is documented as an accepted risk above.
+- 2026-11-10: `ai-service-security-reviewer` gave **changes required**. Fixed:
+  - deleted comments coming back (now kept as `removed`);
+  - a refused row blocking delivery;
+  - the commenter's name as an injection point, and drafts not labelled as AI suggestions;
+  - the waiting list had no cap;
+  - log floods from unsigned requests;
+  - full URLs in errors;
+  - a misleading message after a send that wasn't recorded;
+  - the form had no size cap.
+
+  The verify token in access logs is documented as an accepted risk above.
 
 ## Evidence
 

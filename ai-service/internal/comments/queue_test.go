@@ -218,3 +218,40 @@ func TestQueue_Dismiss(t *testing.T) {
 		t.Fatalf("stale %v err %v row %+v", stale, err, got)
 	}
 }
+
+func TestGraph_NetworkErrorNamesTheHostOnly(t *testing.T) {
+	// Arrange: nothing listens on this port
+	g := &Graph{BaseURL: "http://127.0.0.1:1/v24.0", PageID: testPage, PageToken: "page-token-xyz"}
+
+	// Act
+	err := g.SendPrivateReply(context.Background(), "c", "hi")
+
+	// Assert
+	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") || strings.Contains(err.Error(), "/messages") || strings.Contains(err.Error(), "page-token-xyz") {
+		t.Fatalf("err %v", err)
+	}
+}
+
+// brokenFinish loses the record of a send.
+type brokenFinish struct{ Memory }
+
+func (*brokenFinish) Finish(context.Context, int64, Status, string, string, string) error {
+	return errors.New("db down")
+}
+
+func TestQueue_SentButNotRecordedIsReportedAsSuch(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store, sender := &brokenFinish{}, &fakeSender{}
+	q := &Queue{Store: store, Sender: sender, Now: func() time.Time { return now }}
+	c := waitingComment(t, store, now)
+
+	// Act
+	err := q.Send(ctx, 2, c.ID, c.Version, "Hi", "owner")
+	again := q.Send(ctx, 2, c.ID, c.Version, "Hi", "owner")
+
+	// Assert
+	if !errors.Is(err, ErrNotRecorded) || !errors.Is(again, ErrChanged) || len(sender.calls) != 1 {
+		t.Fatalf("err %v again %v calls %d", err, again, len(sender.calls))
+	}
+}

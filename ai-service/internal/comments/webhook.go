@@ -2,6 +2,7 @@ package comments
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,7 +37,7 @@ func (h *Webhook) handshake(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	challenge, ok := Handshake(h.VerifyToken, q.Get("hub.mode"), q.Get("hub.verify_token"), q.Get("hub.challenge"))
 	if !ok {
-		h.Logger.Warn("meta webhook check refused", "remote_addr", r.RemoteAddr)
+		h.Logger.Debug("meta webhook check refused", "remote_addr", r.RemoteAddr)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -55,7 +56,8 @@ func (h *Webhook) receive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := VerifySignature(h.AppSecret, r.Header.Get("X-Hub-Signature-256"), body); err != nil {
-		h.Logger.Warn("rejected meta webhook", "error", err, "remote_addr", r.RemoteAddr)
+		// Debug, not Warn: anyone can POST here, and that must not flood the logs.
+		h.Logger.Debug("rejected meta webhook", "error", err, "remote_addr", r.RemoteAddr)
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
 		return
 	}
@@ -69,7 +71,13 @@ func (h *Webhook) receive(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 10*time.Second)
 	defer cancel()
 	for _, ch := range changes {
-		if err := h.apply(ctx, ch); err != nil {
+		err := h.apply(ctx, ch)
+		if errors.Is(err, ErrRejected) {
+			// A retry would fail the same way and hold back the rest of the batch.
+			h.Logger.Warn("page comment skipped: the database refused it", "account_id", h.AccountID, "comment_id", ch.Comment.CommentID, "error", err)
+			continue
+		}
+		if err != nil {
 			h.Logger.Error("store page comment", "account_id", h.AccountID, "comment_id", ch.Comment.CommentID, "error", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -79,11 +87,11 @@ func (h *Webhook) receive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Webhook) apply(ctx context.Context, ch Change) error {
-	if ch.Verb == "remove" {
-		return h.Store.Forget(ctx, ch.Comment.CommentID)
-	}
 	c := ch.Comment
 	c.AccountID = h.AccountID
+	if ch.Verb == "remove" {
+		return h.Store.Forget(ctx, c)
+	}
 	added, err := h.Store.Add(ctx, c)
 	if err == nil && added {
 		h.Logger.Info("page comment received", "account_id", h.AccountID, "comment_id", c.CommentID)

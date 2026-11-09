@@ -3,9 +3,11 @@ package comments
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,24 +24,39 @@ func (p *Postgres) Add(ctx context.Context, c Comment) (bool, error) {
 		ON CONFLICT (comment_id) DO NOTHING`,
 		c.AccountID, c.PageID, c.CommentID, c.PostID, c.ParentID, c.FromID, c.FromName, c.Message, c.CreatedAt)
 	if err != nil {
-		return false, err
+		return false, permanent(err)
 	}
 	return tag.RowsAffected() == 1, nil
 }
 
-// Forget implements Store.
-func (p *Postgres) Forget(ctx context.Context, commentID string) error {
-	_, err := p.Pool.Exec(ctx, `DELETE FROM fb_comments WHERE comment_id = $1 AND status IN ('new', 'waiting', 'ignored')`, commentID)
+// permanent marks errors a retry cannot fix: the row breaks a check or holds
+// a value Postgres cannot store (SQLSTATE classes 22 and 23).
+func permanent(err error) error {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && (strings.HasPrefix(pg.Code, "22") || strings.HasPrefix(pg.Code, "23")) {
+		return errors.Join(ErrRejected, err)
+	}
 	return err
 }
 
+// Forget implements Store.
+func (p *Postgres) Forget(ctx context.Context, c Comment) error {
+	_, err := p.Pool.Exec(ctx, `
+		INSERT INTO fb_comments (account_id, page_id, comment_id, from_id, created_at, status)
+		VALUES ($1, $2, $3, '', now(), 'removed')
+		ON CONFLICT (comment_id) DO UPDATE SET status = 'removed', message = '', from_name = '',
+			reason = '', draft = '', reply = '', error = '', version = fb_comments.version + 1`,
+		c.AccountID, c.PageID, c.CommentID)
+	return permanent(err)
+}
+
 const columns = `id, account_id, page_id, comment_id, post_id, parent_id, from_id, from_name, message, created_at,
-	intent, reason, draft, status, reply, decided_by, coalesce(decided_at, 'epoch'), error, version, received_at`
+	intent, reason, draft, status, reply, decided_by, coalesce(decided_at, 'epoch'), error, version, attempts, received_at`
 
 func scan(r pgx.CollectableRow) (Comment, error) {
 	var c Comment
 	err := r.Scan(&c.ID, &c.AccountID, &c.PageID, &c.CommentID, &c.PostID, &c.ParentID, &c.FromID, &c.FromName, &c.Message, &c.CreatedAt,
-		&c.Intent, &c.Reason, &c.Draft, &c.Status, &c.Reply, &c.DecidedBy, &c.DecidedAt, &c.Error, &c.Version, &c.Received)
+		&c.Intent, &c.Reason, &c.Draft, &c.Status, &c.Reply, &c.DecidedBy, &c.DecidedAt, &c.Error, &c.Version, &c.Attempts, &c.Received)
 	if c.DecidedAt.Equal(time.Unix(0, 0)) {
 		c.DecidedAt = time.Time{}
 	}
@@ -56,7 +73,7 @@ func (p *Postgres) query(ctx context.Context, sql string, args ...any) ([]Commen
 
 // Unscored implements Store.
 func (p *Postgres) Unscored(ctx context.Context, limit int) ([]Comment, error) {
-	return p.query(ctx, `WHERE status = 'new' ORDER BY received_at, id LIMIT $1`, limit)
+	return p.query(ctx, `WHERE status = 'new' ORDER BY attempts, received_at, id LIMIT $1`, limit)
 }
 
 // Score implements Store.
@@ -77,14 +94,31 @@ func (p *Postgres) Score(ctx context.Context, id int64, intent Intent, reason, d
 	return nil
 }
 
+// Retry implements Store.
+func (p *Postgres) Retry(ctx context.Context, id int64) error {
+	tag, err := p.Pool.Exec(ctx, `
+		UPDATE fb_comments SET attempts = attempts + 1,
+			status  = CASE WHEN attempts + 1 >= $2 THEN 'waiting' ELSE status END,
+			reason  = CASE WHEN attempts + 1 >= $2 THEN $3 ELSE reason END,
+			version = CASE WHEN attempts + 1 >= $2 THEN version + 1 ELSE version END
+		WHERE id = $1 AND status = 'new'`, id, MaxScoreAttempts, UnscoredReason)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Waiting implements Store.
 func (p *Postgres) Waiting(ctx context.Context, accountID int64) ([]Comment, error) {
-	return p.query(ctx, `WHERE account_id = $1 AND status = 'waiting' ORDER BY created_at DESC, id DESC`, accountID)
+	return p.query(ctx, `WHERE account_id = $1 AND status = 'waiting' ORDER BY created_at DESC, id DESC LIMIT $2`, accountID, MaxWaitingShown)
 }
 
 // Recent implements Store.
 func (p *Postgres) Recent(ctx context.Context, accountID int64, limit int) ([]Comment, error) {
-	return p.query(ctx, `WHERE account_id = $1 AND status NOT IN ('new', 'waiting')
+	return p.query(ctx, `WHERE account_id = $1 AND status NOT IN ('new', 'waiting', 'removed')
 		ORDER BY coalesce(decided_at, received_at) DESC, id DESC LIMIT $2`, accountID, limit)
 }
 

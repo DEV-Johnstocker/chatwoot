@@ -46,7 +46,8 @@
       <input type="hidden" name="version" value="{{.Version}}">
       {{if not .Expired}}
       <label for="reply-{{.ID}}" class="sub">Private reply</label>
-      <textarea id="reply-{{.ID}}" name="reply" rows="4" maxlength="2000">{{.Draft}}</textarea>
+      <p class="field-hint" id="reply-hint-{{.ID}}">{{if .Draft}}AI suggestion: check it before sending. It is written from a stranger's comment.{{else}}Write the message they will receive in Messenger.{{end}}</p>
+      <textarea id="reply-{{.ID}}" name="reply" rows="4" maxlength="2000" aria-describedby="reply-hint-{{.ID}}">{{.Draft}}</textarea>
       {{end}}
       <div class="row">
         {{if not .Expired}}<button type="submit" name="decision" value="send" class="primary"{{if not $.CanSend}} disabled{{end}}>Send private reply</button>{{end}}

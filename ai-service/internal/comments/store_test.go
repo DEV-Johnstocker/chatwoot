@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,7 +183,7 @@ func TestStore_DismissAndAccountScope(t *testing.T) {
 	})
 }
 
-func TestStore_ForgetKeepsAnsweredComments(t *testing.T) {
+func TestStore_ForgetBlanksAnyCommentAndBlocksItsReturn(t *testing.T) {
 	each(t, func(t *testing.T, db Store) {
 		// Arrange
 		ctx := context.Background()
@@ -191,14 +192,28 @@ func TestStore_ForgetKeepsAnsweredComments(t *testing.T) {
 		_ = db.Finish(ctx, sent.ID, StatusSent, "Hi", "owner", "")
 
 		// Act
-		err1 := db.Forget(ctx, "waiting")
-		err2 := db.Forget(ctx, "sent")
+		err1 := db.Forget(ctx, Comment{AccountID: 1, PageID: testPage, CommentID: "waiting"})
+		err2 := db.Forget(ctx, Comment{AccountID: 1, PageID: testPage, CommentID: "sent"})
+		err3 := db.Forget(ctx, Comment{AccountID: 1, PageID: testPage, CommentID: "never-seen"})
+		readded, addErr := db.Add(ctx, sample(1, "waiting"))
+		lateAdd, lateErr := db.Add(ctx, sample(1, "never-seen"))
 
 		// Assert
-		_, gone := db.Get(ctx, 1, waiting.ID)
-		kept, keptErr := db.Get(ctx, 1, sent.ID)
-		if err1 != nil || err2 != nil || !errors.Is(gone, ErrNotFound) || keptErr != nil || kept.Status != StatusSent {
-			t.Fatalf("gone %v kept %+v %v", gone, kept, keptErr)
+		w, _ := db.Get(ctx, 1, waiting.ID)
+		st, _ := db.Get(ctx, 1, sent.ID)
+		queue, _ := db.Waiting(ctx, 1)
+		history, _ := db.Recent(ctx, 1, 10)
+		unscored, _ := db.Unscored(ctx, 10)
+		if err1 != nil || err2 != nil || err3 != nil || addErr != nil || lateErr != nil || readded || lateAdd {
+			t.Fatalf("errs %v %v %v %v %v readded %v late %v", err1, err2, err3, addErr, lateErr, readded, lateAdd)
+		}
+		for _, c := range []Comment{w, st} {
+			if c.Status != StatusRemoved || c.Message != "" || c.FromName != "" || c.Draft != "" || c.Reply != "" {
+				t.Fatalf("not blanked: %+v", c)
+			}
+		}
+		if len(queue) != 0 || len(history) != 0 || len(unscored) != 0 {
+			t.Fatalf("removed comments still listed: %d %d %d", len(queue), len(history), len(unscored))
 		}
 	})
 }
@@ -217,6 +232,59 @@ func TestStore_PurgeDeletesOldRows(t *testing.T) {
 		left, _ := db.Unscored(ctx, 10)
 		if err1 != nil || err2 != nil || kept != 0 || gone != 1 || len(left) != 0 {
 			t.Fatalf("kept %d gone %d left %d errs %v %v", kept, gone, len(left), err1, err2)
+		}
+	})
+}
+
+func TestStore_RetryMovesToTheOwnerAfterMaxAttempts(t *testing.T) {
+	each(t, func(t *testing.T, db Store) {
+		// Arrange
+		ctx := context.Background()
+		_, _ = db.Add(ctx, sample(1, "hard"))
+		_, _ = db.Add(ctx, sample(1, "easy"))
+		list, _ := db.Unscored(ctx, 10)
+		hard := list[0]
+
+		// Act
+		err1 := db.Retry(ctx, hard.ID)
+		order, _ := db.Unscored(ctx, 10)
+		for range MaxScoreAttempts - 1 {
+			_ = db.Retry(ctx, hard.ID)
+		}
+		after := db.Retry(ctx, hard.ID)
+
+		// Assert
+		got, _ := db.Get(ctx, 1, hard.ID)
+		if err1 != nil || order[0].CommentID != "easy" || !errors.Is(after, ErrNotFound) {
+			t.Fatalf("err %v order %v after %v", err1, order[0].CommentID, after)
+		}
+		if got.Status != StatusWaiting || got.Reason != UnscoredReason || got.Attempts != MaxScoreAttempts || got.Version != 2 {
+			t.Fatalf("row %+v", got)
+		}
+	})
+}
+
+// The longest values the code can write must fit the table's limits, in
+// Thai (several bytes per character).
+func TestStore_LongestValuesFit(t *testing.T) {
+	each(t, func(t *testing.T, db Store) {
+		// Arrange
+		ctx := context.Background()
+		c := sample(1, strings.Repeat("9", 128))
+		c.Message = strings.Repeat("ก", MaxMessageRunes)
+		c.FromName = strings.Repeat("ข", 256)
+		c.FromID = strings.Repeat("1", 64)
+
+		// Act
+		added, err := db.Add(ctx, c)
+		list, _ := db.Unscored(ctx, 1)
+		scoreErr := db.Score(ctx, list[0].ID, IntentLead, strings.Repeat("ค", 500), strings.Repeat("ง", MaxReplyRunes))
+		_, claimErr := db.Claim(ctx, 1, list[0].ID, 2)
+		finishErr := db.Finish(ctx, list[0].ID, StatusFailed, strings.Repeat("จ", MaxReplyRunes), strings.Repeat("e", 320), strings.Repeat("x", 500))
+
+		// Assert
+		if err != nil || !added || scoreErr != nil || claimErr != nil || finishErr != nil {
+			t.Fatalf("add %v %v score %v claim %v finish %v", added, err, scoreErr, claimErr, finishErr)
 		}
 	})
 }

@@ -14,6 +14,9 @@ var (
 	ErrLongReply   = errors.New("the reply is longer than 2,000 characters")
 	ErrSendingOff  = errors.New("sending is off: META_PAGE_TOKEN is not set")
 	ErrSendRefused = errors.New("meta refused the reply")
+	// ErrNotRecorded means Meta accepted the reply but saving that failed;
+	// the comment stays "sending" in the history. Never send it again.
+	ErrNotRecorded = errors.New("the reply was sent but could not be recorded")
 )
 
 // Sender sends one private reply.
@@ -54,7 +57,7 @@ func (q *Queue) Recent(ctx context.Context, accountID int64, limit int) ([]Comme
 // refuses for good the comment is marked failed; otherwise it waits again
 // with the error, so the owner can retry.
 func (q *Queue) Send(ctx context.Context, accountID, id int64, version int, text, by string) error {
-	text = strings.TrimSpace(text)
+	text = strings.TrimSpace(noNUL(text))
 	switch {
 	case text == "":
 		return ErrEmptyReply
@@ -80,7 +83,10 @@ func (q *Queue) Send(ctx context.Context, accountID, id int64, version int, text
 	var refused *SendError
 	switch {
 	case sendErr == nil:
-		return q.Store.Finish(ctx, id, StatusSent, text, by, "")
+		if err := q.Store.Finish(ctx, id, StatusSent, text, by, ""); err != nil {
+			return errors.Join(ErrNotRecorded, err)
+		}
+		return nil
 	case errors.As(sendErr, &refused) && refused.Permanent:
 		if err := q.Store.Finish(ctx, id, StatusFailed, text, by, refused.Error()); err != nil {
 			return err

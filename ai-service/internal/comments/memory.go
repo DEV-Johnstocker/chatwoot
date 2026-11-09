@@ -33,12 +33,20 @@ func (m *Memory) Add(_ context.Context, c Comment) (bool, error) {
 }
 
 // Forget implements Store.
-func (m *Memory) Forget(_ context.Context, commentID string) error {
+func (m *Memory) Forget(_ context.Context, c Comment) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.rows = slices.DeleteFunc(m.rows, func(c Comment) bool {
-		return c.CommentID == commentID && (c.Status == StatusNew || c.Status == StatusWaiting || c.Status == StatusIgnored)
-	})
+	i := slices.IndexFunc(m.rows, func(r Comment) bool { return r.CommentID == c.CommentID })
+	if i < 0 {
+		m.nextID++
+		m.rows = append(m.rows, Comment{ID: m.nextID, AccountID: c.AccountID, PageID: c.PageID, CommentID: c.CommentID,
+			CreatedAt: time.Now(), Received: time.Now(), Status: StatusRemoved, Version: 1})
+		return nil
+	}
+	r := &m.rows[i]
+	r.Message, r.FromName, r.Reason, r.Draft, r.Reply, r.Error = "", "", "", "", "", ""
+	r.Status = StatusRemoved
+	r.Version++
 	return nil
 }
 
@@ -48,11 +56,32 @@ func (m *Memory) Unscored(_ context.Context, limit int) ([]Comment, error) {
 	defer m.mu.Unlock()
 	var out []Comment
 	for _, c := range m.rows {
-		if c.Status == StatusNew && len(out) < limit {
+		if c.Status == StatusNew {
 			out = append(out, c)
 		}
 	}
+	slices.SortStableFunc(out, func(a, b Comment) int { return a.Attempts - b.Attempts })
+	if len(out) > limit {
+		out = out[:limit]
+	}
 	return out, nil
+}
+
+// Retry implements Store.
+func (m *Memory) Retry(_ context.Context, id int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := m.find(id)
+	if i < 0 || m.rows[i].Status != StatusNew {
+		return ErrNotFound
+	}
+	c := &m.rows[i]
+	c.Attempts++
+	if c.Attempts >= MaxScoreAttempts {
+		c.Status, c.Reason = StatusWaiting, UnscoredReason
+		c.Version++
+	}
+	return nil
 }
 
 // Score implements Store.
@@ -74,13 +103,13 @@ func (m *Memory) Score(_ context.Context, id int64, intent Intent, reason, draft
 
 // Waiting implements Store.
 func (m *Memory) Waiting(_ context.Context, accountID int64) ([]Comment, error) {
-	return m.list(accountID, -1, func(s Status) bool { return s == StatusWaiting }), nil
+	return m.list(accountID, MaxWaitingShown, func(s Status) bool { return s == StatusWaiting }), nil
 }
 
 // Recent implements Store.
 func (m *Memory) Recent(_ context.Context, accountID int64, limit int) ([]Comment, error) {
 	return m.list(accountID, limit, func(s Status) bool {
-		return s != StatusNew && s != StatusWaiting
+		return s != StatusNew && s != StatusWaiting && s != StatusRemoved
 	}), nil
 }
 

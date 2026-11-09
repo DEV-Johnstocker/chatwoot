@@ -118,6 +118,9 @@ func Parse(body []byte, pageID string) ([]Change, error) {
 			if ch.Field != "feed" || v.Item != "comment" || v.CommentID == "" {
 				continue
 			}
+			if !idsFit(v.CommentID, v.PostID, v.ParentID, v.From.ID) {
+				continue // the database would refuse the row and Meta would retry it forever
+			}
 			switch v.Verb {
 			case "remove":
 				out = append(out, Change{Verb: "remove", Comment: Comment{PageID: pageID, CommentID: v.CommentID}})
@@ -127,7 +130,7 @@ func Parse(body []byte, pageID string) ([]Change, error) {
 				}
 				out = append(out, Change{Verb: "add", Comment: Comment{
 					PageID: pageID, CommentID: v.CommentID, PostID: v.PostID, ParentID: v.ParentID,
-					FromID: v.From.ID, FromName: clip(v.From.Name, 256), Message: clip(v.Message, MaxMessageRunes),
+					FromID: v.From.ID, FromName: clip(noNUL(v.From.Name), 256), Message: clip(noNUL(v.Message), MaxMessageRunes),
 					CreatedAt: unixTime(v.CreatedTime),
 				}})
 			}
@@ -135,6 +138,20 @@ func Parse(body []byte, pageID string) ([]Change, error) {
 	}
 	return out, nil
 }
+
+// idsFit reports whether Meta's IDs fit the table: 128 characters for the
+// comment and post IDs, 64 for the person's ID, and no NUL character.
+func idsFit(commentID, postID, parentID, fromID string) bool {
+	for _, id := range []string{commentID, postID, parentID} {
+		if len(id) > 128 || strings.ContainsRune(id, 0) {
+			return false
+		}
+	}
+	return len(fromID) <= 64 && !strings.ContainsRune(fromID, 0)
+}
+
+// noNUL drops NUL characters, which Postgres text cannot hold.
+func noNUL(s string) string { return strings.ReplaceAll(s, "\x00", "") }
 
 // unixTime reads Meta's created_time (seconds). A missing or odd value means
 // now, so the reply window is not shortened by a bad timestamp.

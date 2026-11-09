@@ -2,8 +2,10 @@
 -- Meta's Page feed webhook delivers each new comment; ai-service stores it
 -- once (comment_id is unique, so Meta retries and replayed requests add
 -- nothing), an LLM scores it and drafts a reply, and the owner sends one
--- private Messenger reply or dismisses it on /admin/comments. Rows are
--- deleted 30 days after they arrive (they hold people's names and words).
+-- private Messenger reply or dismisses it on /admin/comments. A comment the
+-- person deletes on Facebook keeps a blank 'removed' row, so a late retry or
+-- a replay cannot bring it back. Rows are deleted 30 days after they arrive
+-- (they hold people's names and words).
 SET LOCAL lock_timeout = '5s';
 
 CREATE TABLE IF NOT EXISTS fb_comments (
@@ -22,12 +24,13 @@ CREATE TABLE IF NOT EXISTS fb_comments (
     reason      TEXT        NOT NULL DEFAULT '',
     draft       TEXT        NOT NULL DEFAULT '',
     status      TEXT        NOT NULL DEFAULT 'new'
-                CHECK (status IN ('new', 'waiting', 'ignored', 'sending', 'sent', 'dismissed', 'failed')),
+                CHECK (status IN ('new', 'waiting', 'ignored', 'sending', 'sent', 'dismissed', 'failed', 'removed')),
     reply       TEXT        NOT NULL DEFAULT '',  -- the text that was sent
     decided_by  TEXT        NOT NULL DEFAULT '',
     decided_at  TIMESTAMPTZ,
     error       TEXT        NOT NULL DEFAULT '',
     version     INT         NOT NULL DEFAULT 1,
+    attempts    INT         NOT NULL DEFAULT 0,   -- failed scoring passes
     received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (char_length(comment_id) <= 128 AND char_length(post_id) <= 128 AND char_length(parent_id) <= 128),
     CHECK (char_length(page_id) <= 64 AND char_length(from_id) <= 64 AND char_length(from_name) <= 256),
@@ -38,7 +41,7 @@ CREATE TABLE IF NOT EXISTS fb_comments (
 
 -- The admin queue (waiting, newest first), the history and the scorer's pass.
 CREATE INDEX IF NOT EXISTS fb_comments_account_status ON fb_comments (account_id, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS fb_comments_new ON fb_comments (received_at) WHERE status = 'new';
+CREATE INDEX IF NOT EXISTS fb_comments_new ON fb_comments (attempts, received_at) WHERE status = 'new';
 
 ALTER TABLE fb_comments ENABLE ROW LEVEL SECURITY;
 DO $$
