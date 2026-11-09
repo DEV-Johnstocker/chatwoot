@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -158,9 +159,27 @@ func loadProfile(path string) (profile.Profile, error) {
 	return profile.Profile{BusinessName: v.BusinessName, About: v.About, Tone: v.Tone, Contact: v.Contact, Rules: v.Rules}, nil
 }
 
+// safeURL refuses to send an API key over plain http, except to this machine.
+func safeURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%q is not a URL", raw)
+	}
+	if u.Scheme == "https" || (u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost")) {
+		return nil
+	}
+	return fmt.Errorf("refusing to send an API key to %s over %s", u.Host, u.Scheme)
+}
+
 func buildReviewers(llmModels, jevModel string) (map[string]comments.Reviewer, map[string]Price, error) {
 	reviewers, prices := map[string]comments.Reviewer{}, map[string]Price{}
 	base := strings.TrimRight(envOr("LLM_BASE_URL", "https://openrouter.ai/api/v1"), "/")
+	if err := safeURL(base); llmModels != "" && err != nil {
+		return nil, nil, err
+	}
+	if err := safeURL(envOr("TYPESAFE_URL", comments.DefaultJevURL)); jevModel != "" && err != nil {
+		return nil, nil, err
+	}
 	var catalog map[string]Price
 	for _, m := range splitList(llmModels) {
 		key := os.Getenv("LLM_API_KEY")

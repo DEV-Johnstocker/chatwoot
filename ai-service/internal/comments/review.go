@@ -63,9 +63,11 @@ const (
 )
 
 var (
-	linkRe   = regexp.MustCompile(`(?i)(https?://|www\.|\b[a-z0-9-]+\.(com|net|org|co|th|io|ly|me|app|link)\b)`)
-	digitsRe = regexp.MustCompile(`\d[\d\s-]{6,}\d`) // phone, bank or ID numbers
-	priceRe  = regexp.MustCompile(`(?i)(฿|บาท|baht|\$|usd|thb|ลด\s*\d|\d+\s*%)`)
+	// Any scheme://, www. or name.tld (2–24 letters), plus links spelled out.
+	linkRe = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://|www\.|\b[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,24}\b|\bdot\s*com\b|ดอท\s*คอม)`)
+	// \p{Nd} is any decimal digit: ASCII, Thai (๐–๙), full-width.
+	digitsRe = regexp.MustCompile(`\p{Nd}[\p{Nd}\s-]{6,}\p{Nd}`) // phone, bank or ID numbers
+	priceRe  = regexp.MustCompile(`(?i)(฿|บาท|baht|\$|usd|thb|ลด\s*\p{Nd}|\p{Nd}+\s*%)`)
 )
 
 // Flags are hard rules checked in code, independent of any model: a draft

@@ -72,3 +72,15 @@ func TestPercentile(t *testing.T) {
 		t.Fatal("percentile wrong")
 	}
 }
+
+func TestSafeURL(t *testing.T) {
+	for raw, ok := range map[string]bool{
+		"https://api.openai.com/v1": true, "http://127.0.0.1:8080/v1": true, "http://localhost:1/v1": true,
+		"http://api.example.com/v1": false, "ftp://x": false, "not a url": false,
+	} {
+		// Act / Assert
+		if err := safeURL(raw); (err == nil) != ok {
+			t.Errorf("%s: err %v", raw, err)
+		}
+	}
+}

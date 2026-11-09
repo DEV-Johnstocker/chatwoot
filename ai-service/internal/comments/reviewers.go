@@ -63,7 +63,7 @@ func (r *LLMReviewer) Review(ctx context.Context, c Comment, draft string, p pro
 	}
 	out.Model = r.Model
 	if out.Model == "" {
-		out.Model = res.Model
+		out.Model = clip(res.Model, 100) // keeps the stored review far below its 8 KB limit
 	}
 	out.InputTokens, out.OutputTokens, out.Latency = res.PromptTokens, res.CompletionTokens, time.Since(start)
 	return Decide(out, draft), nil
@@ -214,7 +214,8 @@ func (j *JevReviewer) Review(ctx context.Context, c Comment, draft string, p pro
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 256<<10))
 	if res.StatusCode/100 != 2 {
-		return Review{}, fmt.Errorf("jev answered %d: %s", res.StatusCode, clip(strings.TrimSpace(string(raw)), 200))
+		// Status only: an error body may quote the comment it was sent.
+		return Review{}, fmt.Errorf("jev answered %d %s", res.StatusCode, http.StatusText(res.StatusCode))
 	}
 	var out struct {
 		Model   string               `json:"model"`
@@ -231,7 +232,7 @@ func (j *JevReviewer) Review(ctx context.Context, c Comment, draft string, p pro
 	if err != nil {
 		return Review{}, err
 	}
-	r.Model, r.InputTokens, r.OutputTokens, r.Latency = out.Model, out.Usage.Input, out.Usage.Output, time.Since(start)
+	r.Model, r.InputTokens, r.OutputTokens, r.Latency = clip(out.Model, 100), out.Usage.Input, out.Usage.Output, time.Since(start)
 	return Decide(r, draft), nil
 }
 
@@ -241,12 +242,23 @@ func fromJev(answers map[string]jevAnswer) (Review, error) {
 	if !ok || !Intent(in.Choice).Valid() {
 		return Review{}, ErrBadReview
 	}
+	sum := 0.0
 	for k, v := range in.Probabilities {
 		if Intent(k).Valid() {
-			r.PIntent[Intent(k)] = clamp01(v)
+			r.PIntent[Intent(k)] = max(v, 0)
+			sum += r.PIntent[Intent(k)]
 		}
 	}
+	if sum <= 0 {
+		return Review{}, ErrBadReview
+	}
+	for i := range r.PIntent {
+		r.PIntent[i] /= sum
+	}
 	r.Intent = Intent(in.Choice)
+	if r.PIntent[r.Intent] < r.PIntent[argmax(r.PIntent)] {
+		return Review{}, fmt.Errorf("%w: choice is not the most likely intent", ErrBadReview)
+	}
 	for _, name := range checkNames {
 		a, ok := answers[name]
 		if !ok || a.Noul == nil {

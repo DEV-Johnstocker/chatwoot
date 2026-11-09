@@ -58,6 +58,8 @@ become customers.
 
 - A captured, signed `add` replayed **after** the 30-day purge is stored again. It cannot be sent, because the 7-day window uses Meta's signed `created_time`; it costs one model call and shows as too late to reply.
 - Meta puts `hub.verify_token` in the subscription check's query string, so proxy access logs may record it. It only lets someone complete the handshake. Rotate it if those logs are shared.
+- **Prompt injection can reach the reviewer's scores.** The comment and the draft are part of its input, so a well-crafted comment can push every check toward "fine". Today the result is only a hint on `/admin/comments`. `Review.Pass` must never gate a real send until the benchmark has injection cases in both the comment and the draft, and the shadow numbers on real comments hold up.
+- **New data flow when `COMMENT_REVIEWER=jev`.** The commenter's name, the comment, the draft and the business profile go to TypeSafe (`api.typesafe.ai`), a processor the service did not use before. It is opt-in, and production stays on `llm` (the existing provider). Before switching, add TypeSafe to the privacy policy and to the Meta App Review data-handling answers. `llm` mode sends the same data to the existing provider a second time, so it costs one extra model call per draft.
 - One Page per service: `comment_id` is unique across the table and `Forget` is not account-scoped. Make both per account before adding a second Page.
 
 ## Acceptance gates
@@ -119,11 +121,11 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
 
 | Reviewer | Decision accuracy | False sends | Missed sends | p50 | $ / 1000 comments |
 |---|---|---|---|---|---|
-| gpt-5.6-luna | 98%, 98% | 0, 0 | 1, 1 | 2.7 s | 0.35 |
-| gpt-5.6-terra | 100%, 100% | 0, 0 | 0, 0 | 1.6 s | 2.1–2.2 |
-| gpt-5.6-sol | 98%, 100% | **1** (o05), 0 | 0, 0 | 2.7 s | 5.3 |
+| gpt-5.6-luna | 98%, 98%, 100% | 0, 0, 0 | 1, 1, 0 | 2.7 s | 0.35 |
+| gpt-5.6-terra | 100%, 100%, 100% | 0, 0, 0 | 0, 0, 0 | 1.6 s | 2.1–2.2 |
+| gpt-5.6-sol | 98%, 100%, 100% | **1** (o05), 0, 0 | 0, 0, 0 | 2.6 s | 5.1–5.4 |
 
-- The two figures in a cell are two runs; the models are not deterministic.
+- Each figure in a cell is one run; the models are not deterministic. The third run followed the security fixes: wider code rules, and normalised Jev probabilities. In that run Terra returned one malformed answer, which counts as held.
 - Earlier runs found two rule defects, both fixed before the runs above:
   - an intent split between lead and question was treated as doubt;
   - a negatively phrased manipulation check, which Luna answered with the polarity reversed, held 6 good drafts.
@@ -149,6 +151,15 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
   - the form had no size cap.
 
   The verify token in access logs is documented as an accepted risk above.
+
+- 2026-11-10: `ai-service-security-reviewer` reviewed the shadow reviewer (`d948a5ab17..84918e83ec`) and gave **changes required**. It found no path from a review to a send. Fixed:
+  - Jev error bodies, which might quote comment text, are dropped from errors;
+  - the code rules now catch Thai and full-width digits, any `name.tld` link and spelled-out links;
+  - the stored model name is capped;
+  - Jev intent probabilities are normalised, and a choice that is not the most likely intent is rejected;
+  - the benchmark refuses to send keys over plain http.
+
+  Injection reaching the scores and the TypeSafe data flow are documented as accepted risks above.
 
 ## Evidence
 

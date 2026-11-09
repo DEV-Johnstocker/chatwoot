@@ -43,6 +43,10 @@ func TestDecide_PassesOnlyWhenEveryRuleHolds(t *testing.T) {
 		"percent in text":  {func(*Review) {}, "ลด 20% ค่ะ", false, "price"},
 		"phone number":     {func(*Review) {}, "โทร 081-234-5678 ค่ะ", false, "number"},
 		"empty draft":      {func(*Review) {}, "", false, "no draft"},
+		"thai digits":      {func(*Review) {}, "โทร ๐๘๑-๒๓๔-๕๖๗๘ ค่ะ", false, "number"},
+		"thai percent":     {func(*Review) {}, "ลด ๕๐% ค่ะ", false, "price"},
+		"line short link":  {func(*Review) {}, "แอดไลน์ lin.ee/abc ค่ะ", false, "link"},
+		"spelled link":     {func(*Review) {}, "เข้าเว็บ krufah ดอทคอม ค่ะ", false, "link"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -271,4 +275,43 @@ func (pickyIntent) Score(_ context.Context, c Comment) (Intent, string, string, 
 		return IntentOther, "emoji", "", nil
 	}
 	return IntentLead, "why", "draft", nil
+}
+
+func TestFromJev_NormalisesAndChecksTheChoice(t *testing.T) {
+	// Arrange
+	n := func(v float64) *float64 { return &v }
+	with := func(intent jevAnswer) map[string]jevAnswer {
+		return map[string]jevAnswer{"intent": intent, CheckAnswersComment: {Noul: n(1)}, CheckNoUnbackedOffer: {Noul: n(1)},
+			CheckToneFits: {Noul: n(1)}, CheckGenuine: {Noul: n(1)}}
+	}
+
+	// Act
+	doubled, err1 := fromJev(with(jevAnswer{Choice: "lead", Probabilities: map[string]float64{"lead": 1, "question": 1}}))
+	_, err2 := fromJev(with(jevAnswer{Choice: "lead", Probabilities: map[string]float64{"lead": 0.1, "other": 0.9}}))
+	_, err3 := fromJev(with(jevAnswer{Choice: "lead", Probabilities: map[string]float64{}}))
+
+	// Assert
+	if err1 != nil || doubled.PIntent[IntentLead] != 0.5 || doubled.PIntent[IntentQuestion] != 0.5 {
+		t.Fatalf("doubled %+v err %v", doubled.PIntent, err1)
+	}
+	if !errors.Is(err2, ErrBadReview) || !errors.Is(err3, ErrBadReview) {
+		t.Fatalf("errs %v %v", err2, err3)
+	}
+}
+
+func TestJevReviewer_ErrorBodyIsNotRepeated(t *testing.T) {
+	// Arrange
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = io.WriteString(w, `{"error":"state.comment.text 'private words' is invalid"}`)
+	}))
+	defer srv.Close()
+
+	// Act
+	_, err := (&JevReviewer{URL: srv.URL, APIKey: "k"}).Review(context.Background(), Comment{}, "hi", profile.Profile{})
+
+	// Assert
+	if err == nil || strings.Contains(err.Error(), "private words") || !strings.Contains(err.Error(), "422") {
+		t.Fatalf("err %v", err)
+	}
 }
