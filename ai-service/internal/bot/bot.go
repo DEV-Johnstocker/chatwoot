@@ -470,12 +470,12 @@ func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, inbox, conv i
 			log.Error("send handoff message failed", "error", err)
 		}
 	}
-	note := b.staffNote(ctx, log, acct, conv, customerMsg, reason, images)
+	note, gap := b.staffNote(ctx, log, acct, conv, customerMsg, reason, images)
 	if err := cw.SendPrivateNote(ctx, acct, conv, note); err != nil {
 		log.Warn("handoff note failed", "error", err)
 	}
 	if reason != ReasonStaffReplied { // an admin already answering keeps the chat
-		b.route(ctx, log, acct, inbox, conv)
+		b.route(ctx, log, acct, inbox, conv, gap)
 	}
 	if err := cw.Handoff(ctx, acct, conv); err != nil {
 		log.Error("handoff failed", "error", err, "reason", reason)

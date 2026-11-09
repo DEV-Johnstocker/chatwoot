@@ -14,7 +14,15 @@ import (
 // noteInstruction tells the small model how to write the private note staff
 // read when the bot hands a chat over, so they never have to scroll back.
 const noteInstruction = `You write a private handoff note, in Thai, for the shop's staff. They have not read the chat. Use the conversation and any attached photo.
-Write at most 6 short lines. Each line starts with its label; leave out a line that has nothing:
+First write one line "หมวด: " followed by exactly one of these words:
+ไม่มีข้อมูล (the bot handed over only because it did not have the answer; never for payments, refunds, access or complaints)
+ชำระเงิน (a payment, slip, transfer or how to pay their own order)
+คืนเงิน (a refund of their own purchase)
+สิทธิ์เข้าเรียน (their own access, login or account)
+ร้องเรียน (a complaint or an upset customer)
+ขอคุยทีมงาน (the customer asked for a person or to be contacted)
+อื่นๆ (anything else)
+Then write at most 6 short lines. Each line starts with its label; leave out a line that has nothing:
 เหตุผล: why the bot handed the chat over
 ลูกค้าต้องการ: what the customer wants
 บอทแจ้งแล้ว: what the bot already told the customer (prices, links, coupon)
@@ -27,6 +35,34 @@ Only facts from the chat or the photo; never guess. Never write card numbers, CV
 // noteWarning heads every model-written note: the summary comes from what the
 // customer wrote and sent, so staff must not take it as a verified fact.
 const noteWarning = "⚠️ สรุปอัตโนมัติจากสิ่งที่ลูกค้าส่งมา ยังไม่ได้ตรวจสอบ (รวมถึงยอดเงิน)"
+
+// noteWarnWords mark a summary that talks about money already paid, so the
+// warning shows even if the model picked another category.
+var noteWarnWords = []string{"สลิป", "โอน", "ชำระ", "จ่ายแล้ว", "ยอดเงิน", "คืนเงิน"}
+
+// noteKind is how a note opens for each category the note model picks.
+type noteKind struct{ icon, title string }
+
+var noteKinds = map[string]noteKind{
+	noteGap:    {"📚", "บอทไม่มีข้อมูลเรื่องนี้"},
+	"ชำระเงิน": {"💳", "เรื่องชำระเงิน"},
+	"คืนเงิน":  {"↩️", "ลูกค้าขอคืนเงิน"},
+	"สิทธิ์เข้าเรียน": {"🔑", "สิทธิ์เข้าเรียน / บัญชี"},
+	"ร้องเรียน":       {"😟", "ลูกค้าไม่พอใจ"},
+	"ขอคุยทีมงาน":     {"🙋", "ลูกค้าขอคุยกับทีมงาน"},
+}
+
+// noteGap is the category for a handoff only because the bot lacked the answer.
+const noteGap = "ไม่มีข้อมูล"
+
+// moneyKinds always carry the warning.
+var moneyKinds = map[string]bool{"ชำระเงิน": true, "คืนเงิน": true}
+
+// lineIcons lead each labelled line so staff can scan the note.
+var lineIcons = []struct{ label, icon string }{
+	{"เหตุผล", "📌"}, {"ลูกค้าต้องการ", "🎯"}, {"บอทแจ้งแล้ว", "💬"},
+	{"จากไฟล์", "📎"}, {"ลูกค้าให้ไว้", "📝"}, {"ขั้นต่อไป", "👉"},
+}
 
 // noteTimeout bounds the summary; the customer's message is already sent.
 const noteTimeout = 15 * time.Second
@@ -49,13 +85,14 @@ var noteSecrets = []*regexp.Regexp{
 // staffNote is the private note posted at a handoff: a short summary of the
 // chat (and any photo) for staff, ending with the reason code agents filter
 // on. Without a note model it is the bare reason code; if the model fails it
-// is a readable label.
-func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) string {
+// is a readable label. gap reports a handoff only because the bot lacked the
+// answer, so the chat can be labelled for filling the knowledge base.
+func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) (note string, gap bool) {
 	if reason == ReasonStaffReplied {
-		return "🤖 " + reasonLabels[reason] + "\n" + reason // staff are already in the chat
+		return "🤖 " + reasonLabels[reason] + "\n" + reason, false // staff are already in the chat
 	}
 	if b.opts.NoteLLM == nil {
-		return reason
+		return reason, false
 	}
 	ctx, cancel := context.WithTimeout(ctx, noteTimeout)
 	defer cancel()
@@ -63,14 +100,66 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 		{Role: "system", Content: noteInstruction},
 		{Role: "user", Content: noteInput(b.opts.History.Get(acct, conv), botMsg, reason), Images: images},
 	})
-	summary := strings.TrimSpace(res.Content)
+	kind, summary := splitKind(cleanSummary(strings.TrimSpace(res.Content)))
 	if err != nil || summary == "" {
 		if err != nil {
 			log.Warn("handoff summary failed", "error", err)
 		}
-		return "🤖 บอทส่งต่อ: " + reasonLabels[reason] + "\n" + reason
+		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false
 	}
-	return "🤖 สรุปจากบอท\n" + noteWarning + "\n" + cleanSummary(summary) + "\n" + reason
+	warn := len(images) > 0 || moneyKinds[kind] || containsAny(summary, noteWarnWords)
+	gap = kind == noteGap && reason == ReasonAIRequest && !warn
+	k, ok := noteKinds[kind]
+	if !ok || (kind == noteGap && !gap) {
+		k = noteKind{"🤖", "บอทส่งต่อ"}
+	}
+	var sb strings.Builder
+	sb.WriteString(k.icon + " **" + k.title + "** · สรุปจากบอท\n")
+	if warn {
+		sb.WriteString(noteWarning + "\n")
+	}
+	sb.WriteString(decorate(summary) + "\n" + reason)
+	return sb.String(), gap
+}
+
+// splitKind takes the "หมวด:" line out of the summary and returns its value.
+func splitKind(s string) (kind, rest string) {
+	var keep []string
+	for _, line := range strings.Split(s, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "หมวด:"); ok {
+			if kind == "" {
+				kind = strings.TrimSpace(v)
+			}
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return kind, strings.TrimSpace(strings.Join(keep, "\n"))
+}
+
+// decorate bolds each known label and puts its icon in front. The model's
+// own markdown is removed first so customer text cannot restyle the note.
+func decorate(s string) string {
+	s = strings.NewReplacer("**", "", "__", "", "`", "").Replace(s)
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		for _, l := range lineIcons {
+			if v, ok := strings.CutPrefix(line, l.label+":"); ok {
+				lines[i] = l.icon + " **" + l.label + ":** " + strings.TrimSpace(v)
+				break
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func containsAny(s string, words []string) bool {
+	for _, w := range words {
+		if strings.Contains(s, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanSummary removes card and ID numbers and any line that imitates a

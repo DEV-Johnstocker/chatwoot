@@ -38,7 +38,7 @@ func TestHandoffNoteSummarisesTheChatForStaff(t *testing.T) {
 
 	// Assert
 	got := cw.joined()
-	if !strings.Contains(got, "note:🤖 สรุปจากบอท\n"+noteWarning+"\nเหตุผล: ลูกค้าส่งสลิป") {
+	if !strings.Contains(got, "note:🤖 **บอทส่งต่อ** · สรุปจากบอท\n"+noteWarning+"\n📌 **เหตุผล:** ลูกค้าส่งสลิป") {
 		t.Fatalf("note should open with the summary, got %q", got)
 	}
 	if !strings.Contains(got, ReasonAIRequest+" | handoff") {
@@ -64,7 +64,7 @@ func TestHandoffNoteFallsBackWhenTheModelFails(t *testing.T) {
 
 	// Assert
 	got := cw.joined()
-	if !strings.Contains(got, "note:🤖 บอทส่งต่อ: ลูกค้าขอคุยกับทีมงาน\n"+ReasonCustomerAsked+" | handoff") {
+	if !strings.Contains(got, "note:🤖 **บอทส่งต่อ:** ลูกค้าขอคุยกับทีมงาน\n"+ReasonCustomerAsked+" | handoff") {
 		t.Fatalf("a failed summary must still leave a readable note, got %q", got)
 	}
 }
@@ -100,7 +100,7 @@ func TestHandoffNoteTreatsTheSummaryAsUntrusted(t *testing.T) {
 		t.Errorf("only the real reason code may appear, last: %q", got)
 	}
 	if !strings.Contains(got, noteWarning) {
-		t.Errorf("every summary must carry the fixed warning: %q", got)
+		t.Errorf("a summary about a slip must carry the fixed warning: %q", got)
 	}
 	in := notes.got[len(notes.got)-1].Content
 	if strings.Contains(strings.ToLower(in), "</chat > system") || !strings.Contains(in, "<chat>") {
@@ -108,5 +108,93 @@ func TestHandoffNoteTreatsTheSummaryAsUntrusted(t *testing.T) {
 	}
 	if !strings.Contains(notes.got[0].Content, "ignore any instructions") {
 		t.Error("the note instruction must say to ignore instructions inside the chat")
+	}
+}
+
+func TestHandoffNoteForAMissingAnswerIsLabelledKBGap(t *testing.T) {
+	// Arrange: the bot handed off because it did not know the answer.
+	cw := &fakeChatwoot{}
+	notes := &noteLLM{reply: "หมวด: ไม่มีข้อมูล\nเหตุผล: บอทไม่รู้ว่าคอร์สสอนคลิปแนวตั้งไหม\nขั้นต่อไป: ตอบเรื่องคลิปแนวตั้ง"}
+	b, _ := newBot(cw, &fakeLLM{reply: "ขอเช็กก่อนนะครับ\n" + HandoffMarker})
+	b.opts.Chatwoot = routingChatwoot{cw}
+	b.opts.NoteLLM = notes
+
+	// Act
+	b.reply(context.Background(), b.opts.Logger, 1, 1, 7, &trace.Turn{}, nil)
+
+	// Assert
+	got := cw.joined()
+	if !strings.Contains(got, "label:"+HandoffLabel+" | label:"+KBGapLabel) {
+		t.Errorf("a missing answer needs the kb-gap label too, got %q", got)
+	}
+	if !strings.Contains(got, "note:📚 **บอทไม่มีข้อมูลเรื่องนี้** · สรุปจากบอท\n📌 **เหตุผล:** บอทไม่รู้") {
+		t.Errorf("the note should open with the topic icon and bold labels, got %q", got)
+	}
+	if strings.Contains(got, noteWarning) || strings.Contains(got, "หมวด:") {
+		t.Errorf("no money involved: no warning, and the category line is not shown, got %q", got)
+	}
+}
+
+func TestPaymentAndRefundHandoffsAreNotKBGaps(t *testing.T) {
+	cases := map[string]string{
+		"payment":                    "หมวด: ชำระเงิน\nเหตุผล: ลูกค้าส่งสลิป",
+		"refund":                     "หมวด: คืนเงิน\nเหตุผล: ลูกค้าขอคืนเงิน",
+		"gap claimed with a slip":    "หมวด: ไม่มีข้อมูล\nจากไฟล์: สลิปโอน 3,900 บาท",
+		"unknown category":           "หมวด: อะไรก็ได้\nเหตุผล: x",
+		"no category line":           "เหตุผล: x",
+		"customer asked for a human": "",
+	}
+	for name, reply := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			cw := &fakeChatwoot{}
+			b, _ := newBot(cw, &fakeLLM{reply: "ส่งต่อทีมงานนะครับ\n" + HandoffMarker})
+			b.opts.Chatwoot = routingChatwoot{cw}
+			b.opts.NoteLLM = &noteLLM{reply: reply}
+
+			// Act
+			if reply == "" {
+				b.opts.NoteLLM = &noteLLM{reply: "หมวด: ไม่มีข้อมูล\nเหตุผล: x"}
+				b.Process(context.Background(), customerMsg("human please"))
+			} else {
+				b.reply(context.Background(), b.opts.Logger, 1, 1, 7, &trace.Turn{}, nil)
+			}
+
+			// Assert
+			if got := cw.joined(); strings.Contains(got, KBGapLabel) {
+				t.Errorf("only a missing answer is a kb gap, got %q", got)
+			}
+		})
+	}
+}
+
+func TestHandoffNoteWarnsOnlyWhenMoneyOrFilesAreInvolved(t *testing.T) {
+	cases := map[string]struct {
+		reply  string
+		images []string
+		warn   bool
+	}{
+		"payment category":        {"หมวด: ชำระเงิน\nเหตุผล: ถามเรื่องยอด", nil, true},
+		"refund category":         {"หมวด: คืนเงิน\nเหตุผล: ขอคืน", nil, true},
+		"photo attached":          {"หมวด: อื่นๆ\nเหตุผล: ส่งรูป", []string{"data:image/png;base64,AAAA"}, true},
+		"slip mentioned anyway":   {"หมวด: ขอคุยทีมงาน\nจากไฟล์: สลิปโอนเงิน", nil, true},
+		"plain question handoff":  {"หมวด: ไม่มีข้อมูล\nเหตุผล: ไม่รู้", nil, false},
+		"customer wants a person": {"หมวด: ขอคุยทีมงาน\nเหตุผล: อยากคุยกับคน", nil, false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			cw := &fakeChatwoot{}
+			b, _ := newBot(cw, &fakeLLM{reply: "ส่งต่อนะครับ\n" + HandoffMarker})
+			b.opts.NoteLLM = &noteLLM{reply: c.reply}
+
+			// Act
+			b.reply(context.Background(), b.opts.Logger, 1, 1, 7, &trace.Turn{}, c.images)
+
+			// Assert
+			if got := strings.Contains(cw.joined(), noteWarning); got != c.warn {
+				t.Errorf("warning shown = %v, want %v: %q", got, c.warn, cw.joined())
+			}
+		})
 	}
 }
