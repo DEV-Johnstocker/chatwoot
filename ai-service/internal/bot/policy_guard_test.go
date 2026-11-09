@@ -79,3 +79,22 @@ func TestPolicy_SellsBeforeAskingAndUsesEmojiSparingly(t *testing.T) {
 		}
 	}
 }
+
+func TestPolicy_ObjectionsGetOneHelpfulCounterThenRespect(t *testing.T) {
+	// Arrange
+	p := policyPrompt(time.Now())
+
+	// Act + Assert
+	for _, want := range []string{
+		"accept it warmly first, then once give one or two helpful facts",
+		"No pressure, no urgency, no question. If they say no again, stop selling.",
+		"up to 6 short lines when the customer is deciding",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("policy is missing %q", want)
+		}
+	}
+	if strings.Contains(p, "do not repeat the price or push") {
+		t.Error("the old accept-and-stop rule must be gone")
+	}
+}
