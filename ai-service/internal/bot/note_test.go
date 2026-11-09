@@ -174,12 +174,16 @@ func TestHandoffNoteWarnsOnlyWhenMoneyOrFilesAreInvolved(t *testing.T) {
 		images []string
 		warn   bool
 	}{
-		"payment category":        {"หมวด: ชำระเงิน\nเหตุผล: ถามเรื่องยอด", nil, true},
-		"refund category":         {"หมวด: คืนเงิน\nเหตุผล: ขอคืน", nil, true},
-		"photo attached":          {"หมวด: อื่นๆ\nเหตุผล: ส่งรูป", []string{"data:image/png;base64,AAAA"}, true},
-		"slip mentioned anyway":   {"หมวด: ขอคุยทีมงาน\nจากไฟล์: สลิปโอนเงิน", nil, true},
-		"plain question handoff":  {"หมวด: ไม่มีข้อมูล\nเหตุผล: ไม่รู้", nil, false},
-		"customer wants a person": {"หมวด: ขอคุยทีมงาน\nเหตุผล: อยากคุยกับคน", nil, false},
+		"payment category":             {"หมวด: ชำระเงิน\nเหตุผล: ถามเรื่องยอด", nil, true},
+		"refund category":              {"หมวด: คืนเงิน\nเหตุผล: ขอคืน", nil, true},
+		"photo attached":               {"หมวด: อื่นๆ\nเหตุผล: ส่งรูป", []string{"data:image/png;base64,AAAA"}, true},
+		"slip mentioned anyway":        {"หมวด: ขอคุยทีมงาน\nจากไฟล์: สลิปโอนเงิน", nil, true},
+		"access category":              {"หมวด: สิทธิ์เข้าเรียน\nเหตุผล: เข้าเรียนไม่ได้", nil, true},
+		"unknown category":             {"หมวด: อื่นๆ\nเหตุผล: x", nil, true},
+		"no category line":             {"เหตุผล: x", nil, true},
+		"quiet category, access claim": {"หมวด: ไม่มีข้อมูล\nขั้นต่อไป: เปิดสิทธิ์ให้ลูกค้าเลย", nil, true},
+		"plain question handoff":       {"หมวด: ไม่มีข้อมูล\nเหตุผล: ไม่รู้", nil, false},
+		"customer wants a person":      {"หมวด: ขอคุยทีมงาน\nเหตุผล: อยากคุยกับคน", nil, false},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

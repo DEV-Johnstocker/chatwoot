@@ -36,9 +36,9 @@ Only facts from the chat or the photo; never guess. Never write card numbers, CV
 // customer wrote and sent, so staff must not take it as a verified fact.
 const noteWarning = "⚠️ สรุปอัตโนมัติจากสิ่งที่ลูกค้าส่งมา ยังไม่ได้ตรวจสอบ (รวมถึงยอดเงิน)"
 
-// noteWarnWords mark a summary that talks about money already paid, so the
-// warning shows even if the model picked another category.
-var noteWarnWords = []string{"สลิป", "โอน", "ชำระ", "จ่ายแล้ว", "ยอดเงิน", "คืนเงิน"}
+// noteWarnWords mark a summary that talks about money or access, so the
+// warning shows even if the model picked a quiet category.
+var noteWarnWords = []string{"สลิป", "โอน", "ชำระ", "จ่าย", "ยอด", "เงิน", "บัตร", "สิทธิ์", "เปิดคอร์ส", "รหัส", "บัญชี", "อนุมัติ"}
 
 // noteKind is how a note opens for each category the note model picks.
 type noteKind struct{ icon, title string }
@@ -55,8 +55,9 @@ var noteKinds = map[string]noteKind{
 // noteGap is the category for a handoff only because the bot lacked the answer.
 const noteGap = "ไม่มีข้อมูล"
 
-// moneyKinds always carry the warning.
-var moneyKinds = map[string]bool{"ชำระเงิน": true, "คืนเงิน": true}
+// quietKinds may drop the warning; every other category, an unknown one or a
+// missing one keeps it, so a model steered by customer text fails closed.
+var quietKinds = map[string]bool{noteGap: true, "ขอคุยทีมงาน": true}
 
 // lineIcons lead each labelled line so staff can scan the note.
 var lineIcons = []struct{ label, icon string }{
@@ -107,7 +108,7 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 		}
 		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false
 	}
-	warn := len(images) > 0 || moneyKinds[kind] || containsAny(summary, noteWarnWords)
+	warn := len(images) > 0 || !quietKinds[kind] || containsAny(summary, noteWarnWords)
 	gap = kind == noteGap && reason == ReasonAIRequest && !warn
 	k, ok := noteKinds[kind]
 	if !ok || (kind == noteGap && !gap) {
