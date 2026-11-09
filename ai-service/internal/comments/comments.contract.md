@@ -129,10 +129,16 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
 - Earlier runs found two rule defects, both fixed before the runs above:
   - an intent split between lead and question was treated as doubt;
   - a negatively phrased manipulation check, which Luna answered with the polarity reversed, held 6 good drafts.
-- Jev was not run: there is no `TYPESAFE_API_KEY`.
-  - At its published $0.042 per million input tokens (output free), about 570 input tokens per review projects to about $0.024 per 1000 comments. That is about 15× below Luna and 90× below Terra.
-  - This is a projection, not a measurement. Jev counts tokens its own way, and its accuracy on Thai is unknown.
-  - Run `TYPESAFE_API_KEY=… go run ./cmd/comment-eval -jev jev-latest` when access arrives.
+- **Jev (jev-1.14.0), measured 2026-11-10 on the same 43 cases, with the same questions and thresholds:**
+
+  | | Decision accuracy | False sends | Missed sends | Intent accuracy | p50 | $ / 1000 |
+  |---|---|---|---|---|---|---|
+  | Jev | 81% | 0 | 8 | **98%** | **0.26 s** | **0.035** |
+
+  - Jev was the fastest (about 10× faster than the LLMs), the cheapest (about 10× below Luna and 60× below Terra) and read intent best. It made no false sends.
+  - It held 8 good drafts. Seven fell on `no_unbacked_offer`, where its calibrated probabilities sit around 0.8–0.9 for good drafts, below the 0.90 bar the LLMs clear. Good and bad drafts barely separate on that question (median 0.91 against 0.86).
+  - Experiment, reverted: splitting that check into two atomic questions ("offers nothing extra" and "facts supported by the profile"), as TypeSafe advises, made every reviewer worse. Jev fell to 70%, Luna to 93% and Terra to 98%. The "facts supported" question holds ordinary lines such as "the admin will send details in chat".
+  - The thresholds were **not** tuned to make Jev pass: 43 mock cases are too few. Jev's thresholds should be set from shadow results on real comments.
 - Mock cases are not real comments. The decision to auto-send must rest on the shadow agreement numbers from real comments.
 
 ## Reviews
