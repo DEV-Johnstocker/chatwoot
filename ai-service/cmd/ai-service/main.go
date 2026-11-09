@@ -20,6 +20,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/bot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/cfaccess"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/comments"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/config"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
@@ -168,6 +169,7 @@ func run() error {
 		h.Places = &places.Recorder{Store: placeStore}
 	}
 	mux := h.Routes()
+	commentQueue := startComments(cfg, profiles, adminProfiles, completer, mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -213,6 +215,7 @@ func run() error {
 			Events: adminEvents(profiles, cfg.AuditRetentionDays),
 			Web:    webStore(profiles), WebSync: webSyncer, Places: adminPlaces(placeStore), Logger: logger,
 			Pending: pendingStore(profiles), Approver: adminApprover(srvMCP),
+			Comments: commentQueue,
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -330,6 +333,36 @@ func openKnowledge(cfg config.Config, embedder embed.Embedder, logger *slog.Logg
 		Store: pg, Embedder: embedder,
 		TopK: cfg.RAGTopK, MinScore: cfg.RAGMinScore, ChunkRunes: cfg.RAGChunkRunes,
 	}, &profile.Postgres{Pool: pg.Pool}, pg.Pool.Close, nil
+}
+
+// startComments serves the Facebook Page comment webhook and scores new
+// comments in the background, when the Meta settings and a database are set.
+// It returns the admin queue, or nil (a nil interface) when off.
+func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Store, completer llm.Completer, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
+	if !cfg.CommentsEnabled() {
+		logger.Info("page comments off: set META_APP_SECRET, META_VERIFY_TOKEN and META_PAGE_ID to collect Facebook comments")
+		return nil
+	}
+	if db == nil {
+		logger.Warn("page comments off: they need DATABASE_URL")
+		return nil
+	}
+	log := logger.With("component", "comments")
+	store := &comments.Postgres{Pool: db.Pool}
+	(&comments.Webhook{AppSecret: cfg.MetaAppSecret, VerifyToken: cfg.MetaVerifyToken, PageID: cfg.MetaPageID,
+		AccountID: cfg.MetaAccountID, Store: store, Logger: log}).Routes(mux)
+	worker := &comments.Worker{Store: store, Scorer: &comments.Scorer{LLM: completer, Profiles: profiles},
+		Logger: log, Timeout: cfg.LLMTimeout}
+	go worker.Run(context.Background(), 20*time.Second)
+	q := &comments.Queue{Store: store}
+	if cfg.MetaPageToken != "" {
+		q.Sender = &comments.Graph{BaseURL: "https://graph.facebook.com/" + cfg.MetaGraphVersion,
+			PageID: cfg.MetaPageID, PageToken: cfg.MetaPageToken}
+	} else {
+		log.Warn("page comment replies off: set META_PAGE_TOKEN to send them")
+	}
+	log.Info("page comments on", "path", comments.WebhookPath, "account_id", cfg.MetaAccountID, "sending", q.CanSend())
+	return q
 }
 
 // webStore is the website pages store, or nil without a database.
