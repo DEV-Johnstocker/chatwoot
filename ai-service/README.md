@@ -286,6 +286,17 @@ Messenger chat.
 Meta's rules apply: one private reply per comment, within 7 days of the
 comment. Comments are deleted 30 days after they arrive.
 
+A **shadow AI reviewer** checks each draft after it is written: what the
+comment wants, whether the draft answers it, promises nothing the profile
+does not say, fits the tone, and whether the comment is a genuine customer
+message. Code rules hold any draft with a link, a long number, a price or a
+percentage. The reviewer only records "would send" or "would hold" next to
+each comment and compares itself with what the owner does; it never sends.
+`COMMENT_REVIEWER` picks it: `llm` (default, the main provider;
+`COMMENT_REVIEW_MODEL` picks a model on it), `jev` (TypeSafe, needs
+`TYPESAFE_API_KEY`) or `off`. Benchmark reviewers on labelled cases with
+`go run ./cmd/comment-eval -llm <models>` (see `testdata/comment-eval/`).
+
 Settings: `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ID` (all three
 switch it on, with `DATABASE_URL`), `META_PAGE_TOKEN` (needed to send),
 `META_ACCOUNT_ID` (default 1) and `META_GRAPH_VERSION` (default `v24.0`). The

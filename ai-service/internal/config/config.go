@@ -98,6 +98,13 @@ type Config struct {
 	MetaPageToken    string // Page access token for private replies; empty: no sending (secret)
 	MetaAccountID    int64  // the Chatwoot account the Page belongs to (default 1)
 	MetaGraphVersion string // Graph API version, e.g. v24.0
+	// CommentReviewer is the shadow reviewer of drafted replies: off, llm
+	// (the main provider, or CommentReviewModel on it) or jev (TypeSafe).
+	// It only records what it would do; it never sends.
+	CommentReviewer    string
+	CommentReviewModel string
+	TypeSafeAPIKey     string // for COMMENT_REVIEWER=jev (secret)
+	TypeSafeModel      string
 
 	HistoryLimit int
 	Workers      int
@@ -313,6 +320,19 @@ func loadMeta(cfg *Config, get func(key, def string) string, errs []error) []err
 	cfg.MetaPageID = get("META_PAGE_ID", "")
 	cfg.MetaPageToken = get("META_PAGE_TOKEN", "")
 	cfg.MetaGraphVersion = get("META_GRAPH_VERSION", "v24.0")
+	cfg.CommentReviewer = get("COMMENT_REVIEWER", "llm")
+	cfg.CommentReviewModel = get("COMMENT_REVIEW_MODEL", "")
+	cfg.TypeSafeAPIKey = get("TYPESAFE_API_KEY", "")
+	cfg.TypeSafeModel = get("TYPESAFE_MODEL", "jev-latest")
+	switch cfg.CommentReviewer {
+	case "off", "llm":
+	case "jev":
+		if cfg.TypeSafeAPIKey == "" {
+			errs = append(errs, errors.New("COMMENT_REVIEWER=jev needs TYPESAFE_API_KEY"))
+		}
+	default:
+		errs = append(errs, errors.New("COMMENT_REVIEWER must be off, llm or jev"))
+	}
 	n, err := strconv.ParseInt(get("META_ACCOUNT_ID", "1"), 10, 64)
 	if err != nil || n < 1 {
 		errs = append(errs, errors.New("META_ACCOUNT_ID must be a positive Chatwoot account id"))

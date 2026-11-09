@@ -18,6 +18,7 @@ type CommentQueue interface {
 	Recent(ctx context.Context, accountID int64, limit int) ([]comments.Comment, error)
 	Send(ctx context.Context, accountID, id int64, version int, text, by string) error
 	Dismiss(ctx context.Context, accountID, id int64, version int, by string) error
+	ReviewStats(ctx context.Context, accountID int64) (comments.ReviewStats, error)
 	CanSend() bool
 }
 
@@ -27,6 +28,7 @@ type commentsData struct {
 	Account int64
 	Items   []commentItem
 	Recent  []commentRow
+	Stats   comments.ReviewStats
 	Done    string // "sent" or "dismissed" after a decision
 	Error   string
 }
@@ -44,11 +46,16 @@ type commentItem struct {
 	Draft    string
 	PostURL  string
 	LastFail string
+	Shadow   string // the shadow reviewer's call, or ""
+	Hold     bool   // the shadow reviewer would hold it
 }
 
 type commentRow struct {
 	When, From, Status, Message, Reply string
+	Shadow                             string // "Agreed", "Would have sent", "Would have held", or ""
 }
+
+var agreementLabels = map[string]string{"agreed": "Agreed", "too_loose": "Would have sent", "too_strict": "Would have held"}
 
 var intentLabels = map[comments.Intent]string{
 	comments.IntentLead: "Likely buyer", comments.IntentQuestion: "Question",
@@ -158,6 +165,9 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
 	if err != nil {
 		return err
 	}
+	if data.Stats, err = h.Comments.ReviewStats(ctx, data.Account); err != nil {
+		return err
+	}
 	now := time.Now()
 	for _, c := range waiting {
 		it := commentItem{ID: c.ID, Version: c.Version, From: orUnknown(c.FromName), When: h.stamp(c.CreatedAt),
@@ -166,6 +176,13 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
 		if !it.Expired {
 			it.Left = timeLeft(c.CreatedAt.Add(comments.ReplyWindow).Sub(now))
 		}
+		if c.Review != nil {
+			it.Hold = !c.Review.Pass
+			it.Shadow = "Would send it as drafted"
+			if it.Hold {
+				it.Shadow = "Would hold it: " + c.Review.Reason
+			}
+		}
 		data.Items = append(data.Items, it)
 	}
 	for _, c := range recent {
@@ -173,8 +190,12 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
 		if when.IsZero() {
 			when = c.Received
 		}
-		data.Recent = append(data.Recent, commentRow{When: h.stamp(when), From: orUnknown(c.FromName),
-			Status: statusLabels[c.Status], Message: preview(c.Message), Reply: preview(c.Reply)})
+		row := commentRow{When: h.stamp(when), From: orUnknown(c.FromName),
+			Status: statusLabels[c.Status], Message: preview(c.Message), Reply: preview(c.Reply)}
+		if c.Review != nil && (c.Status == comments.StatusSent || c.Status == comments.StatusDismissed) {
+			row.Shadow = agreementLabels[comments.Agreement(c)]
+		}
+		data.Recent = append(data.Recent, row)
 	}
 	return nil
 }

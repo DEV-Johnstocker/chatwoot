@@ -156,6 +156,12 @@ services:
       META_PAGE_ID: ${META_PAGE_ID:-}
       META_PAGE_TOKEN: ${META_PAGE_TOKEN:-}
       META_ACCOUNT_ID: ${META_ACCOUNT_ID:-1}
+      # Shadow AI reviewer of drafted comment replies (records, never sends):
+      # off | llm (main provider, or COMMENT_REVIEW_MODEL on it) | jev (TypeSafe).
+      COMMENT_REVIEWER: ${COMMENT_REVIEWER:-llm}
+      COMMENT_REVIEW_MODEL: ${COMMENT_REVIEW_MODEL:-}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-latest}
 
   # /admin from a browser: Cloudflare Tunnel → https://ai-admin.johnstockeraistudio.com,
   # behind a Cloudflare Access app (owner emails only). The tunnel's ingress rules

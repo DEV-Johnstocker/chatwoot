@@ -30,11 +30,23 @@ become customers.
   - Meta's permanent refusals (10900 already replied, 10903 cannot reply, 551 unavailable) move it to history.
   - Other failures leave it waiting with the error shown; network errors name the Graph host only, never the full URL.
   - If Meta accepts the reply but recording it fails, the page says so ("Sent, but saving that failed") and the comment stays `sending` in the history; it cannot be sent again.
+- **Shadow AI reviewer** (`review.go`, `reviewers.go`). After each draft, a second AI pass answers typed questions:
+  - one choice: the intent;
+  - four yes/no probabilities, all phrased so that yes is good: answers the comment, makes no unbacked offer, the tone fits, the comment is genuine.
+
+  Code then decides "would send" or "would hold":
+  - only leads and questions, with at least 0.80 probability between them;
+  - thresholds are in code;
+  - code rules always hold a draft with a link, a long number, a price, a percentage or over 600 characters.
+
+  It records its answer next to the comment and **never sends**. `/admin/comments` shows its call on each card and how often it agreed with the owner. An owner who changed the draft before sending counts as a hold.
+
+  The question shape follows TypeSafe's System One primitives (Choice and Noul), so `COMMENT_REVIEWER=jev` and `COMMENT_REVIEWER=llm` answer the same contract.
 - Off unless `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ID` and `DATABASE_URL` are set. Without `META_PAGE_TOKEN` the queue fills but Send is refused.
 
 ## Not in scope (later, each needs the owner's decision)
 
-- Automatic sending without approval.
+- Automatic sending without approval. The shadow reviewer only collects evidence for that decision. Turning it on is a separate change and the owner's call, after the agreement numbers on real comments.
 - Public replies under the comment, which need `pages_manage_engagement`.
 - Hiding spam comments.
 - Instagram comments.
@@ -71,6 +83,10 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
 6. `/admin/comments` needs the admin password, refuses cross-site POSTs, escapes comment text and shows only the chosen account (`comments_test.go`).
 7. Migrating v12 to v13 on a Supabase-like database leaves `fb_comments` with RLS on and no `anon`/`authenticated` access, and its checks refuse a duplicate comment ID and an unknown status (`knowledge/postgres_test.go`).
 8. Logs carry account and comment IDs only: never comment text, names, drafts or tokens.
+9. The shadow reviewer never sends, and a reviewer failure leaves the comment untouched (`review_test.go`).
+   - Each decision rule holds on its own, and the code rules hold links, numbers, prices and percentages (`review_test.go`).
+   - The Jev request matches TypeSafe's documented shape (state, model, `questions` with one `choice` and four `noul`), and its errors never contain the key (`review_test.go`).
+10. `go run ./cmd/comment-eval -llm <models>` runs the 43 labelled mock cases (`testdata/comment-eval/`). The mock set is checked for consistency (`cmd/comment-eval/main_test.go`).
 
 ## Phase 2: going live (owner + Meta, after this merges)
 
@@ -96,6 +112,26 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
    - comment → shows on `/admin/comments` → Send → private reply arrives in Messenger → their reply lands in Chatwoot.
    - Record the screencast for App Review.
 7. **App Review** for `pages_messaging`, `pages_manage_metadata`, `pages_show_list`, `pages_read_engagement` and `pages_read_user_content`, then switch the app to Live.
+
+## Reviewer benchmark (mock data)
+
+2026-11-10, 43 hand-labelled mock cases for a fictional business, in Thai, English and Lao. 19 should be sent; 24 should be held (complaints, other, invented offers, off-topic, prompt injection, links and numbers, rude tone). Models were called on OpenAI directly. Prices come from OpenRouter's public model list.
+
+| Reviewer | Decision accuracy | False sends | Missed sends | p50 | $ / 1000 comments |
+|---|---|---|---|---|---|
+| gpt-5.6-luna | 98%, 98% | 0, 0 | 1, 1 | 2.7 s | 0.35 |
+| gpt-5.6-terra | 100%, 100% | 0, 0 | 0, 0 | 1.6 s | 2.1–2.2 |
+| gpt-5.6-sol | 98%, 100% | **1** (o05), 0 | 0, 0 | 2.7 s | 5.3 |
+
+- The two figures in a cell are two runs; the models are not deterministic.
+- Earlier runs found two rule defects, both fixed before the runs above:
+  - an intent split between lead and question was treated as doubt;
+  - a negatively phrased manipulation check, which Luna answered with the polarity reversed, held 6 good drafts.
+- Jev was not run: there is no `TYPESAFE_API_KEY`.
+  - At its published $0.042 per million input tokens (output free), about 570 input tokens per review projects to about $0.024 per 1000 comments. That is about 15× below Luna and 90× below Terra.
+  - This is a projection, not a measurement. Jev counts tokens its own way, and its accuracy on Thai is unknown.
+  - Run `TYPESAFE_API_KEY=… go run ./cmd/comment-eval -jev jev-latest` when access arrives.
+- Mock cases are not real comments. The decision to auto-send must rest on the shadow agreement numbers from real comments.
 
 ## Reviews
 

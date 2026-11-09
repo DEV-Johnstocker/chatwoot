@@ -196,3 +196,28 @@ func (m *Memory) Purge(_ context.Context, cutoff time.Time) (int64, error) {
 	m.rows = slices.DeleteFunc(m.rows, func(c Comment) bool { return c.Received.Before(cutoff) })
 	return int64(before - len(m.rows)), nil
 }
+
+// SaveReview implements Store.
+func (m *Memory) SaveReview(_ context.Context, id int64, r Review) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i := m.find(id)
+	if i < 0 {
+		return ErrNotFound
+	}
+	m.rows[i].Review = &r
+	return nil
+}
+
+// ReviewStats implements Store.
+func (m *Memory) ReviewStats(_ context.Context, accountID int64) (ReviewStats, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var s ReviewStats
+	for _, c := range m.rows {
+		if c.AccountID == accountID {
+			s.add(c)
+		}
+	}
+	return s, nil
+}

@@ -13,6 +13,7 @@ package comments
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -109,7 +110,8 @@ type Comment struct {
 	DecidedAt time.Time
 	Error     string // the last send failure, for the owner
 	Version   int
-	Attempts  int // failed scoring passes
+	Attempts  int     // failed scoring passes
+	Review    *Review // the shadow reviewer's answer, or nil
 	Received  time.Time
 }
 
@@ -152,6 +154,51 @@ type Store interface {
 	Finish(ctx context.Context, id int64, status Status, reply, by, errText string) error
 	// Dismiss marks a waiting comment at this version as not answered.
 	Dismiss(ctx context.Context, accountID, id int64, version int, by string) error
+	// SaveReview records the shadow reviewer's answer on a comment. It does
+	// not change the comment's status or version.
+	SaveReview(ctx context.Context, id int64, r Review) error
+	// ReviewStats compares the reviewer with the owner's decisions.
+	ReviewStats(ctx context.Context, accountID int64) (ReviewStats, error)
 	// Purge deletes comments received before cutoff and returns how many.
 	Purge(ctx context.Context, cutoff time.Time) (int64, error)
+}
+
+// ReviewStats compares the shadow reviewer with what the owner did, on
+// comments the owner decided (sent or dismissed) that have a review.
+type ReviewStats struct {
+	Decided int // decided comments with a review
+	Agreed  int
+	// TooLoose: the reviewer would have sent a draft the owner dismissed or
+	// changed. This is the number that must be near zero before auto-send.
+	TooLoose int
+	// TooStrict: the reviewer would have held a draft the owner sent unchanged.
+	TooStrict int
+}
+
+// Agreement classifies one decided comment: "agreed", "too_loose" or
+// "too_strict". The owner approved the draft when they sent it unchanged.
+func Agreement(c Comment) string {
+	approved := c.Status == StatusSent && strings.TrimSpace(c.Reply) == strings.TrimSpace(c.Draft)
+	switch {
+	case c.Review.Pass == approved:
+		return "agreed"
+	case c.Review.Pass:
+		return "too_loose"
+	}
+	return "too_strict"
+}
+
+func (s *ReviewStats) add(c Comment) {
+	if c.Review == nil || (c.Status != StatusSent && c.Status != StatusDismissed) {
+		return
+	}
+	s.Decided++
+	switch Agreement(c) {
+	case "agreed":
+		s.Agreed++
+	case "too_loose":
+		s.TooLoose++
+	default:
+		s.TooStrict++
+	}
 }

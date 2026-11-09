@@ -100,6 +100,11 @@ func (q *Queue) Send(ctx context.Context, accountID, id int64, version int, text
 	}
 }
 
+// ReviewStats compares the shadow reviewer with the owner's decisions.
+func (q *Queue) ReviewStats(ctx context.Context, accountID int64) (ReviewStats, error) {
+	return q.Store.ReviewStats(ctx, accountID)
+}
+
 // Dismiss marks a waiting comment as not answered.
 func (q *Queue) Dismiss(ctx context.Context, accountID, id int64, version int, by string) error {
 	return q.Store.Dismiss(ctx, accountID, id, version, by)

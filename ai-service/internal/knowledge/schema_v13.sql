@@ -31,12 +31,15 @@ CREATE TABLE IF NOT EXISTS fb_comments (
     error       TEXT        NOT NULL DEFAULT '',
     version     INT         NOT NULL DEFAULT 1,
     attempts    INT         NOT NULL DEFAULT 0,   -- failed scoring passes
+    review      JSONB,                            -- shadow reviewer's answer (never acts)
+    review_pass BOOLEAN,                          -- would it send the draft unchanged
     received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (char_length(comment_id) <= 128 AND char_length(post_id) <= 128 AND char_length(parent_id) <= 128),
     CHECK (char_length(page_id) <= 64 AND char_length(from_id) <= 64 AND char_length(from_name) <= 256),
     CHECK (char_length(message) <= 8000),
     CHECK (char_length(reason) <= 500 AND char_length(draft) <= 2000 AND char_length(reply) <= 2000),
-    CHECK (char_length(decided_by) <= 320 AND char_length(error) <= 500)
+    CHECK (char_length(decided_by) <= 320 AND char_length(error) <= 500),
+    CHECK (review IS NULL OR octet_length(review::text) <= 8192)
 );
 
 -- The admin queue (waiting, newest first), the history and the scorer's pass.

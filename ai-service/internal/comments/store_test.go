@@ -288,3 +288,35 @@ func TestStore_LongestValuesFit(t *testing.T) {
 		}
 	})
 }
+
+func TestStore_SaveReviewAndStats(t *testing.T) {
+	each(t, func(t *testing.T, db Store) {
+		// Arrange
+		ctx := context.Background()
+		sent, dismissed := scored(t, db, 1, "sent"), scored(t, db, 1, "dismissed")
+		r := goodReview()
+		r.Pass, r.Reason, r.Model = true, "all checks passed", "m"
+
+		// Act
+		err1 := db.SaveReview(ctx, sent.ID, r)
+		err2 := db.SaveReview(ctx, dismissed.ID, r)
+		missing := db.SaveReview(ctx, 999999, r)
+		_, _ = db.Claim(ctx, 1, sent.ID, sent.Version)
+		_ = db.Finish(ctx, sent.ID, StatusSent, sent.Draft, "owner", "")
+		_ = db.Dismiss(ctx, 1, dismissed.ID, dismissed.Version, "owner")
+		stats, statsErr := db.ReviewStats(ctx, 1)
+		other, _ := db.ReviewStats(ctx, 2)
+
+		// Assert
+		got, _ := db.Get(ctx, 1, sent.ID)
+		if err1 != nil || err2 != nil || !errors.Is(missing, ErrNotFound) || statsErr != nil {
+			t.Fatalf("errs %v %v %v %v", err1, err2, missing, statsErr)
+		}
+		if got.Review == nil || !got.Review.Pass || got.Review.Checks[CheckToneFits] != 0.9 || got.Version != sent.Version+2 {
+			t.Fatalf("review %+v version %d", got.Review, got.Version)
+		}
+		if stats != (ReviewStats{Decided: 2, Agreed: 1, TooLoose: 1}) || other.Decided != 0 {
+			t.Fatalf("stats %+v other %+v", stats, other)
+		}
+	})
+}

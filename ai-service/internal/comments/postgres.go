@@ -2,6 +2,7 @@ package comments
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -51,14 +52,21 @@ func (p *Postgres) Forget(ctx context.Context, c Comment) error {
 }
 
 const columns = `id, account_id, page_id, comment_id, post_id, parent_id, from_id, from_name, message, created_at,
-	intent, reason, draft, status, reply, decided_by, coalesce(decided_at, 'epoch'), error, version, attempts, received_at`
+	intent, reason, draft, status, reply, decided_by, coalesce(decided_at, 'epoch'), error, version, attempts, review, received_at`
 
 func scan(r pgx.CollectableRow) (Comment, error) {
 	var c Comment
+	var review []byte
 	err := r.Scan(&c.ID, &c.AccountID, &c.PageID, &c.CommentID, &c.PostID, &c.ParentID, &c.FromID, &c.FromName, &c.Message, &c.CreatedAt,
-		&c.Intent, &c.Reason, &c.Draft, &c.Status, &c.Reply, &c.DecidedBy, &c.DecidedAt, &c.Error, &c.Version, &c.Attempts, &c.Received)
+		&c.Intent, &c.Reason, &c.Draft, &c.Status, &c.Reply, &c.DecidedBy, &c.DecidedAt, &c.Error, &c.Version, &c.Attempts, &review, &c.Received)
 	if c.DecidedAt.Equal(time.Unix(0, 0)) {
 		c.DecidedAt = time.Time{}
+	}
+	if err == nil && review != nil {
+		var rv Review
+		if json.Unmarshal(review, &rv) == nil {
+			c.Review = &rv
+		}
 	}
 	return c, err
 }
@@ -198,4 +206,33 @@ func (p *Postgres) Purge(ctx context.Context, cutoff time.Time) (int64, error) {
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// SaveReview implements Store.
+func (p *Postgres) SaveReview(ctx context.Context, id int64, r Review) error {
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	tag, err := p.Pool.Exec(ctx, `UPDATE fb_comments SET review = $2, review_pass = $3 WHERE id = $1`, id, raw, r.Pass)
+	if err != nil {
+		return permanent(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ReviewStats implements Store.
+func (p *Postgres) ReviewStats(ctx context.Context, accountID int64) (ReviewStats, error) {
+	list, err := p.query(ctx, `WHERE account_id = $1 AND review IS NOT NULL AND status IN ('sent', 'dismissed')`, accountID)
+	if err != nil {
+		return ReviewStats{}, err
+	}
+	var s ReviewStats
+	for _, c := range list {
+		s.add(c)
+	}
+	return s, nil
 }

@@ -61,3 +61,40 @@ func TestLoad_MetaCommentsRejectsPartialOrBadSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_CommentReviewer(t *testing.T) {
+	cases := map[string]struct {
+		env     map[string]string
+		want    string
+		wantErr string
+	}{
+		"default llm":     {map[string]string{}, "llm", ""},
+		"off":             {map[string]string{"COMMENT_REVIEWER": "off"}, "off", ""},
+		"jev with key":    {map[string]string{"COMMENT_REVIEWER": "jev", "TYPESAFE_API_KEY": "k"}, "jev", ""},
+		"jev without key": {map[string]string{"COMMENT_REVIEWER": "jev"}, "", "needs TYPESAFE_API_KEY"},
+		"unknown":         {map[string]string{"COMMENT_REVIEWER": "gpt"}, "", "off, llm or jev"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			env := requiredEnv()
+			for k, v := range c.env {
+				env[k] = v
+			}
+
+			// Act
+			cfg, err := Load(lookupFrom(env))
+
+			// Assert
+			if c.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+					t.Fatalf("err %v", err)
+				}
+				return
+			}
+			if err != nil || cfg.CommentReviewer != c.want {
+				t.Fatalf("cfg %q err %v", cfg.CommentReviewer, err)
+			}
+		})
+	}
+}

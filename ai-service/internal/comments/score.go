@@ -100,6 +100,11 @@ type Worker struct {
 	Logger *slog.Logger
 	// Timeout bounds one model call.
 	Timeout time.Duration
+	// Reviewer, when set, reviews each new draft in shadow mode: its answer
+	// is stored next to the comment and never sends anything.
+	Reviewer Reviewer
+	// Profiles gives the reviewer the business profile; nil reviews without it.
+	Profiles profile.Store
 }
 
 // batch is how many comments one pass scores.
@@ -131,6 +136,9 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 		}
 		w.Logger.Info("page comment scored", "account_id", c.AccountID, "comment_id", c.CommentID, "intent", string(intent))
 		done++
+		if intent != IntentOther && draft != "" {
+			w.review(ctx, c, draft)
+		}
 	}
 	return done
 }
@@ -157,4 +165,33 @@ func (w *Worker) Run(ctx context.Context, every time.Duration) {
 		case <-t.C:
 		}
 	}
+}
+
+// review runs the shadow reviewer on a fresh draft. A failure only loses
+// that review; it never holds up the comment.
+func (w *Worker) review(ctx context.Context, c Comment, draft string) {
+	if w.Reviewer == nil {
+		return
+	}
+	p := profile.Profile{}
+	if w.Profiles != nil {
+		var err error
+		if p, err = w.Profiles.Get(ctx, c.AccountID); err != nil {
+			w.Logger.Warn("review page comment: load profile", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+			return
+		}
+	}
+	rctx, cancel := context.WithTimeout(ctx, w.Timeout)
+	r, err := w.Reviewer.Review(rctx, c, draft, p)
+	cancel()
+	if err != nil {
+		w.Logger.Warn("review page comment", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+		return
+	}
+	if err := w.Store.SaveReview(ctx, c.ID, r); err != nil {
+		w.Logger.Error("save comment review", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+		return
+	}
+	w.Logger.Info("page comment reviewed (shadow)", "account_id", c.AccountID, "comment_id", c.CommentID,
+		"would_send", r.Pass, "model", r.Model, "latency_ms", r.Latency.Milliseconds())
 }
