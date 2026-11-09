@@ -93,7 +93,10 @@ type Options struct {
 	NoteLLM     Completer   // optional; small vision model that writes the staff note at a handoff
 	// HistoryReader recalls a chat from Chatwoot when the bot has no memory of
 	// it (after a restart, or a closed chat reopened). Optional.
-	HistoryReader  HistoryReader
+	HistoryReader HistoryReader
+	// Staff looks up who is online and how busy they are, so a handed-off
+	// chat goes to the least busy person. Optional (needs the reader token).
+	Staff          StaffDirectory
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -244,7 +247,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 				msg = b.opts.HandoffMessage
 			}
 			tr.Input, tr.Outcome, tr.Output = ev.AttachmentNote(), "handoff:"+ReasonAttachment, msg
-			b.handoff(ctx, log, acct, conv, msg, ReasonAttachment, nil)
+			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, msg, ReasonAttachment, nil)
 			return
 		}
 		tr.Input = in.text
@@ -253,7 +256,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		if b.opts.Handoff.Wants(in.text) {
 			tr.Outcome, tr.Output = "handoff:"+ReasonCustomerAsked, b.opts.HandoffMessage
-			b.handoff(ctx, log, acct, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)
+			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)
 			return
 		}
 		if b.opts.ReplyDelay > 0 {
@@ -306,7 +309,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	if err != nil {
 		log.Error("llm completion failed", "error", err, "latency_ms", latency.Milliseconds())
 		tr.Outcome, tr.Output = "handoff:"+ReasonLLMError, b.opts.FailureMessage
-		b.handoff(ctx, log, acct, conv, b.opts.FailureMessage, ReasonLLMError, images)
+		b.handoff(ctx, log, acct, inbox, conv, b.opts.FailureMessage, ReasonLLMError, images)
 		return
 	}
 
@@ -318,7 +321,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		}
 		tr.Outcome, tr.Output = "handoff:"+ReasonAIRequest, text
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: text})
-		b.handoff(ctx, log, acct, conv, text, ReasonAIRequest, images)
+		b.handoff(ctx, log, acct, inbox, conv, text, ReasonAIRequest, images)
 		return
 	}
 	if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
@@ -437,7 +440,7 @@ func (b *Bot) now() time.Time {
 	return now().In(loc)
 }
 
-func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, customerMsg, reason string, images []string) {
+func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, customerMsg, reason string, images []string) {
 	b.cancelPending(acct, conv)
 	cw := b.opts.Chatwoot
 	if customerMsg != "" {
@@ -448,6 +451,9 @@ func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, conv int64, c
 	note := b.staffNote(ctx, log, acct, conv, customerMsg, reason, images)
 	if err := cw.SendPrivateNote(ctx, acct, conv, note); err != nil {
 		log.Warn("handoff note failed", "error", err)
+	}
+	if reason != ReasonStaffReplied { // an admin already answering keeps the chat
+		b.route(ctx, log, acct, inbox, conv)
 	}
 	if err := cw.Handoff(ctx, acct, conv); err != nil {
 		log.Error("handoff failed", "error", err, "reason", reason)
@@ -488,7 +494,7 @@ func (b *Bot) stepBackIfStaffReplied(ctx context.Context, log *slog.Logger, ev w
 		ev.Sender.Type == "agent_bot" || ev.Conversation.Status != "pending" {
 		return
 	}
-	b.handoff(ctx, log, ev.Account.ID, ev.ConversationID(), "", ReasonStaffReplied, nil)
+	b.handoff(ctx, log, ev.Account.ID, ev.Inbox.ID, ev.ConversationID(), "", ReasonStaffReplied, nil)
 }
 
 // retrievalQueries searches the latest customer message on its own, plus

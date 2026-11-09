@@ -120,9 +120,11 @@ func run() error {
 	}
 
 	var historyReader bot.HistoryReader
+	var staff bot.StaffDirectory
 	if cfg.ChatwootReaderToken != "" {
-		historyReader = chatwoot.NewReader(cfg.ChatwootBaseURL, cfg.ChatwootReaderToken, nil)
-		logger.Info("chat recall from chatwoot on")
+		reader := chatwoot.NewReader(cfg.ChatwootBaseURL, cfg.ChatwootReaderToken, nil)
+		historyReader, staff = reader, reader
+		logger.Info("chat recall and workload assignment on")
 	}
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
@@ -136,6 +138,7 @@ func run() error {
 		StickerLLM:        rewriteLLM,
 		NoteLLM:           rewriteLLM,
 		HistoryReader:     historyReader,
+		Staff:             staff,
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),

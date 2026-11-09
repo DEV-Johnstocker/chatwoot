@@ -1,6 +1,7 @@
 package chatwoot
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -87,4 +88,99 @@ func toTurn(m listedMessage, skipID int64) (memory.Turn, bool) {
 		content = "[The customer sent a file]"
 	}
 	return memory.Turn{Role: role, Content: content}, true
+}
+
+// Staff is an inbox member as the assignment step sees them.
+type Staff struct {
+	ID     int64
+	Name   string
+	Online bool
+}
+
+// InboxStaff lists an inbox's members and whether each is online now
+// (Chatwoot's live presence, the same signal its own auto-assignment uses).
+func (r *Reader) InboxStaff(ctx context.Context, accountID, inboxID int64) ([]Staff, error) {
+	var page struct {
+		Payload []struct {
+			ID                 int64  `json:"id"`
+			Name               string `json:"name"`
+			AvailabilityStatus string `json:"availability_status"`
+		} `json:"payload"`
+	}
+	if err := r.getJSON(ctx, fmt.Sprintf("/api/v1/accounts/%d/inbox_members/%d", accountID, inboxID), nil, &page); err != nil {
+		return nil, err
+	}
+	staff := make([]Staff, 0, len(page.Payload))
+	for _, m := range page.Payload {
+		staff = append(staff, Staff{ID: m.ID, Name: m.Name, Online: m.AvailabilityStatus == "online"})
+	}
+	return staff, nil
+}
+
+// OpenCount is how many open conversations are assigned to a user.
+func (r *Reader) OpenCount(ctx context.Context, accountID, userID int64) (int, error) {
+	filter := map[string]any{"payload": []map[string]any{
+		{"attribute_key": "status", "filter_operator": "equal_to", "values": []string{"open"}, "query_operator": "and"},
+		{"attribute_key": "assignee_id", "filter_operator": "equal_to", "values": []int64{userID}, "query_operator": nil},
+	}}
+	var res struct {
+		Meta struct {
+			AllCount int `json:"all_count"`
+		} `json:"meta"`
+	}
+	if err := r.getJSON(ctx, fmt.Sprintf("/api/v1/accounts/%d/conversations/filter", accountID), filter, &res); err != nil {
+		return 0, err
+	}
+	return res.Meta.AllCount, nil
+}
+
+// Assignee returns the user a conversation is assigned to, or 0.
+func (r *Reader) Assignee(ctx context.Context, accountID, conversationID int64) (int64, error) {
+	var conv struct {
+		Meta struct {
+			Assignee *struct {
+				ID int64 `json:"id"`
+			} `json:"assignee"`
+		} `json:"meta"`
+	}
+	if err := r.getJSON(ctx, fmt.Sprintf("/api/v1/accounts/%d/conversations/%d", accountID, conversationID), nil, &conv); err != nil {
+		return 0, err
+	}
+	if conv.Meta.Assignee == nil {
+		return 0, nil
+	}
+	return conv.Meta.Assignee.ID, nil
+}
+
+// getJSON GETs path (or POSTs body when it is not nil) and decodes the reply.
+func (r *Reader) getJSON(ctx context.Context, path string, body any, out any) error {
+	method, reader := http.MethodGet, io.Reader(nil)
+	if body != nil {
+		buf, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		method, reader = http.MethodPost, bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, r.baseURL+path, reader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("api_access_token", r.token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := r.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("chatwoot %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return &APIError{Path: path, Status: resp.StatusCode, Body: string(snippet)}
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(out); err != nil {
+		return fmt.Errorf("chatwoot %s: %w", path, err)
+	}
+	return nil
 }
