@@ -139,6 +139,22 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
   - It held 8 good drafts. Seven fell on `no_unbacked_offer`, where its calibrated probabilities sit around 0.8–0.9 for good drafts, below the 0.90 bar the LLMs clear. Good and bad drafts barely separate on that question (median 0.91 against 0.86).
   - Experiment, reverted: splitting that check into two atomic questions ("offers nothing extra" and "facts supported by the profile"), as TypeSafe advises, made every reviewer worse. Jev fell to 70%, Luna to 93% and Terra to 98%. The "facts supported" question holds ordinary lines such as "the admin will send details in chat".
   - The thresholds were **not** tuned to make Jev pass: 43 mock cases are too few. Jev's thresholds should be set from shadow results on real comments.
+
+- **Jev optimisation, 2026-11-10.** Three changes, all following TypeSafe's docs:
+  1. Each yes/no check now sends `criteria` describing what a yes and a no mean (`checkCriteria` in `reviewers.go`). The LLM prompt is unchanged.
+  2. Thresholds are set per reviewer (`Thresholds`, `LLMThresholds`, `JevThresholds`). Calibrated probabilities sit lower than chat models' on good drafts.
+  3. The data grew to 85 cases. 42 new ones are harder: true facts from the profile against invented certificates, coaching, deadlines, free shipping, misleading answers and more injection styles.
+
+  Tuning was honest: `-tune` splits the cases into two halves balanced by label, tunes on one half (no false sends allowed) and reports on the other. `-swap` repeats the run the other way round.
+
+  | Held-out half | Jev, no criteria | Jev + criteria, default bars | Jev + criteria, tuned | Luna, default | Luna, tuned | Terra |
+  |---|---|---|---|---|---|---|
+  | A (42) | 76% / 0 false | 95% / 0 | **100% / 0** | 95% / 0 | 98% / 0 | 98% / **1 false (s07)** |
+  | B (43) | — | 91% / 0 | **95% / 0** | 95% / 0 | 98% / 0 | — |
+
+  - Tuning lowered only Jev's offer bar: to 0.60 on one half and 0.75 on the other. `JevThresholds` uses 0.75, the safer value, and keeps every other bar.
+  - Final run on all 85 cases with the shipped settings: **Jev 96%, 0 false sends, 0.26 s, $0.047 per 1000 comments; Luna 94%, 0 false sends, 2.6 s, $0.35.** This run includes the cases the thresholds were tuned on, so the held-out figures above are the fairer measure.
+  - Criteria add about 300 input tokens per review (about 1120 in total), which is still about 7.5× cheaper than Luna.
 - Mock cases are not real comments. The decision to auto-send must rest on the shadow agreement numbers from real comments.
 
 ## Reviews

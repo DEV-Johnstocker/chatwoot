@@ -55,7 +55,7 @@ func TestDecide_PassesOnlyWhenEveryRuleHolds(t *testing.T) {
 			c.change(&r)
 
 			// Act
-			got := Decide(r, c.draft)
+			got := Decide(r, c.draft, LLMThresholds)
 
 			// Assert
 			if got.Pass != c.wantPass || !strings.Contains(got.Reason, c.wantWhy) {
@@ -154,7 +154,8 @@ func TestJevReviewer_SendsTheDocumentedRequestAndReadsTheAnswers(t *testing.T) {
 	qs, _ := got["questions"].(map[string]any)
 	intent, _ := qs["intent"].(map[string]any)
 	check, _ := qs[CheckGenuine].(map[string]any)
-	if got["model"] != "jev-1.14.0" || intent["type"] != "choice" || check["type"] != "noul" || len(qs) != 5 {
+	crit, _ := check["criteria"].(map[string]any)
+	if got["model"] != "jev-1.14.0" || intent["type"] != "choice" || check["type"] != "noul" || len(qs) != 5 || crit["true"] == nil || crit["false"] == nil {
 		t.Fatalf("request %+v", got)
 	}
 	if state, _ := got["state"].(map[string]any); state["draft"] == nil || state["comment"] == nil || state["business"] == nil {
@@ -226,7 +227,7 @@ type fixedReviewer struct {
 
 func (f *fixedReviewer) Review(_ context.Context, _ Comment, draft string, _ profile.Profile) (Review, error) {
 	f.calls++
-	return Decide(f.r, draft), f.err
+	return Decide(f.r, draft, LLMThresholds), f.err
 }
 
 func TestWorker_ShadowReviewIsStoredAndSendsNothing(t *testing.T) {

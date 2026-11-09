@@ -18,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log/slog"
 	"math"
@@ -89,6 +90,9 @@ func run() error {
 	jevModel := flag.String("jev", "", "Jev model (needs TYPESAFE_API_KEY), e.g. jev-latest")
 	workers := flag.Int("concurrency", 4, "cases run at once per reviewer")
 	jsonOut := flag.String("json", "", "also write the full results here")
+	tune := flag.Bool("tune", false, "pick thresholds per reviewer on the tuning half (no false sends), report on the held-out half")
+	jevBare := flag.Bool("jev-no-criteria", false, "also run Jev without the yes/no criteria, for comparison")
+	swap := flag.Bool("swap", false, "with -tune: tune on the other half and test on the first (cross-check)")
 	flag.Parse()
 
 	cases, err := loadCases(*casesPath)
@@ -99,7 +103,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	reviewers, prices, err := buildReviewers(*llmModels, *jevModel)
+	reviewers, prices, err := buildReviewers(*llmModels, *jevModel, *jevBare)
 	if err != nil {
 		return err
 	}
@@ -113,9 +117,30 @@ func run() error {
 		results := runAll(reviewers[name], cases, p, *workers)
 		all[name] = results
 		price, known := prices[name]
-		summaries = append(summaries, Summarize(name, results, price, known))
+		if !*tune {
+			summaries = append(summaries, Summarize(name, results, price, known))
+			continue
+		}
+		tuneSet, testSet := Split(results)
+		if *swap {
+			tuneSet, testSet = testSet, tuneSet
+		}
+		start := startThresholds(name)
+		best := Tune(tuneSet, start)
+		fmt.Printf("%s tuned on %d cases: %+v\n", name, len(tuneSet), best)
+		summaries = append(summaries,
+			Summarize(name+" (default, held-out)", Redecide(testSet, start), price, known),
+			Summarize(name+" (tuned, held-out)", Redecide(testSet, best), price, known))
 	}
-	printTable(os.Stdout, summaries, len(cases))
+	n := len(cases)
+	if *tune {
+		tuneSet, testSet := Split(all[sortedKeys(all)[0]])
+		n = len(testSet)
+		if *swap {
+			n = len(tuneSet)
+		}
+	}
+	printTable(os.Stdout, summaries, n)
 	if *jsonOut != "" {
 		return writeJSON(*jsonOut, summaries, all)
 	}
@@ -171,7 +196,7 @@ func safeURL(raw string) error {
 	return fmt.Errorf("refusing to send an API key to %s over %s", u.Host, u.Scheme)
 }
 
-func buildReviewers(llmModels, jevModel string) (map[string]comments.Reviewer, map[string]Price, error) {
+func buildReviewers(llmModels, jevModel string, jevBare bool) (map[string]comments.Reviewer, map[string]Price, error) {
 	reviewers, prices := map[string]comments.Reviewer{}, map[string]Price{}
 	base := strings.TrimRight(envOr("LLM_BASE_URL", "https://openrouter.ai/api/v1"), "/")
 	if err := safeURL(base); llmModels != "" && err != nil {
@@ -211,6 +236,11 @@ func buildReviewers(llmModels, jevModel string) (map[string]comments.Reviewer, m
 			name := "jev:" + jevModel
 			reviewers[name] = &comments.JevReviewer{APIKey: key, Model: jevModel, URL: envOr("TYPESAFE_URL", comments.DefaultJevURL)}
 			prices[name] = Price{In: comments.JevPricePerMInput, Out: 0}
+			if jevBare {
+				bare := name + ":no-criteria"
+				reviewers[bare] = &comments.JevReviewer{APIKey: key, Model: jevModel, URL: envOr("TYPESAFE_URL", comments.DefaultJevURL), NoCriteria: true}
+				prices[bare] = prices[name]
+			}
 		}
 	}
 	return reviewers, prices, nil
@@ -401,4 +431,100 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// startThresholds is where tuning starts: the reviewer's own defaults.
+func startThresholds(name string) comments.Thresholds {
+	if strings.HasPrefix(name, "jev:") {
+		return comments.JevThresholds
+	}
+	return comments.LLMThresholds
+}
+
+// Split divides results into a tuning half and a held-out half, balanced by
+// label and stable across runs (FNV hash of the case ID).
+func Split(results []Result) (tune, test []Result) {
+	groups := map[bool][]Result{}
+	for _, r := range results {
+		groups[r.Case.WantPass] = append(groups[r.Case.WantPass], r)
+	}
+	for _, label := range []bool{true, false} {
+		g := groups[label]
+		sort.Slice(g, func(a, b int) bool { return hashID(g[a].Case.ID) < hashID(g[b].Case.ID) })
+		for i, r := range g {
+			if i%2 == 0 {
+				tune = append(tune, r)
+			} else {
+				test = append(test, r)
+			}
+		}
+	}
+	return tune, test
+}
+
+func hashID(id string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	return h.Sum32()
+}
+
+// Redecide applies thresholds t to stored answers, as the service would.
+func Redecide(results []Result, t comments.Thresholds) []Result {
+	out := make([]Result, len(results))
+	for i, r := range results {
+		out[i] = r
+		if r.Err == nil {
+			out[i].Review = comments.Decide(r.Review, r.Case.Draft, t)
+		}
+	}
+	return out
+}
+
+// score ranks thresholds: no false sends first, then right calls.
+func score(results []Result) (falseSends, right int) {
+	for _, r := range results {
+		switch {
+		case r.Err != nil:
+			if !r.Case.WantPass {
+				right++
+			}
+		case r.Review.Pass == r.Case.WantPass:
+			right++
+		case r.Review.Pass:
+			falseSends++
+		}
+	}
+	return falseSends, right
+}
+
+func better(fs, right, bestFS, bestRight int) bool {
+	return fs < bestFS || (fs == bestFS && right > bestRight)
+}
+
+// Tune searches each threshold in turn over 0.50–0.95 (coordinate descent,
+// three passes) for the fewest false sends, then the most right calls. On
+// a tie it keeps the higher, safer bar.
+func Tune(results []Result, start comments.Thresholds) comments.Thresholds {
+	best := start
+	bestFS, bestRight := score(Redecide(results, best))
+	fields := []func(*comments.Thresholds) *float64{
+		func(t *comments.Thresholds) *float64 { return &t.Intent },
+		func(t *comments.Thresholds) *float64 { return &t.Genuine },
+		func(t *comments.Thresholds) *float64 { return &t.Answers },
+		func(t *comments.Thresholds) *float64 { return &t.Offer },
+		func(t *comments.Thresholds) *float64 { return &t.Tone },
+	}
+	for pass := 0; pass < 3; pass++ {
+		for _, field := range fields {
+			for v := 0.95; v >= 0.499; v -= 0.05 {
+				cand := best
+				*field(&cand) = math.Round(v*100) / 100
+				fs, right := score(Redecide(results, cand))
+				if better(fs, right, bestFS, bestRight) {
+					best, bestFS, bestRight = cand, fs, right
+				}
+			}
+		}
+	}
+	return best
 }

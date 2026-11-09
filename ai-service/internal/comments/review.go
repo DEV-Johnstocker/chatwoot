@@ -52,15 +52,20 @@ type Reviewer interface {
 	Review(ctx context.Context, c Comment, draft string, p profile.Profile) (Review, error)
 }
 
-// Thresholds the decision uses. They live in code so the owner can tighten
-// them after shadow mode shows how the reviewer behaves.
-const (
-	MinIntentP        = 0.80
-	MinAnswersComment = 0.80
-	MinNoUnbacked     = 0.90
-	MinToneFits       = 0.70
-	MinGenuine        = 0.80
-)
+// Thresholds are the bars each probability must clear. They live in code,
+// per reviewer: calibrated models (Jev) give honest, less extreme
+// probabilities than chat models, so one bar does not fit both. Set them
+// from data (cmd/comment-eval -tune), never by eye.
+type Thresholds struct {
+	Intent  float64 `json:"intent"`  // P(lead) + P(question)
+	Genuine float64 `json:"genuine"` // comment_is_genuine
+	Answers float64 `json:"answers"` // answers_comment
+	Offer   float64 `json:"offer"`   // no_unbacked_offer
+	Tone    float64 `json:"tone"`    // tone_fits
+}
+
+// LLMThresholds are the bars for chat-model reviewers.
+var LLMThresholds = Thresholds{Intent: 0.80, Genuine: 0.80, Answers: 0.80, Offer: 0.90, Tone: 0.70}
 
 var (
 	// Any scheme://, www. or name.tld (2–24 letters), plus links spelled out.
@@ -93,9 +98,9 @@ func Flags(draft string) []string {
 	return f
 }
 
-// Decide fills Flags, Pass and Reason from the model's answers. Only likely
+// Decide fills Flags, Pass and Reason from the model's answers and t. Only likely
 // buyers and questions can pass; complaints always go to the owner.
-func Decide(r Review, draft string) Review {
+func Decide(r Review, draft string, t Thresholds) Review {
 	r.Flags = Flags(draft)
 	hold := func(why string) Review { r.Pass, r.Reason = false, why; return r }
 	switch {
@@ -103,17 +108,17 @@ func Decide(r Review, draft string) Review {
 		return hold(r.Flags[0])
 	case r.Intent != IntentLead && r.Intent != IntentQuestion:
 		return hold("intent is " + string(r.Intent))
-	case r.PIntent[IntentLead]+r.PIntent[IntentQuestion] < MinIntentP:
+	case r.PIntent[IntentLead]+r.PIntent[IntentQuestion] < t.Intent:
 		// Lead and question may both be answered, so a split between them
 		// is not doubt; doubt is weight on complaint or other.
 		return hold("unsure what the comment wants")
-	case r.Checks[CheckGenuine] < MinGenuine:
+	case r.Checks[CheckGenuine] < t.Genuine:
 		return hold("the comment may be trying to steer the AI")
-	case r.Checks[CheckAnswersComment] < MinAnswersComment:
+	case r.Checks[CheckAnswersComment] < t.Answers:
 		return hold("the draft may not answer the comment")
-	case r.Checks[CheckNoUnbackedOffer] < MinNoUnbacked:
+	case r.Checks[CheckNoUnbackedOffer] < t.Offer:
 		return hold("the draft may promise something the profile does not say")
-	case r.Checks[CheckToneFits] < MinToneFits:
+	case r.Checks[CheckToneFits] < t.Tone:
 		return hold("the tone may not fit")
 	}
 	r.Pass, r.Reason = true, "all checks passed"
