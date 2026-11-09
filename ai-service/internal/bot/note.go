@@ -34,7 +34,7 @@ Only facts from the chat or the photo; never guess. Never write card numbers, CV
 
 // noteWarning heads every model-written note: the summary comes from what the
 // customer wrote and sent, so staff must not take it as a verified fact.
-const noteWarning = "⚠️ สรุปอัตโนมัติจากสิ่งที่ลูกค้าส่งมา ยังไม่ได้ตรวจสอบ (รวมถึงยอดเงิน)"
+const noteWarning = "**ยังไม่ได้ตรวจสอบ** สรุปจากสิ่งที่ลูกค้าส่งมา รวมถึงยอดเงิน"
 
 // noteWarnWords mark a summary that talks about money or access, so the
 // warning shows even if the model picked a quiet category.
@@ -59,11 +59,8 @@ const noteGap = "ไม่มีข้อมูล"
 // missing one keeps it, so a model steered by customer text fails closed.
 var quietKinds = map[string]bool{noteGap: true, "ขอคุยทีมงาน": true}
 
-// lineIcons lead each labelled line so staff can scan the note.
-var lineIcons = []struct{ label, icon string }{
-	{"เหตุผล", "📌"}, {"ลูกค้าต้องการ", "🎯"}, {"บอทแจ้งแล้ว", "💬"},
-	{"จากไฟล์", "📎"}, {"ลูกค้าให้ไว้", "📝"}, {"ขั้นต่อไป", "👉"},
-}
+// noteLabels are bolded at the start of a summary line so staff can scan it.
+var noteLabels = []string{"เหตุผล", "ลูกค้าต้องการ", "บอทแจ้งแล้ว", "จากไฟล์", "ลูกค้าให้ไว้", "ขั้นต่อไป"}
 
 // noteTimeout bounds the summary; the customer's message is already sent.
 const noteTimeout = 15 * time.Second
@@ -115,11 +112,11 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 		k = noteKind{"🤖", "บอทส่งต่อ"}
 	}
 	var sb strings.Builder
-	sb.WriteString(k.icon + " **" + k.title + "** · สรุปจากบอท\n")
+	sb.WriteString(k.icon + " **" + k.title + "** · สรุปจากบอท\n\n")
 	if warn {
-		sb.WriteString(noteWarning + "\n")
+		sb.WriteString(noteWarning + "\n\n")
 	}
-	sb.WriteString(decorate(summary) + "\n" + reason)
+	sb.WriteString(decorate(summary) + "\n\n" + reason)
 	return sb.String(), gap
 }
 
@@ -138,20 +135,26 @@ func splitKind(s string) (kind, rest string) {
 	return kind, strings.TrimSpace(strings.Join(keep, "\n"))
 }
 
-// decorate bolds each known label and puts its icon in front. The model's
-// own markdown is removed first so customer text cannot restyle the note.
+// decorate turns each summary line into one bullet, so wrapped lines line up
+// in Chatwoot, and bolds its label. The model's own markdown (bold, headings,
+// quotes, list markers) is removed first so customer text cannot restyle it.
 func decorate(s string) string {
 	s = strings.NewReplacer("**", "", "__", "", "`", "").Replace(s)
-	lines := strings.Split(s, "\n")
-	for i, line := range lines {
-		for _, l := range lineIcons {
-			if v, ok := strings.CutPrefix(line, l.label+":"); ok {
-				lines[i] = l.icon + " **" + l.label + ":** " + strings.TrimSpace(v)
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(line), "#>-*+• "))
+		if line == "" {
+			continue
+		}
+		for _, l := range noteLabels {
+			if v, ok := strings.CutPrefix(line, l+":"); ok {
+				line = "**" + l + ":** " + strings.TrimSpace(v)
 				break
 			}
 		}
+		out = append(out, "- "+line)
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(out, "\n")
 }
 
 func containsAny(s string, words []string) bool {

@@ -38,7 +38,7 @@ func TestHandoffNoteSummarisesTheChatForStaff(t *testing.T) {
 
 	// Assert
 	got := cw.joined()
-	if !strings.Contains(got, "note:🤖 **บอทส่งต่อ** · สรุปจากบอท\n"+noteWarning+"\n📌 **เหตุผล:** ลูกค้าส่งสลิป") {
+	if !strings.Contains(got, "note:🤖 **บอทส่งต่อ** · สรุปจากบอท\n\n"+noteWarning+"\n\n- **เหตุผล:** ลูกค้าส่งสลิป") {
 		t.Fatalf("note should open with the summary, got %q", got)
 	}
 	if !strings.Contains(got, ReasonAIRequest+" | handoff") {
@@ -127,7 +127,7 @@ func TestHandoffNoteForAMissingAnswerIsLabelledKBGap(t *testing.T) {
 	if !strings.Contains(got, "label:"+HandoffLabel+" | label:"+KBGapLabel) {
 		t.Errorf("a missing answer needs the kb-gap label too, got %q", got)
 	}
-	if !strings.Contains(got, "note:📚 **บอทไม่มีข้อมูลเรื่องนี้** · สรุปจากบอท\n📌 **เหตุผล:** บอทไม่รู้") {
+	if !strings.Contains(got, "note:📚 **บอทไม่มีข้อมูลเรื่องนี้** · สรุปจากบอท\n\n- **เหตุผล:** บอทไม่รู้") {
 		t.Errorf("the note should open with the topic icon and bold labels, got %q", got)
 	}
 	if strings.Contains(got, noteWarning) || strings.Contains(got, "หมวด:") {
@@ -200,5 +200,29 @@ func TestHandoffNoteWarnsOnlyWhenMoneyOrFilesAreInvolved(t *testing.T) {
 				t.Errorf("warning shown = %v, want %v: %q", got, c.warn, cw.joined())
 			}
 		})
+	}
+}
+
+func TestHandoffNoteKeepsTheModelsTextPlain(t *testing.T) {
+	// Arrange: the model echoes markdown a customer typed.
+	cw := &fakeChatwoot{}
+	b, _ := newBot(cw, &fakeLLM{reply: "ส่งต่อนะครับ\n" + HandoffMarker})
+	b.opts.NoteLLM = &noteLLM{reply: "หมวด: ขอคุยทีมงาน\n# ด่วนมาก\n> **เหตุผล:** อยากคุยกับคน\n- ลูกค้าต้องการ: คุยกับแอดมิน"}
+
+	// Act
+	b.reply(context.Background(), b.opts.Logger, 1, 1, 7, &trace.Turn{}, nil)
+
+	// Assert: every summary line is one plain bullet; only the code adds bold.
+	got := cw.joined()
+	for _, want := range []string{"\n- ด่วนมาก\n", "\n- **เหตุผล:** อยากคุยกับคน\n", "\n- **ลูกค้าต้องการ:** คุยกับแอดมิน\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "\n#") || strings.Contains(got, "\n>") || strings.Contains(got, "- - ") {
+		t.Errorf("headings, quotes and nested bullets from the model must not survive: %q", got)
+	}
+	if !strings.Contains(got, "\n\n"+ReasonAIRequest+" | handoff") {
+		t.Errorf("the reason code stays alone on the last line: %q", got)
 	}
 }
