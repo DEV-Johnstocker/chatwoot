@@ -91,6 +91,7 @@ func TestPolicy_ObjectionsGetOneHelpfulCounterThenRespect(t *testing.T) {
 		"usually 3-6 short lines with each point on its own line",
 		"address the customer as \"คุณลูกค้า\", or \"คุณ\" followed by their name",
 		"never the bare word \"คุณ\" on its own",
+		"Use คุณลูกค้า at most once in a reply",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("policy is missing %q", want)
