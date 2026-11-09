@@ -229,9 +229,13 @@ func TestReaderStaffOpenCountAndAssignee(t *testing.T) {
 			_ = json.NewDecoder(r.Body).Decode(&filterBody)
 			_, _ = w.Write([]byte(`{"meta":{"all_count":4}}`))
 		case "/api/v1/accounts/1/conversations/76":
-			_, _ = w.Write([]byte(`{"id":76,"meta":{"assignee":{"id":5}}}`))
+			_, _ = w.Write([]byte(`{"id":76,"meta":{"assignee":{"id":5},"assignee_type":"User"}}`))
 		case "/api/v1/accounts/1/conversations/77":
 			_, _ = w.Write([]byte(`{"id":77,"meta":{}}`))
+		case "/api/v1/accounts/1/conversations/78":
+			// A chat the bot handles: Chatwoot reports the agent bot as assignee,
+			// and its id can equal a user's id.
+			_, _ = w.Write([]byte(`{"id":78,"meta":{"assignee":{"id":5,"name":"AI Assistant"},"assignee_type":"AgentBot"}}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -245,6 +249,7 @@ func TestReaderStaffOpenCountAndAssignee(t *testing.T) {
 	open, errOpen := r.OpenCount(ctx, 1, 5)
 	assigned, errA := r.Assignee(ctx, 1, 76)
 	none, errN := r.Assignee(ctx, 1, 77)
+	bot, errB := r.Assignee(ctx, 1, 78)
 
 	// Assert
 	if errStaff != nil || len(staff) != 2 || !staff[0].Online || staff[1].Online || staff[0].ID != 5 {
@@ -255,6 +260,9 @@ func TestReaderStaffOpenCountAndAssignee(t *testing.T) {
 	}
 	if fb := fmt.Sprint(filterBody); !strings.Contains(fb, "assignee_id") || !strings.Contains(fb, "open") {
 		t.Errorf("filter must ask for open conversations of that assignee, sent %v", filterBody)
+	}
+	if errB != nil || bot != 0 {
+		t.Errorf("an agent bot assignee must not count as a person, got %d (%v)", bot, errB)
 	}
 	if errA != nil || assigned != 5 || errN != nil || none != 0 {
 		t.Errorf("assignee = %d (%v), none = %d (%v)", assigned, errA, none, errN)

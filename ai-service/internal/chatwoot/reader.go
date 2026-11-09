@@ -134,19 +134,22 @@ func (r *Reader) OpenCount(ctx context.Context, accountID, userID int64) (int, e
 	return res.Meta.AllCount, nil
 }
 
-// Assignee returns the user a conversation is assigned to, or 0.
+// Assignee returns the staff member (a user) a conversation is assigned to,
+// or 0. While the bot handles a chat Chatwoot reports the agent bot as its
+// assignee, and a bot's id can equal a user's, so only a User counts.
 func (r *Reader) Assignee(ctx context.Context, accountID, conversationID int64) (int64, error) {
 	var conv struct {
 		Meta struct {
 			Assignee *struct {
 				ID int64 `json:"id"`
 			} `json:"assignee"`
+			AssigneeType string `json:"assignee_type"`
 		} `json:"meta"`
 	}
 	if err := r.getJSON(ctx, fmt.Sprintf("/api/v1/accounts/%d/conversations/%d", accountID, conversationID), nil, &conv); err != nil {
 		return 0, err
 	}
-	if conv.Meta.Assignee == nil {
+	if conv.Meta.Assignee == nil || conv.Meta.AssigneeType != "User" {
 		return 0, nil
 	}
 	return conv.Meta.Assignee.ID, nil
