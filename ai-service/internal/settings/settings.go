@@ -214,6 +214,10 @@ func Mask(secret string) string {
 	return "••••" + string(r[len(r)-4:])
 }
 
+// FallbackMaxTokens caps backup answers. Replies are a few lines; the cap
+// bounds cost and stops a backup provider holding credit for a huge answer.
+const FallbackMaxTokens = 1024
+
 // NewCompleter builds the LLM chain (primary, then fallback if configured).
 // RewriteSettings is the provider setup for the query rewrite: the main
 // provider with a smaller, faster model, falling back to the main model so a
@@ -240,7 +244,9 @@ func NewCompleter(s LLM, timeout time.Duration, logger *slog.Logger) llm.Complet
 	}
 	f := &llm.Fallback{Primary: newClient(s.Primary, timeout), Logger: logger}
 	if s.Fallback.Configured() {
-		f.Secondary = newClient(s.Fallback, timeout)
+		backup := newClient(s.Fallback, timeout)
+		backup.MaxTokens = FallbackMaxTokens
+		f.Secondary = backup
 	}
 	return f
 }
