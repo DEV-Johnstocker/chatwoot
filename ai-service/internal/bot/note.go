@@ -26,7 +26,7 @@ Only facts from the chat or the photo; never guess. Never write card numbers, CV
 
 // noteWarning heads every model-written note: the summary comes from what the
 // customer wrote and sent, so staff must not take it as a verified fact.
-const noteWarning = "⚠️ สรุปอัตโนมัติจากข้อความและรูปของลูกค้า ยอดเงินยังไม่ได้ตรวจ"
+const noteWarning = "⚠️ สรุปอัตโนมัติจากสิ่งที่ลูกค้าส่งมา ยังไม่ได้ตรวจสอบ (รวมถึงยอดเงิน)"
 
 // noteTimeout bounds the summary; the customer's message is already sent.
 const noteTimeout = 15 * time.Second
