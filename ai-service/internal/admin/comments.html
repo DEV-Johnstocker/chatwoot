@@ -45,7 +45,7 @@
       {{with .Shadow}}<p class="field-hint">AI reviewer (trial): {{.}}</p>{{end}}
     </div>
     {{with .LastFail}}<div class="alert warn" role="status">The last send failed: {{.}}</div>{{end}}
-    <form method="post" action="/admin/comments" class="change-actions">
+    <form method="post" action="/admin/comments">
       <input type="hidden" name="account" value="{{$.Account}}">
       <input type="hidden" name="id" value="{{.ID}}">
       <input type="hidden" name="version" value="{{.Version}}">
@@ -54,17 +54,17 @@
       <p class="field-hint" id="reply-hint-{{.ID}}">{{if .Draft}}AI suggestion: check it before sending. It is written from a stranger's comment.{{else}}Write the message they will receive in Messenger.{{end}}</p>
       <textarea id="reply-{{.ID}}" name="reply" rows="4" maxlength="2000" aria-describedby="reply-hint-{{.ID}}">{{.Draft}}</textarea>
       {{end}}
-      <div class="row">
-        {{if not .Expired}}<button type="submit" name="decision" value="send" class="primary"{{if not $.CanSend}} disabled{{end}}>Send private reply</button>{{end}}
+      <div class="actions">
         <button type="submit" name="decision" value="dismiss">Dismiss</button>
+        {{if not .Expired}}<button type="submit" name="decision" value="send" class="primary"{{if not $.CanSend}} disabled{{end}}>Send private reply</button>{{end}}
       </div>
     </form>
   </section>
   {{end}}
 
   {{if .Recent}}
-  <section class="card" aria-labelledby="history-h" style="margin-top:16px">
-    <h2 id="history-h" style="font-size:1.125rem;margin:0 0 8px">History</h2>
+  <section class="card spaced-lg" aria-labelledby="history-h">
+    <h2 id="history-h" class="card-title">History</h2>
     <table>
       <thead><tr><th scope="col">When</th><th scope="col">From</th><th scope="col">Result</th><th scope="col">Comment</th><th scope="col">Reply sent</th><th scope="col">AI reviewer</th></tr></thead>
       <tbody>
