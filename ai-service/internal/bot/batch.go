@@ -40,6 +40,9 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID, text st
 	key := convKey{ev.Account.ID, ev.ConversationID()}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.closed {
+		return
+	}
 	if b.pending == nil {
 		b.pending = map[convKey]*pendingReply{}
 	}
@@ -60,12 +63,29 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID, text st
 	}
 	p.seq++
 	job := Job{Event: ev, Decision: webhook.Reply, DeliveryID: deliveryID, flush: p.seq}
-	p.timer = time.AfterFunc(b.opts.ReplyDelay, func() {
-		if err := b.Enqueue(job); err != nil {
-			log.Warn("waiting reply not queued", "error", err)
-			b.cancelPending(key.acct, key.conv)
-		}
-	})
+	p.timer = time.AfterFunc(b.opts.ReplyDelay, func() { b.queueWaiting(log, key, job, 0) })
+}
+
+// queueWaiting hands a burst's reply to its worker. It holds b.mu so Close
+// cannot close the queue in between; a full queue is retried a few times
+// (the webhook was already accepted, so Chatwoot will not resend it).
+func (b *Bot) queueWaiting(log *slog.Logger, key convKey, job Job, try int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	p := b.pending[key]
+	if b.closed || p == nil || p.seq != job.flush {
+		return
+	}
+	err := b.Enqueue(job)
+	if err == nil {
+		return
+	}
+	if try < 3 {
+		p.timer = time.AfterFunc(time.Second, func() { b.queueWaiting(log, key, job, try+1) })
+		return
+	}
+	log.Warn("waiting reply dropped: queue full", "error", err)
+	delete(b.pending, key)
 }
 
 // takePending returns the burst's photos and texts if seq is still the latest wait.

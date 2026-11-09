@@ -223,6 +223,8 @@ func TestReaderStaffOpenCountAndAssignee(t *testing.T) {
 	var filterBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/api/v1/profile":
+			_, _ = w.Write([]byte(`{"id":9,"name":"AI Reader"}`))
 		case "/api/v1/accounts/1/inbox_members/2":
 			_, _ = w.Write([]byte(`{"payload":[{"id":5,"name":"Newk","availability_status":"online"},{"id":9,"name":"AI Reader","availability_status":"offline"}]}`))
 		case "/api/v1/accounts/1/conversations/filter":
@@ -252,7 +254,7 @@ func TestReaderStaffOpenCountAndAssignee(t *testing.T) {
 	bot, errB := r.Assignee(ctx, 1, 78)
 
 	// Assert
-	if errStaff != nil || len(staff) != 2 || !staff[0].Online || staff[1].Online || staff[0].ID != 5 {
+	if errStaff != nil || len(staff) != 2 || !staff[0].Online || staff[1].Online || staff[0].ID != 5 || staff[0].Reader || !staff[1].Reader {
 		t.Errorf("staff = %+v err=%v", staff, errStaff)
 	}
 	if errOpen != nil || open != 4 {

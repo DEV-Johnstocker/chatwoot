@@ -89,7 +89,7 @@ func cleanSummary(s string) string {
 }
 
 // fence keeps customer text inside the <chat> block.
-var fence = strings.NewReplacer("<chat>", "‹chat›", "</chat>", "‹/chat›")
+var fence = regexp.MustCompile(`(?i)<\s*(/?)\s*chat\s*>`)
 
 // noteInput lays out the chat for the note model, fenced as data.
 func noteInput(history []memory.Turn, botMsg, reason string) string {
@@ -100,10 +100,10 @@ func noteInput(history []memory.Turn, botMsg, reason string) string {
 		if t.Role == "assistant" {
 			who = "บอท"
 		}
-		sb.WriteString(who + ": " + fence.Replace(t.Content) + "\n")
+		sb.WriteString(who + ": " + fence.ReplaceAllString(t.Content, "‹${1}chat›") + "\n")
 	}
 	if botMsg != "" {
-		sb.WriteString("บอท (last message, sent now): " + fence.Replace(botMsg) + "\n")
+		sb.WriteString("บอท (last message, sent now): " + fence.ReplaceAllString(botMsg, "‹${1}chat›") + "\n")
 	}
 	sb.WriteString("</chat>\nHandoff reason: " + reasonLabels[reason])
 	return sb.String()

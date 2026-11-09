@@ -26,6 +26,11 @@ type Event struct {
 	Sender       Sender       `json:"sender"`
 	Conversation Conversation `json:"conversation"`
 	Attachments  []Attachment `json:"attachments"` // present only when the message has files
+	// ContentAttributes carries Chatwoot's message flags; external_echo marks
+	// a reply sent outside Chatwoot (e.g. from the Messenger app).
+	ContentAttributes struct {
+		ExternalEcho bool `json:"external_echo"`
+	} `json:"content_attributes"`
 }
 
 // Attachment is a file on a message (photo, voice note, document, ...).

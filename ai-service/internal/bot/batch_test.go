@@ -244,3 +244,22 @@ func TestEndlessBurstKeepsABoundedTrace(t *testing.T) {
 	}
 	p.timer.Stop()
 }
+
+func TestCloseDuringAWaitingReplyDoesNotCrash(t *testing.T) {
+	// Arrange: a reply is waiting when the service shuts down (a deploy).
+	cw := &fakeChatwoot{}
+	b, _ := newBot(cw, &fakeLLM{reply: "x"})
+	b.opts.ReplyDelay = 30 * time.Millisecond
+	b.Start(context.Background())
+	_ = b.Enqueue(msgN(1, "ราคา"))
+	time.Sleep(10 * time.Millisecond)
+
+	// Act
+	b.Close()
+	time.Sleep(80 * time.Millisecond) // past the wait: the timer must not send on a closed queue
+
+	// Assert: reaching here without a panic is the test; nothing is sent after close.
+	if strings.Contains(cw.joined(), "msg:") {
+		t.Errorf("no reply may be sent after Close: %s", cw.joined())
+	}
+}

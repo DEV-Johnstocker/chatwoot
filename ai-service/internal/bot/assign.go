@@ -37,7 +37,7 @@ func pickAssignee(staff []chatwoot.Staff, open map[int64]int, current int64) int
 	var best []int64
 	least := -1
 	for _, s := range staff {
-		if !s.Online {
+		if !s.Online || s.Reader {
 			continue
 		}
 		if s.ID == current {

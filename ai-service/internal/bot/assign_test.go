@@ -133,3 +133,17 @@ func TestStaffReplyIsNotLabelledOrReassigned(t *testing.T) {
 		t.Errorf("an admin already answering keeps the chat; got %s", got)
 	}
 }
+
+func TestPickAssigneeNeverPicksExcludedUsers(t *testing.T) {
+	// Arrange: the AI Reader account must never get chats, even if it shows online.
+	staff := []chatwoot.Staff{{ID: 1, Online: true, Reader: true}, {ID: 2, Online: true}}
+	open := map[int64]int{1: 0, 2: 9}
+
+	// Act
+	got := pickAssignee(staff, open, 0)
+
+	// Assert
+	if got != 2 {
+		t.Errorf("got %d, want 2 (the reader account is never assigned)", got)
+	}
+}

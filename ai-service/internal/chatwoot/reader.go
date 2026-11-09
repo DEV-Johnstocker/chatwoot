@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
@@ -19,6 +20,9 @@ type Reader struct {
 	baseURL string
 	token   string
 	http    *http.Client
+
+	mu   sync.Mutex
+	self int64 // the reader account's user id, once known
 }
 
 // NewReader returns a Reader. baseURL has no trailing slash.
@@ -95,6 +99,7 @@ type Staff struct {
 	ID     int64
 	Name   string
 	Online bool
+	Reader bool // the reader account itself: never given chats
 }
 
 // InboxStaff lists an inbox's members and whether each is online now
@@ -110,11 +115,32 @@ func (r *Reader) InboxStaff(ctx context.Context, accountID, inboxID int64) ([]St
 	if err := r.getJSON(ctx, fmt.Sprintf("/api/v1/accounts/%d/inbox_members/%d", accountID, inboxID), nil, &page); err != nil {
 		return nil, err
 	}
+	self, err := r.selfID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	staff := make([]Staff, 0, len(page.Payload))
 	for _, m := range page.Payload {
-		staff = append(staff, Staff{ID: m.ID, Name: m.Name, Online: m.AvailabilityStatus == "online"})
+		staff = append(staff, Staff{ID: m.ID, Name: m.Name, Online: m.AvailabilityStatus == "online", Reader: m.ID == self})
 	}
 	return staff, nil
+}
+
+// selfID is the reader account's own user id (asked once, then kept).
+func (r *Reader) selfID(ctx context.Context) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.self != 0 {
+		return r.self, nil
+	}
+	var profile struct {
+		ID int64 `json:"id"`
+	}
+	if err := r.getJSON(ctx, "/api/v1/profile", nil, &profile); err != nil {
+		return 0, err
+	}
+	r.self = profile.ID
+	return r.self, nil
 }
 
 // OpenCount is how many open conversations are assigned to a user.

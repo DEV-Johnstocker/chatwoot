@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webhook"
 )
 
@@ -21,6 +22,9 @@ func staffReply(status, senderType string, files bool) Job {
 		ev.Content = ""
 		ev.Attachments = []webhook.Attachment{{FileType: "image"}}
 	}
+	if senderType == "" { // Chatwoot stores a Messenger reply as an echo with no sender
+		ev.ContentAttributes.ExternalEcho = true
+	}
 	return Job{Event: ev, Decision: webhook.Classify(ev)}
 }
 
@@ -34,7 +38,9 @@ func TestBotStepsBackWhenAnAdminRepliesOutsideChatwoot(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Arrange
 			cw := &fakeChatwoot{}
-			b, _ := newBot(cw, &fakeLLM{reply: "x"})
+			b, h := newBot(cw, &fakeLLM{reply: "x"})
+			h.Append(1, 7, memory.Turn{Role: "user", Content: "ราคาเท่าไหร่"})
+			h.Append(1, 7, memory.Turn{Role: "assistant", Content: "3,900 บาทครับ"})
 
 			// Act
 			b.Process(context.Background(), job)
@@ -65,5 +71,40 @@ func TestStaffReplyOnAStaffChatChangesNothing(t *testing.T) {
 	}
 	if turns := h.Get(1, 7); len(turns) != 1 || turns[0].Role != "assistant" {
 		t.Errorf("the staff reply should still be remembered as context: %+v", turns)
+	}
+}
+
+func TestAutomatedMessagesDoNotSwitchTheBotOff(t *testing.T) {
+	cases := map[string]func(*memory.History) Job{
+		// Facebook Instant Reply arrives as an echo before the bot has said anything.
+		"page instant reply before the bot spoke": func(*memory.History) Job { return staffReply("pending", "", false) },
+		// A Chatwoot automation message has no sender and is not an echo.
+		"chatwoot automation message": func(h *memory.History) Job {
+			h.Append(1, 7, memory.Turn{Role: "assistant", Content: "สวัสดีครับ"})
+			j := staffReply("pending", "", false)
+			j.Event.ContentAttributes.ExternalEcho = false
+			return j
+		},
+		// Messenger echoing the bot's own reply back.
+		"echo of the bot's own last reply": func(h *memory.History) Job {
+			h.Append(1, 7, memory.Turn{Role: "assistant", Content: "แอดมินตอบเองครับ"})
+			return staffReply("pending", "", false)
+		},
+	}
+	for name, build := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			cw := &fakeChatwoot{}
+			b, h := newBot(cw, &fakeLLM{reply: "x"})
+			job := build(h)
+
+			// Act
+			b.Process(context.Background(), job)
+
+			// Assert
+			if got := cw.joined(); strings.Contains(got, "handoff") {
+				t.Errorf("the bot must keep the chat, got %s", got)
+			}
+		})
 	}
 }

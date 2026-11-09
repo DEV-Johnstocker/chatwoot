@@ -131,6 +131,7 @@ type Bot struct {
 
 	mu      sync.Mutex
 	pending map[convKey]*pendingReply // replies waiting for a burst to end
+	closed  bool                      // set by Close; no new waiting reply is queued
 }
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
@@ -187,6 +188,13 @@ func (b *Bot) Start(ctx context.Context) {
 
 // Close stops accepting work, drains queued jobs and waits for workers.
 func (b *Bot) Close() {
+	b.mu.Lock()
+	b.closed = true
+	for key, p := range b.pending { // a waiting reply must not reach a closed queue
+		p.timer.Stop()
+		delete(b.pending, key)
+	}
+	b.mu.Unlock()
 	for _, q := range b.queues {
 		close(q)
 	}
@@ -218,19 +226,24 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	case webhook.Pause:
 		b.cancelPending(acct, conv)
 		log.Debug("staff took the chat, waiting reply dropped")
-		b.stepBackIfStaffReplied(ctx, log, ev)
+		if b.staffTookOver(ev) {
+			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonStaffReplied, nil)
+		}
 	case webhook.Forget:
 		b.cancelPending(acct, conv)
 		b.opts.History.Forget(acct, conv)
 		log.Debug("conversation resolved, history cleared")
 	case webhook.Record:
-		b.cancelPending(acct, conv) // staff are handling the chat
+		b.cancelPending(acct, conv)     // staff are handling the chat
+		takeover := b.staffTookOver(ev) // decided before this message joins the memory
 		role := "user"
 		if ev.MessageType == "outgoing" {
 			role = "assistant"
 		}
 		b.opts.History.Append(acct, conv, memory.Turn{Role: role, Content: capText(ev.Content)})
-		b.stepBackIfStaffReplied(ctx, log, ev)
+		if takeover {
+			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonStaffReplied, nil)
+		}
 	case webhook.HandOff, webhook.Reply:
 		tr := b.startTurn(ev, customerText(ev))
 		defer b.finishTurn(tr)
@@ -484,17 +497,36 @@ func (b *Bot) recall(ctx context.Context, log *slog.Logger, acct, conv, current 
 	}
 }
 
-// stepBackIfStaffReplied hands the chat to staff, silently, when someone
-// other than the bot answered the customer while the bot still owned it: an
-// admin typing in Chatwoot without taking the chat, or replying straight from
-// Facebook Messenger (Chatwoot stores those echoes with no sender). Otherwise
-// the bot and the admin would both answer the next message.
-func (b *Bot) stepBackIfStaffReplied(ctx context.Context, log *slog.Logger, ev webhook.Event) {
+// staffTookOver says whether a public reply that is not the bot's means a
+// person took the chat while the bot still owned it. Then the bot hands it
+// over silently, or the bot and the admin would both answer the next message.
+//   - A Chatwoot user (staff typing in Chatwoot) always counts.
+//   - A reply with no sender counts only when Chatwoot marks it as a Messenger
+//     echo, the bot has already been chatting here, and it is not the bot's
+//     own last reply echoed back. So a page's Instant Reply (sent before the
+//     bot speaks) and Chatwoot automation messages (not echoes) do not.
+func (b *Bot) staffTookOver(ev webhook.Event) bool {
 	if ev.Event != "message_created" || ev.MessageType != "outgoing" || ev.Private ||
-		ev.Sender.Type == "agent_bot" || ev.Conversation.Status != "pending" {
-		return
+		ev.Conversation.Status != "pending" {
+		return false
 	}
-	b.handoff(ctx, log, ev.Account.ID, ev.Inbox.ID, ev.ConversationID(), "", ReasonStaffReplied, nil)
+	switch ev.Sender.Type {
+	case "user":
+		return true
+	case "":
+	default:
+		return false
+	}
+	if !ev.ContentAttributes.ExternalEcho {
+		return false
+	}
+	lastBot := ""
+	for _, t := range b.opts.History.Get(ev.Account.ID, ev.ConversationID()) {
+		if t.Role == "assistant" {
+			lastBot = t.Content
+		}
+	}
+	return lastBot != "" && strings.TrimSpace(ev.Content) != strings.TrimSpace(lastBot)
 }
 
 // retrievalQueries searches the latest customer message on its own, plus
