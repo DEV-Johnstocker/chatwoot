@@ -30,6 +30,9 @@ type Queue struct {
 	Store  Store
 	Sender Sender // nil: the queue fills, but Send is refused
 	Now    func() time.Time
+	// Posts reads the post each waiting comment was left on, for the page;
+	// nil shows the comments without it.
+	Posts PostReader
 }
 
 func (q *Queue) now() time.Time {
@@ -44,7 +47,31 @@ func (q *Queue) CanSend() bool { return q.Sender != nil }
 
 // Waiting lists the account's comments that wait for the owner.
 func (q *Queue) Waiting(ctx context.Context, accountID int64) ([]Comment, error) {
-	return q.Store.Waiting(ctx, accountID)
+	list, err := q.Store.Waiting(ctx, accountID)
+	if err != nil || q.Posts == nil {
+		return list, err
+	}
+	// One read per post per page load; a failed read just shows no post.
+	read := map[string]Post{}
+	failed := map[string]bool{}
+	for i, c := range list {
+		if c.PostID == "" || failed[c.PostID] {
+			continue
+		}
+		p, ok := read[c.PostID]
+		if !ok {
+			pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			got, err := q.Posts.Post(pctx, c.PostID)
+			cancel()
+			if err != nil {
+				failed[c.PostID] = true
+				continue
+			}
+			p, read[c.PostID] = got, got
+		}
+		list[i].PostText, list[i].PostKnown = p.Text, true
+	}
+	return list, nil
 }
 
 // Recent lists recently decided or ignored comments.
