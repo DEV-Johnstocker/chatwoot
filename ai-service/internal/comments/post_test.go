@@ -104,18 +104,21 @@ func TestPostCache_FetchesEachPostOnceUntilItExpires(t *testing.T) {
 	}
 }
 
-func TestPostCache_DoesNotRememberFailures(t *testing.T) {
-	// Arrange
+func TestPostCache_RemembersFailuresBriefly(t *testing.T) {
+	// Arrange: while Graph is down, reloads must not repeat every failing read.
+	now := time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
 	src := &countingPosts{err: errors.New("graph down")}
-	c := &PostCache{Reader: src, TTL: time.Hour}
+	c := &PostCache{Reader: src, TTL: time.Hour, Now: func() time.Time { return now }}
 
 	// Act
 	_, err1 := c.Post(context.Background(), "1_2")
 	_, err2 := c.Post(context.Background(), "1_2")
+	now = now.Add(2 * time.Minute)
+	_, err3 := c.Post(context.Background(), "1_2")
 
 	// Assert
-	if err1 == nil || err2 == nil || src.calls.Load() != 2 {
-		t.Fatalf("errors %v %v, fetches %d", err1, err2, src.calls.Load())
+	if err1 == nil || err2 == nil || err3 == nil || src.calls.Load() != 2 {
+		t.Fatalf("errors %v %v %v, fetches %d (want 2)", err1, err2, err3, src.calls.Load())
 	}
 }
 

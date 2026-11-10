@@ -33,6 +33,9 @@ type Queue struct {
 	// Posts reads the post each waiting comment was left on, for the page;
 	// nil shows the comments without it.
 	Posts PostReader
+	// PostBudget bounds all post reads of one page load (default 5 s), so a
+	// slow Graph cannot hang the page; posts not read in time are not shown.
+	PostBudget time.Duration
 }
 
 func (q *Queue) now() time.Time {
@@ -51,7 +54,14 @@ func (q *Queue) Waiting(ctx context.Context, accountID int64) ([]Comment, error)
 	if err != nil || q.Posts == nil {
 		return list, err
 	}
-	// One read per post per page load; a failed read just shows no post.
+	// One read per post per page load, all within one budget; a failed or
+	// late read just shows no post.
+	budget := q.PostBudget
+	if budget <= 0 {
+		budget = 5 * time.Second
+	}
+	pctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
 	read := map[string]Post{}
 	failed := map[string]bool{}
 	for i, c := range list {
@@ -60,9 +70,10 @@ func (q *Queue) Waiting(ctx context.Context, accountID int64) ([]Comment, error)
 		}
 		p, ok := read[c.PostID]
 		if !ok {
-			pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if pctx.Err() != nil {
+				break
+			}
 			got, err := q.Posts.Post(pctx, c.PostID)
-			cancel()
 			if err != nil {
 				failed[c.PostID] = true
 				continue

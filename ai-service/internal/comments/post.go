@@ -109,12 +109,15 @@ func (g *Graph) Post(ctx context.Context, postID string) (Post, error) {
 }
 
 // PostCache remembers posts it read, so many comments on one post cost one
-// Graph call. Failures are not remembered: the next comment tries again.
+// Graph call. A failed read is remembered for FailTTL, so a Graph outage is
+// not hit again on every page load; a read cut short by the caller's own
+// deadline is not remembered.
 type PostCache struct {
-	Reader PostReader
-	TTL    time.Duration    // default 1 hour
-	Max    int              // default 500 posts
-	Now    func() time.Time // tests
+	Reader  PostReader
+	TTL     time.Duration    // default 1 hour
+	FailTTL time.Duration    // default 1 minute
+	Max     int              // default 500 posts
+	Now     func() time.Time // tests
 
 	mu sync.Mutex
 	m  map[string]cachedPost
@@ -122,6 +125,7 @@ type PostCache struct {
 
 type cachedPost struct {
 	post Post
+	err  error
 	at   time.Time
 }
 
@@ -134,33 +138,43 @@ func (c *PostCache) now() time.Time {
 
 // Post returns the post from the cache, or reads and remembers it.
 func (c *PostCache) Post(ctx context.Context, postID string) (Post, error) {
-	ttl, max := c.TTL, c.Max
+	ttl, failTTL, max := c.TTL, c.FailTTL, c.Max
 	if ttl <= 0 {
 		ttl = time.Hour
+	}
+	if failTTL <= 0 {
+		failTTL = time.Minute
 	}
 	if max <= 0 {
 		max = 500
 	}
 	c.mu.Lock()
-	if e, ok := c.m[postID]; ok && c.now().Sub(e.at) < ttl {
-		c.mu.Unlock()
-		return e.post, nil
+	if e, ok := c.m[postID]; ok {
+		age := c.now().Sub(e.at)
+		if e.err == nil && age < ttl {
+			c.mu.Unlock()
+			return e.post, nil
+		}
+		if e.err != nil && age < failTTL {
+			c.mu.Unlock()
+			return Post{}, e.err
+		}
 	}
 	c.mu.Unlock()
 	p, err := c.Reader.Post(ctx, postID)
-	if err != nil {
-		return Post{}, err
+	if err != nil && ctx.Err() != nil {
+		return Post{}, err // our caller gave up; Graph may be fine
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.m == nil {
 		c.m = map[string]cachedPost{}
 	}
-	if len(c.m) >= max {
+	if _, ok := c.m[postID]; !ok && len(c.m) >= max {
 		c.evictOldest()
 	}
-	c.m[postID] = cachedPost{post: p, at: c.now()}
-	return p, nil
+	c.m[postID] = cachedPost{post: p, err: err, at: c.now()}
+	return p, err
 }
 
 func (c *PostCache) evictOldest() {

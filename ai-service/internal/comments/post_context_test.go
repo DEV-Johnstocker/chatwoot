@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -173,5 +175,39 @@ func TestQueue_WaitingShowsEachCommentsPost(t *testing.T) {
 	}
 	if posts.calls.Load() != 2 {
 		t.Fatalf("each post must be read once per page load, got %d reads", posts.calls.Load())
+	}
+}
+
+type slowPosts struct{ calls atomic.Int32 }
+
+func (s *slowPosts) Post(ctx context.Context, _ string) (Post, error) {
+	s.calls.Add(1)
+	<-ctx.Done()
+	return Post{}, ctx.Err()
+}
+
+func TestQueue_SlowGraphCannotHangThePage(t *testing.T) {
+	// Arrange: many waiting comments on different posts, Graph not answering.
+	ctx := context.Background()
+	store := &Memory{}
+	for i := range 20 {
+		_, _ = store.Add(ctx, Comment{AccountID: 1, CommentID: fmt.Sprint("c", i), PostID: fmt.Sprint("1_", i), CreatedAt: time.Now()})
+	}
+	list, _ := store.Unscored(ctx, 50)
+	for _, c := range list {
+		_ = store.Score(ctx, c.ID, IntentLead, "r", "d")
+	}
+	q := &Queue{Store: store, Posts: &slowPosts{}, PostBudget: 50 * time.Millisecond}
+
+	// Act
+	start := time.Now()
+	waiting, err := q.Waiting(ctx, 1)
+
+	// Assert
+	if err != nil || len(waiting) != 20 {
+		t.Fatalf("%v %d", err, len(waiting))
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("page waited %v for Graph", d)
 	}
 }
