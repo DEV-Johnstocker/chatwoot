@@ -111,6 +111,16 @@ probe_provider() {
   echo "${status:-000} ${code:--}"
 }
 
+# url_host <url> prints only the host[:port]: no user info, path, query or
+# fragment, and "redacted" if anything else is left.
+url_host() {
+  local host=${1#*://}
+  host=${host%%[/?#]*}
+  host=${host##*@}
+  [[ "$host" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || host=redacted
+  echo "$host"
+}
+
 container_env() { docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}'; }
 
 # probe <container> probes the primary provider: EMBED_* falling back to
@@ -139,8 +149,7 @@ probe_fallback() {
     echo none
     return
   fi
-  host=${base#*://}
-  host=${host%%/*}
+  host=$(url_host "$base")
   echo "$(probe_provider "$base" "$key" "$model") $host"
 }
 

@@ -81,6 +81,13 @@ check "request is tiny" '{"model":"text-embedding-3-small","input":"ping"}' "$(j
 check "key not in probe output" "0" "$(grep -c "$marker" <<<"$got" || true)"
 unset -f docker curl
 
+# --- url_host: never leaks credentials or paths ---
+check "plain host" "openrouter.ai" "$(url_host https://openrouter.ai/api/v1)"
+check "port kept" "proxy.local:8443" "$(url_host https://proxy.local:8443/v1)"
+check "user info dropped" "host.example" "$(url_host 'https://user:p4ss@host.example/v1')"
+check "query dropped" "host.example" "$(url_host 'https://host.example?key=abc')"
+check "odd host redacted" "redacted" "$(url_host 'https://ho st/x')"
+
 # --- probe_fallback: only when base URL, key and model are all set ---
 docker() { printf 'EMBED_FALLBACK_BASE_URL=https://openrouter.ai/api/v1\nEMBED_FALLBACK_API_KEY=%s\n' "$marker"; }
 check "incomplete fallback is none" none "$(probe_fallback c)"
