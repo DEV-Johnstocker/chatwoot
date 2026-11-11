@@ -36,10 +36,11 @@ const (
 
 var errTestTooLarge = errors.New("too large")
 
-// formError is a message for the owner, shown on the page as written.
-type formError string
+// formError is a message for the owner, shown on the page in the page's
+// language (ownerMsg).
+type formError ownerMsg
 
-func (e formError) Error() string { return string(e) }
+func (e formError) Error() string { return ownerMsg(e).in(langEN) }
 
 type testSource struct {
 	Title string
@@ -97,11 +98,11 @@ func (h *Handler) submitTest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "form too large or invalid", http.StatusBadRequest)
 		return
 	}
-	acct := accountParam(r.PostForm.Get("account"))
+	acct, lang := accountParam(r.PostForm.Get("account")), langOf(r)
 	d := testData{AccountID: acct, Inbox: r.PostForm.Get("inbox"), Enabled: h.Tester != nil, Knowledge: h.Knowledge != nil}
 	d.Turns = historyFromForm(r.PostForm["role"], r.PostForm["text"])
 	if errors.Is(err, errTestTooLarge) {
-		d.Error = fmt.Sprintf("The files are too large. Attach up to %d files, %d MB in total.", maxTestFiles, maxTestBodyBytes>>20)
+		d.Error = tr(lang, "The files are too large. Attach up to %d files, %d MB in total.", maxTestFiles, maxTestBodyBytes>>20)
 		h.renderPage(w, r, http.StatusRequestEntityTooLarge, "test.html", d)
 		return
 	}
@@ -114,10 +115,14 @@ func (h *Handler) submitTest(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err != nil:
 		d.Error = err.Error()
+		var fe formError
+		if errors.As(err, &fe) {
+			d.Error = ownerMsg(fe).in(lang)
+		}
 	case inboxErr != nil:
 		d.Error = inboxErr.Error()
 	case msg == "" && len(uploads) == 0:
-		d.Error = "Type a message or attach a file."
+		d.Error = tr(lang, "Type a message or attach a file.")
 	}
 	if d.Error != "" {
 		h.renderPage(w, r, http.StatusUnprocessableEntity, "test.html", d)
@@ -132,7 +137,7 @@ func (h *Handler) submitTest(w http.ResponseWriter, r *http.Request) {
 		d.Turns[len(d.Turns)-1].Content = clip(p.Input)
 	}
 	d.Turns = append(d.Turns, memory.Turn{Role: "assistant", Content: p.Reply})
-	d.Sent, d.Asked, d.Handoff, d.Reason, d.Model = true, msg, p.Handoff, reasonText[p.Reason], p.Model
+	d.Sent, d.Asked, d.Handoff, d.Reason, d.Model = true, msg, p.Handoff, tr(lang, reasonText[p.Reason]), p.Model
 	if d.Asked == "" {
 		d.Asked = p.Transcript
 	}
@@ -141,7 +146,7 @@ func (h *Handler) submitTest(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, kind := range strings.Split(p.Media, ",") {
 		if l := mediaLabel[kind]; l != "" {
-			d.Media = append(d.Media, l)
+			d.Media = append(d.Media, tr(lang, l))
 		}
 	}
 	d.Transcript = p.Transcript
@@ -175,7 +180,7 @@ func parseTestForm(w http.ResponseWriter, r *http.Request) ([]bot.Upload, error)
 			r.PostForm = map[string][]string{}
 			return nil, errTestTooLarge
 		}
-		return nil, formError("Could not read the form. Try sending it again.")
+		return nil, formError{"Could not read the form. Try sending it again.", nil}
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 	// ParseMultipartForm allows 10 MB of text fields on top of maxMemory;
@@ -196,14 +201,14 @@ func parseTestForm(w http.ResponseWriter, r *http.Request) ([]bot.Upload, error)
 			continue // no file chosen
 		}
 		if len(uploads) == maxTestFiles {
-			return nil, formError(fmt.Sprintf("Attach up to %d files per message.", maxTestFiles))
+			return nil, formError{"Attach up to %d files per message.", []any{maxTestFiles}}
 		}
 		if fh.Size > maxTestFileBytes {
-			return nil, formError(fmt.Sprintf("%s is over %d MB.", clip(fh.Filename), maxTestFileBytes>>20))
+			return nil, formError{"%s is over %d MB.", []any{clip(fh.Filename), maxTestFileBytes >> 20}}
 		}
 		data, err := readTestFile(fh)
 		if err != nil {
-			return nil, formError("Could not read " + clip(fh.Filename) + ".")
+			return nil, formError{"Could not read %s.", []any{clip(fh.Filename)}}
 		}
 		uploads = append(uploads, bot.Upload{Name: fh.Filename, Data: data})
 	}

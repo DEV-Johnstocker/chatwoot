@@ -78,6 +78,9 @@ func (h *Handler) showConnections(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderConnections(w http.ResponseWriter, r *http.Request, status int, d connectionsData) {
+	lang := langOf(r)
+	// Notices and errors are set in English; show them in the page language.
+	d.Notice, d.Error = tr(lang, d.Notice), tr(lang, d.Error)
 	d.URL = h.mcpURL(r)
 	d.Once = h.newOnce()
 	if h.Tokens != nil {
@@ -85,20 +88,17 @@ func (h *Handler) renderConnections(w http.ResponseWriter, r *http.Request, stat
 		list, err := h.Tokens.List(r.Context(), d.AccountID)
 		if err != nil {
 			h.Logger.Error("list mcp tokens", "account_id", d.AccountID, "error", err)
-			d.Error = "Could not load the connections. Check the database connection."
+			d.Error = tr(lang, "Could not load the connections. Check the database connection.")
 		}
 		for _, t := range list {
-			v := tokenView{ID: t.ID, Name: t.Name, Access: "Read only", Created: h.day(t.CreatedAt),
-				LastUsed: "Never", Revoked: !t.RevokedAt.IsZero(), Expires: "Never"}
+			v := tokenView{ID: t.ID, Name: t.Name, Access: accessLabel(lang, t.CanWrite), Created: h.dayIn(lang, t.CreatedAt),
+				LastUsed: tr(lang, "Never"), Revoked: !t.RevokedAt.IsZero(), Expires: tr(lang, "Never|expires")}
 			if !t.ExpiresAt.IsZero() {
-				v.Expires = h.day(t.ExpiresAt)
+				v.Expires = h.dayIn(lang, t.ExpiresAt)
 				v.Expired = t.ExpiresAt.Before(time.Now())
 			}
-			if t.CanWrite {
-				v.Access = "Read and write"
-			}
 			if !t.LastUsedAt.IsZero() {
-				v.LastUsed = h.when(t.LastUsedAt)
+				v.LastUsed = h.whenIn(lang, t.LastUsedAt)
 			}
 			d.Tokens = append(d.Tokens, v)
 		}
@@ -112,14 +112,12 @@ func (h *Handler) renderConnections(w http.ResponseWriter, r *http.Request, stat
 		for _, g := range grants {
 			by := g.ApprovedBy
 			if by == "" {
-				by = "Owner (admin password)"
+				by = tr(lang, "Owner (admin password)")
 			}
-			v := appView{ID: g.ID, By: by, Name: g.ClientName, Access: "Read only", Created: h.day(g.CreatedAt), LastUsed: "Never", Revoked: !g.RevokedAt.IsZero()}
-			if g.CanWrite {
-				v.Access = "Read and write"
-			}
+			v := appView{ID: g.ID, By: by, Name: g.ClientName, Access: accessLabel(lang, g.CanWrite), Created: h.dayIn(lang, g.CreatedAt),
+				LastUsed: tr(lang, "Never"), Revoked: !g.RevokedAt.IsZero()}
 			if !g.LastUsedAt.IsZero() {
-				v.LastUsed = h.when(g.LastUsedAt)
+				v.LastUsed = h.whenIn(lang, g.LastUsedAt)
 			}
 			d.Apps = append(d.Apps, v)
 		}
@@ -131,11 +129,7 @@ func (h *Handler) renderConnections(w http.ResponseWriter, r *http.Request, stat
 			h.Logger.Error("list team", "account_id", d.AccountID, "error", err)
 		}
 		for _, m := range team {
-			v := memberView{Email: m.Email, Access: "Read only", Added: h.day(m.CreatedAt)}
-			if m.CanWrite {
-				v.Access = "Read and write"
-			}
-			d.Team = append(d.Team, v)
+			d.Team = append(d.Team, memberView{Email: m.Email, Access: accessLabel(lang, m.CanWrite), Added: h.dayIn(lang, m.CreatedAt)})
 		}
 	}
 	// The new token is on this page only: never cache it.
@@ -239,6 +233,14 @@ func (h *Handler) submitConnections(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "unknown action", http.StatusBadRequest)
 	}
+}
+
+// accessLabel names what a token, app or team member may do.
+func accessLabel(lang string, canWrite bool) string {
+	if canWrite {
+		return tr(lang, "Read and write")
+	}
+	return tr(lang, "Read only")
 }
 
 // validEmail is a light check; Cloudflare Access proves the address at sign-in.

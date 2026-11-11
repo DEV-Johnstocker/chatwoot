@@ -6,6 +6,16 @@
 // only this file and enforces Trusted Types).
 'use strict';
 (() => {
+  // The few texts this file writes, in the page's language (<html lang>).
+  const thai = {
+    'Copied': 'คัดลอกแล้ว',
+    'Copy failed': 'คัดลอกไม่สำเร็จ',
+    'Test conversation': 'บทสนทนาทดสอบ',
+    'You (as customer)': 'คุณ (ในฐานะลูกค้า)',
+    'Attached:': 'แนบ:',
+    'Bot is replying': 'บอตกำลังตอบ',
+  };
+  const t = (text) => (document.documentElement.lang === 'th' && thai[text]) || text;
   const status = document.createElement('p');
   status.className = 'visually-hidden';
   status.setAttribute('role', 'status');
@@ -30,9 +40,9 @@
         const text = target instanceof HTMLInputElement ? target.value : target.textContent;
         try {
           await navigator.clipboard.writeText(text);
-          say(button, 'Copied');
+          say(button, t('Copied'));
         } catch {
-          say(button, 'Copy failed');
+          say(button, t('Copy failed'));
         }
       });
     }
@@ -75,7 +85,7 @@
     if (!chat) {
       chat = el('div', 'chat');
       chat.setAttribute('role', 'log');
-      chat.setAttribute('aria-label', 'Test conversation');
+      chat.setAttribute('aria-label', t('Test conversation'));
       const empty = section.querySelector('.empty');
       if (empty) empty.replaceWith(chat); else form.before(chat);
     }
@@ -84,15 +94,15 @@
     const files = form.querySelector('input[type=file]');
     const names = files && files.files ? Array.from(files.files, (f) => f.name) : [];
     const mine = el('div', 'bubble user pending');
-    mine.append(el('span', 'who', 'You (as customer)'));
+    mine.append(el('span', 'who', t('You (as customer)')));
     if (text) mine.append(text);
-    if (names.length) mine.append((text ? '\n' : '') + 'Attached: ' + names.join(', '));
+    if (names.length) mine.append((text ? '\n' : '') + t('Attached:') + ' ' + names.join(', '));
     const typing = el('div', 'bubble assistant typing pending');
     typing.setAttribute('role', 'status');
     const dots = el('span', 'dots');
     dots.setAttribute('aria-hidden', 'true');
     dots.append(el('span'), el('span'), el('span'));
-    typing.append(dots, el('span', '', 'Bot is replying'));
+    typing.append(dots, el('span', '', t('Bot is replying')));
     chat.append(mine, typing);
     typing.scrollIntoView({ block: 'nearest' });
   };

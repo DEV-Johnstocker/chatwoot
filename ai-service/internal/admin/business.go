@@ -29,7 +29,7 @@ func (h *Handler) showBusiness(w http.ResponseWriter, r *http.Request) {
 		p, err := h.Profiles.Get(r.Context(), acct)
 		if err != nil {
 			h.Logger.Error("load business profile", "account_id", acct, "error", err)
-			data.Error = "Could not load the business profile. Check the database connection."
+			data.Error = tr(langOf(r), "Could not load the business profile. Check the database connection.")
 		} else {
 			data.Profile = p
 		}
@@ -76,7 +76,7 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) renderBusiness(w http.ResponseWriter, r *http.Request, status int, data businessData) {
 	data.Limits.Name, data.Limits.Field = profile.MaxNameRunes, profile.MaxFieldRunes
 	if !data.Profile.UpdatedAt.IsZero() {
-		data.Updated = h.when(data.Profile.UpdatedAt)
+		data.Updated = h.whenIn(langOf(r), data.Profile.UpdatedAt)
 	}
 	h.renderPage(w, r, status, "business.html", data)
 }

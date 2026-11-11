@@ -246,6 +246,8 @@ func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
 
 	if slot := r.PostForm.Get("test"); slot != "" {
 		data.Test = h.runTest(r.Context(), slot, next)
+		// Our own messages are translated; a provider's error stays as it came.
+		data.Test.Message = tr(langOf(r), data.Test.Message)
 		h.render(w, r, http.StatusOK, data)
 		return
 	}

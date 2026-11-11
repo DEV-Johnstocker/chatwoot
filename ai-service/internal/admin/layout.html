@@ -351,10 +351,10 @@
 
 {{define "inbox-select"}}{{$list := inboxes .Account .Current}}
 <select id="{{.ID}}" name="inbox"{{with .Hint}} aria-describedby="{{.}}"{{end}}>
-  <option value="">{{if .Blank}}{{.Blank}}{{else}}All inboxes{{end}}</option>
+  <option value="">{{if .Blank}}{{.Blank}}{{else}}{{T "All inboxes"}}{{end}}</option>
   {{range $list}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
 </select>
-{{if not $list}}<p class="field-hint">Inboxes appear here by name after a customer writes in them.</p>{{end}}
+{{if not $list}}<p class="field-hint">{{T "Inboxes appear here by name after a customer writes in them."}}</p>{{end}}
 {{end}}
 
 {{define "nav-links"}}

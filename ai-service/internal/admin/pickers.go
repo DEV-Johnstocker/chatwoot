@@ -28,6 +28,7 @@ type option struct {
 // works.
 type pickers struct {
 	ctx      context.Context
+	lang     string // the page language, for "Account 3" and "Inbox 5"
 	h        *Handler
 	accounts []places.Place
 	loaded   bool
@@ -35,7 +36,7 @@ type pickers struct {
 }
 
 func (h *Handler) newPickers(r *http.Request) *pickers {
-	return &pickers{ctx: r.Context(), h: h, inboxes: map[int64][]places.Place{}}
+	return &pickers{ctx: r.Context(), lang: langOf(r), h: h, inboxes: map[int64][]places.Place{}}
 }
 
 // accountOptions lists known accounts with current selected; current is
@@ -53,7 +54,7 @@ func (p *pickers) accountOptions(current int64) []option {
 			p.accounts = list
 		}
 	}
-	return options(p.accounts, strconv.FormatInt(current, 10), "Account")
+	return options(p.accounts, strconv.FormatInt(current, 10), tr(p.lang, "Account"))
 }
 
 // inboxOptions lists the account's known inboxes; current ("" = all) is
@@ -70,7 +71,7 @@ func (p *pickers) inboxOptions(account int64, current string) []option {
 		}
 		p.inboxes[account] = list
 	}
-	return options(list, strings.TrimSpace(current), "Inbox")
+	return options(list, strings.TrimSpace(current), tr(p.lang, "Inbox"))
 }
 
 func options(list []places.Place, current, noun string) []option {
