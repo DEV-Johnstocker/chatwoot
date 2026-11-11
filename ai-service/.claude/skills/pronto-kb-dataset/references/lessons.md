@@ -6,6 +6,29 @@ customer chats ("real-49"), 3 runs each, on a local copy of the database,
 judged by answer-eval plus a "closer" sales judge. Pass counts are means over
 the 3 runs.
 
+## 2026-11-12: round 6 bot code only, old profile kept (h11)
+
+Changed: only the round 6 bot code (prompt and reply rules). Profile, tone,
+contact and sheet stayed as in the baseline.
+
+| | Baseline (g10) | h11 |
+|---|---|---|
+| john-95 pass | 53.3 | 54.3 |
+| real-49 pass | 25.0 | 26.0 |
+| Fact accuracy | 95% / 98% | 96% / 98% |
+| Hand-offs where an answer was expected | 7 | 0 |
+| "I don't know" replies | 16 | 3 |
+| Next step fits (john-95) | 79% | 72% |
+
+Kept: it wins on both sets with no loss of fact accuracy. The margin is
+small (about 1 pass, ranges overlap). Rules implied:
+- The code change alone helps; the earlier losses came from the profile
+  edits. Test profile changes one at a time on top of this.
+- Still missed: "1 licence = 1 computer" (N19 2 → 0 of 3), "the team
+  continues in this chat" (E48 3 → 1). Add these to the profile rules as
+  the next single-change tests.
+- "Next step fits" dropped; watch it in the next test.
+
 ## 2026-11-12: core sales block in the profile, shortened rules (j10)
 
 Changed (all at once): round 6 bot rules; profile "about" with a core sales
