@@ -13,6 +13,9 @@ type Memory struct {
 	mu     sync.Mutex
 	nextID int64
 	rows   []Comment
+	// replied holds when a private reply was sent, by row ID. Forget keeps
+	// it, like the replied_at column in Postgres.
+	replied map[int64]time.Time
 }
 
 func (m *Memory) find(id int64) int {
@@ -167,6 +170,12 @@ func (m *Memory) Finish(_ context.Context, id int64, status Status, reply, by, e
 	if status != StatusWaiting {
 		c.Reply, c.DecidedBy, c.DecidedAt = reply, by, time.Now()
 	}
+	if status == StatusSent {
+		if m.replied == nil {
+			m.replied = map[int64]time.Time{}
+		}
+		m.replied[c.ID] = c.DecidedAt
+	}
 	c.Version++
 	return nil
 }
@@ -232,8 +241,9 @@ func (m *Memory) LastReplies(_ context.Context, accountID int64, fromIDs []strin
 	}
 	out := map[string]time.Time{}
 	for _, c := range m.rows {
-		if c.AccountID == accountID && c.Status == StatusSent && want[c.FromID] && c.DecidedAt.After(out[c.FromID]) {
-			out[c.FromID] = c.DecidedAt
+		at, ok := m.replied[c.ID]
+		if ok && c.AccountID == accountID && want[c.FromID] && at.After(out[c.FromID]) {
+			out[c.FromID] = at
 		}
 	}
 	return out, nil
