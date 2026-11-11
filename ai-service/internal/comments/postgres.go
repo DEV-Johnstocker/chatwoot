@@ -244,8 +244,9 @@ func (p *Postgres) LastReplies(ctx context.Context, accountID int64, fromIDs []s
 	if len(fromIDs) == 0 {
 		return out, nil
 	}
-	rows, err := p.Pool.Query(ctx, `SELECT from_id, max(replied_at) FROM fb_comments
-		WHERE account_id = $1 AND from_id = ANY($2) AND replied_at IS NOT NULL
+	rows, err := p.Pool.Query(ctx, `SELECT from_id, max(coalesce(replied_at, CASE WHEN status = 'sent' THEN decided_at END)) FROM fb_comments
+		WHERE account_id = $1 AND from_id = ANY($2)
+		  AND (replied_at IS NOT NULL OR (status = 'sent' AND decided_at IS NOT NULL))
 		GROUP BY from_id`, accountID, fromIDs)
 	if err != nil {
 		return nil, err

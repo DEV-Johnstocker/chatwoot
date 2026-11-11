@@ -202,7 +202,13 @@ func (m *Memory) Purge(_ context.Context, cutoff time.Time) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	before := len(m.rows)
-	m.rows = slices.DeleteFunc(m.rows, func(c Comment) bool { return c.Received.Before(cutoff) })
+	m.rows = slices.DeleteFunc(m.rows, func(c Comment) bool {
+		if c.Received.Before(cutoff) {
+			delete(m.replied, c.ID)
+			return true
+		}
+		return false
+	})
 	return int64(before - len(m.rows)), nil
 }
 

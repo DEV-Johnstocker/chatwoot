@@ -91,6 +91,27 @@ func TestStore_LastRepliesSurvivesTheCommentBeingDeleted(t *testing.T) {
 	})
 }
 
+// A reply sent by the previous release (during a rolling deploy, or after a
+// code rollback) sets status and decided_at but not replied_at; it must
+// still count.
+func TestPostgres_LastRepliesCountsRepliesWithoutRepliedAt(t *testing.T) {
+	// Arrange
+	db := openDB(t)
+	ctx := context.Background()
+	sendTo(t, db, 1, "old-binary", "person-a")
+	if _, err := db.Pool.Exec(ctx, "UPDATE fb_comments SET replied_at = NULL WHERE comment_id = 'old-binary'"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	got, err := db.LastReplies(ctx, 1, []string{"person-a"})
+
+	// Assert
+	if err != nil || got["person-a"].IsZero() {
+		t.Fatalf("got %v %v", got, err)
+	}
+}
+
 func TestQueue_WaitingMarksRepeatsAndPeopleAlreadyAnswered(t *testing.T) {
 	// Arrange
 	ctx := context.Background()

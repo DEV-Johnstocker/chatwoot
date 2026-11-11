@@ -6,6 +6,7 @@
 -- only that fact (no text) and is kept when the row is blanked; the row is
 -- still deleted with the others 30 days after it arrived.
 SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '30s';
 
 ALTER TABLE fb_comments ADD COLUMN IF NOT EXISTS replied_at TIMESTAMPTZ;
 
