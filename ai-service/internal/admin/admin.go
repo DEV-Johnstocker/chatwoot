@@ -48,6 +48,9 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 	"wordmark": func() template.HTML { return brand.Wordmark },
 	"favicon":  func() template.URL { return brand.FaviconURL },
 	"theme":    func() string { return "" }, // replaced per request in renderPage
+	// lang and T are the page language and its translator (lang.go); replaced per request.
+	"lang": func() string { return langEN },
+	"T":    func(s string, args ...any) string { return tr(langEN, s, args...) },
 	// accounts and inboxes fill the dropdowns; replaced per request in renderPage.
 	"accounts": func(int64) []option { return nil },
 	"inboxes":  func(int64, string) []option { return nil },
@@ -131,6 +134,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/providers", wrap(h.show))
 	mux.Handle("POST /admin/providers", wrap(h.submit))
 	mux.Handle("POST /admin/theme", wrap(h.setTheme))
+	mux.Handle("POST /admin/lang", wrap(h.setLang))
 	mux.Handle("GET /admin/static/admin.js", wrap(serveScript))
 	mux.Handle("GET /admin/connections", wrap(h.showConnections))
 	mux.Handle("POST /admin/connections", wrap(h.submitConnections))
@@ -381,11 +385,12 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, dat
 // the shared set itself is never executed (html/template cannot clone a set
 // after it has run).
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, status int, name string, data any) {
-	theme := themeOf(r)
+	theme, lang := themeOf(r), langOf(r)
 	t, err := pages.Clone()
 	if err == nil {
 		pk := h.newPickers(r)
-		t.Funcs(template.FuncMap{"theme": func() string { return theme }, "accounts": pk.accountOptions, "inboxes": pk.inboxOptions})
+		t.Funcs(template.FuncMap{"theme": func() string { return theme }, "accounts": pk.accountOptions, "inboxes": pk.inboxOptions,
+			"lang": func() string { return lang }, "T": func(s string, args ...any) string { return tr(lang, s, args...) }})
 		var buf bytes.Buffer
 		if err = t.ExecuteTemplate(&buf, name, data); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")

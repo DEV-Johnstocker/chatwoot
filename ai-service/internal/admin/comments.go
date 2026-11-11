@@ -41,6 +41,7 @@ type commentItem struct {
 	Left     string // time left to reply, or "" when expired
 	Expired  bool
 	Intent   string
+	Buyer    bool // a likely buyer: the intent badge is highlighted
 	Reason   string
 	Message  string
 	Draft    string
@@ -79,9 +80,9 @@ var holdReasons = map[string]string{
 	comments.ReasonPostUnknown: "it could not read the post the comment is on",
 }
 
-func holdReason(r string) string {
+func holdReason(lang, r string) string {
 	if v, ok := holdReasons[r]; ok {
-		return v
+		return tr(lang, v)
 	}
 	return r
 }
@@ -145,47 +146,56 @@ func (h *Handler) submitComments(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.Logger.Warn("page comment "+decision+" refused", "account_id", acct, "comment_row", id, "error", err)
 	}
-	h.renderComments(w, r, status, commentsData{Account: acct, Error: msg})
+	h.renderComments(w, r, status, commentsData{Account: acct, Error: msg.in(langOf(r))})
 }
 
 // commentError turns a queue error into a status and a message for the owner.
-func commentError(err error) (int, string) {
+func commentError(err error) (int, ownerMsg) {
 	var refused *comments.SendError
 	switch {
 	case errors.Is(err, comments.ErrNotRecorded):
-		return http.StatusInternalServerError, "Sent, but saving that failed. Do not send it again; it shows as Sending in the history."
+		return http.StatusInternalServerError, ownerMsg{"Sent, but saving that failed. Do not send it again; it shows as Sending in the history.", nil}
 	case errors.Is(err, comments.ErrEmptyReply):
-		return http.StatusUnprocessableEntity, "Write a reply before sending."
+		return http.StatusUnprocessableEntity, ownerMsg{"Write a reply before sending.", nil}
 	case errors.Is(err, comments.ErrLongReply):
-		return http.StatusUnprocessableEntity, "The reply is too long. Messenger allows 2,000 characters."
+		return http.StatusUnprocessableEntity, ownerMsg{"The reply is too long. Messenger allows 2,000 characters.", nil}
 	case errors.Is(err, comments.ErrSendingOff):
-		return http.StatusServiceUnavailable, "Sending is off until a Page access token (META_PAGE_TOKEN) is set. Nothing was sent."
+		return http.StatusServiceUnavailable, ownerMsg{"Sending is off until a Page access token (META_PAGE_TOKEN) is set. Nothing was sent.", nil}
 	case errors.Is(err, comments.ErrExpired):
-		return http.StatusConflict, "Facebook allows a private reply only within 7 days of the comment. Nothing was sent; dismiss it instead."
+		return http.StatusConflict, ownerMsg{"Facebook allows a private reply only within 7 days of the comment. Nothing was sent; dismiss it instead.", nil}
 	case errors.Is(err, comments.ErrChanged):
-		return http.StatusConflict, "This comment changed after you opened the page. Nothing was sent; check it again below."
+		return http.StatusConflict, ownerMsg{"This comment changed after you opened the page. Nothing was sent; check it again below.", nil}
 	case errors.Is(err, comments.ErrNotFound):
-		return http.StatusNotFound, "That comment is no longer waiting. It may have been answered, dismissed or deleted."
+		return http.StatusNotFound, ownerMsg{"That comment is no longer waiting. It may have been answered, dismissed or deleted.", nil}
 	case errors.Is(err, comments.ErrSendRefused) && errors.As(err, &refused):
-		return http.StatusConflict, "Facebook will not accept a private reply to this comment (" + refused.Message + "). It was moved to the history."
+		return http.StatusConflict, ownerMsg{"Facebook will not accept a private reply to this comment (%s). It was moved to the history.", []any{refused.Message}}
 	default:
-		return http.StatusBadGateway, "Not sent. The comment still waits; try again. If it keeps failing, check the Page access token and the service logs."
+		return http.StatusBadGateway, ownerMsg{"Not sent. The comment still waits; try again. If it keeps failing, check the Page access token and the service logs.", nil}
 	}
 }
 
+// ownerMsg is a message for the owner in English, translated when shown.
+type ownerMsg struct {
+	text string
+	args []any
+}
+
+func (m ownerMsg) in(lang string) string { return tr(lang, m.text, m.args...) }
+
 func (h *Handler) renderComments(w http.ResponseWriter, r *http.Request, status int, data commentsData) {
 	data.Enabled = h.Comments != nil
+	lang := langOf(r)
 	if data.Enabled {
 		data.CanSend = h.Comments.CanSend()
-		if err := h.loadComments(r.Context(), &data); err != nil {
+		if err := h.loadComments(r.Context(), &data, lang); err != nil {
 			h.Logger.Error("load page comments", "account_id", data.Account, "error", err)
-			data.Error = "Could not load the comments. Check the database connection."
+			data.Error = tr(lang, "Could not load the comments. Check the database connection.")
 		}
 	}
 	h.renderPage(w, r, status, "comments.html", data)
 }
 
-func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
+func (h *Handler) loadComments(ctx context.Context, data *commentsData, lang string) error {
 	waiting, err := h.Comments.Waiting(ctx, data.Account)
 	if err != nil {
 		return err
@@ -199,23 +209,23 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
 	}
 	now := time.Now()
 	for _, c := range waiting {
-		it := commentItem{ID: c.ID, Version: c.Version, From: orUnknown(c.FromName), When: h.stamp(c.CreatedAt),
-			Expired: c.Expired(now), Intent: intentLabels[c.Intent], Reason: c.Reason, Message: c.Message,
+		it := commentItem{ID: c.ID, Version: c.Version, From: orUnknown(lang, c.FromName), When: h.stampIn(lang, c.CreatedAt),
+			Expired: c.Expired(now), Intent: tr(lang, intentLabels[c.Intent]), Buyer: c.Intent == comments.IntentLead, Reason: c.Reason, Message: c.Message,
 			Draft: c.Draft, PostURL: postURL(c.PostID), Post: snippet(c.PostText, 240), LastFail: c.Error}
 		if !it.Expired {
-			it.Left = timeLeft(c.CreatedAt.Add(comments.ReplyWindow).Sub(now))
+			it.Left = timeLeft(lang, c.CreatedAt.Add(comments.ReplyWindow).Sub(now))
 		}
 		if c.MoreOnPost > 0 {
 			it.Repeat = strconv.Itoa(c.MoreOnPost + 1)
 		}
 		if !c.RepliedAt.IsZero() {
-			it.Replied = h.stamp(c.RepliedAt)
+			it.Replied = h.stampIn(lang, c.RepliedAt)
 		}
 		if c.Review != nil {
 			it.Hold = !c.Review.Pass
-			it.Shadow = "would send this reply as written."
+			it.Shadow = tr(lang, "would send this reply as written.")
 			if it.Hold {
-				it.Shadow = "would wait for you, because " + holdReason(c.Review.Reason) + "."
+				it.Shadow = tr(lang, "would wait for you, because %s.", holdReason(lang, c.Review.Reason))
 			}
 		}
 		data.Items = append(data.Items, it)
@@ -225,17 +235,15 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
 		if when.IsZero() {
 			when = c.Received
 		}
-		row := commentRow{When: h.stamp(when), From: orUnknown(c.FromName),
-			Status: statusLabels[c.Status], Message: preview(c.Message), Reply: preview(c.Reply)}
+		row := commentRow{When: h.stampIn(lang, when), From: orUnknown(lang, c.FromName),
+			Status: tr(lang, statusLabels[c.Status]), Message: preview(c.Message), Reply: preview(c.Reply)}
 		if c.Review != nil && (c.Status == comments.StatusSent || c.Status == comments.StatusDismissed) {
-			row.Shadow = agreementLabels[comments.Agreement(c)]
+			row.Shadow = tr(lang, agreementLabels[comments.Agreement(c)])
 		}
 		data.Recent = append(data.Recent, row)
 	}
 	return nil
 }
-
-func (h *Handler) stamp(t time.Time) string { return t.In(h.loc()).Format("2 Jan 15:04") }
 
 // postURL links to the post on Facebook. Post IDs are "<page>_<post>",
 // digits only; anything else gets no link.
@@ -251,19 +259,19 @@ func postURL(postID string) string {
 	return "https://www.facebook.com/" + postID
 }
 
-func timeLeft(d time.Duration) string {
+func timeLeft(lang string, d time.Duration) string {
 	if d >= 48*time.Hour {
-		return strconv.Itoa(int(d.Hours()/24)) + " days left to reply"
+		return tr(lang, "%d days left to reply", int(d.Hours()/24))
 	}
 	if d >= 2*time.Hour {
-		return strconv.Itoa(int(d.Hours())) + " hours left to reply"
+		return tr(lang, "%d hours left to reply", int(d.Hours()))
 	}
-	return "Less than 2 hours left to reply"
+	return tr(lang, "Less than 2 hours left to reply")
 }
 
-func orUnknown(name string) string {
+func orUnknown(lang, name string) string {
 	if strings.TrimSpace(name) == "" {
-		return "Facebook user"
+		return tr(lang, "Facebook user")
 	}
 	return name
 }

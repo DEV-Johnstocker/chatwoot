@@ -196,6 +196,7 @@
   }
   /* Theme switch: a small segmented control under the menu */
   form.theme { margin: 24px 12px 0; }
+  form.theme + form.theme { margin-top: 14px; }
   .theme-label { display: block; color: var(--muted); font-size: .8rem; font-weight: 600; margin-bottom: 6px; }
   .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; }
   .seg button:first-child { border-radius: 7px 0 0 7px; }
@@ -328,21 +329,21 @@
 {{define "account-picker"}}
 <div class="acct-pick">
   {{$list := accounts .Current}}{{if eq (len $list) 1}}
-  <p class="acct-one"><span>Account</span> <strong>{{(index $list 0).Label}}</strong></p>
+  <p class="acct-one"><span>{{T "Account"}}</span> <strong>{{(index $list 0).Label}}</strong></p>
   {{else}}
   <form class="acct" method="get" action="{{.Action}}">
-    <label for="account">Account</label>
+    <label for="account">{{T "Account"}}</label>
     <select id="account" name="account">{{range $list}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
-    <button type="submit">Open</button>
+    <button type="submit">{{T "Open"}}</button>
   </form>
   {{end}}
   <details class="acct-other">
-    <summary>Another account</summary>
+    <summary>{{T "Another account"}}</summary>
     <form class="acct" method="get" action="{{.Action}}">
       <label for="account-other">ID</label>
       <input id="account-other" name="account" type="number" min="1" inputmode="numeric" required aria-describedby="account-hint">
-      <button type="submit">Open</button>
-      <p class="field-hint" id="account-hint">From the Chatwoot URL: /app/accounts/<strong>1</strong>/…</p>
+      <button type="submit">{{T "Open"}}</button>
+      <p class="field-hint" id="account-hint">{{T "From the Chatwoot URL:"}} /app/accounts/<strong>1</strong>/…</p>
     </form>
   </details>
 </div>
@@ -357,26 +358,34 @@
 {{end}}
 
 {{define "nav-links"}}
-    <a href="/admin"{{if eq . "home"}} aria-current="page"{{end}}>Home</a>
-    <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>Test bot</a>
-    <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>Business profile</a>
-    <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>Knowledge base</a>
-    <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>AI approvals</a>
-    <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>Comment leads</a>
-    <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>Connect AI tools</a>
-    <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>AI providers</a>
+    <a href="/admin"{{if eq . "home"}} aria-current="page"{{end}}>{{T "Home"}}</a>
+    <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
+    <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
+    <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
+    <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
+    <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
+    <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
+    <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
 {{end}}
 
-{{define "page-name"}}{{if eq . "home"}}Home{{else if eq . "test"}}Test bot{{else if eq . "business"}}Business profile{{else if eq . "knowledge"}}Knowledge base{{else if eq . "approvals"}}AI approvals{{else if eq . "comments"}}Comment leads{{else if eq . "connections"}}Connect AI tools{{else if eq . "providers"}}AI providers{{end}}{{end}}
+{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
 
 {{define "theme-form"}}
-  <form class="theme" method="post" action="/admin/theme" aria-label="Colour theme">
+  <form class="theme" method="post" action="/admin/theme" aria-label="{{T "Colour theme"}}">
     <input type="hidden" name="back" value="{{if eq . "home"}}/admin{{else}}/admin/{{.}}{{end}}">
-    <span class="theme-label">Theme</span>
+    <span class="theme-label">{{T "Theme"}}</span>
     <span class="seg">
-      <button name="theme" value="auto"{{if eq theme ""}} aria-pressed="true"{{else}} aria-pressed="false"{{end}} title="Follow this device">Auto</button>
-      <button name="theme" value="light" aria-pressed="{{if eq theme "light"}}true{{else}}false{{end}}">Light</button>
-      <button name="theme" value="dark" aria-pressed="{{if eq theme "dark"}}true{{else}}false{{end}}">Dark</button>
+      <button name="theme" value="auto"{{if eq theme ""}} aria-pressed="true"{{else}} aria-pressed="false"{{end}} title="{{T "Follow this device"}}">{{T "Auto"}}</button>
+      <button name="theme" value="light" aria-pressed="{{if eq theme "light"}}true{{else}}false{{end}}">{{T "Light"}}</button>
+      <button name="theme" value="dark" aria-pressed="{{if eq theme "dark"}}true{{else}}false{{end}}">{{T "Dark"}}</button>
+    </span>
+  </form>
+  <form class="theme" method="post" action="/admin/lang" aria-label="ภาษา / Language">
+    <input type="hidden" name="back" value="{{if eq . "home"}}/admin{{else}}/admin/{{.}}{{end}}">
+    <span class="theme-label">ภาษา / Language</span>
+    <span class="seg">
+      <button name="lang" value="th" lang="th" aria-pressed="{{if eq lang "th"}}true{{else}}false{{end}}">ไทย</button>
+      <button name="lang" value="en" lang="en" aria-pressed="{{if eq lang "en"}}true{{else}}false{{end}}">English</button>
     </span>
   </form>
 {{end}}
@@ -384,16 +393,16 @@
 {{define "nav"}}
 <aside class="sidebar">
   <p class="brand">{{wordmark}}<span>AI admin</span></p>
-  <nav aria-label="Admin sections">{{template "nav-links" .}}</nav>
+  <nav aria-label="{{T "Admin sections"}}" lang="{{lang}}">{{template "nav-links" .}}</nav>
   {{template "theme-form" .}}
 </aside>
 <header class="topbar">
   <span class="brand">{{wordmark}}</span>
-  <span class="here" aria-hidden="true">{{template "page-name" .}}</span>
+  <span class="here" aria-hidden="true" lang="{{lang}}">{{template "page-name" .}}</span>
   <details class="menu">
-    <summary>Menu</summary>
+    <summary>{{T "Menu"}}</summary>
     <div class="menu-panel">
-      <nav aria-label="Admin sections">{{template "nav-links" .}}</nav>
+      <nav aria-label="{{T "Admin sections"}}" lang="{{lang}}">{{template "nav-links" .}}</nav>
       {{template "theme-form" .}}
     </div>
   </details>
