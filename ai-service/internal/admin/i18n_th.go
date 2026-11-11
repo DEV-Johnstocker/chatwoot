@@ -1,9 +1,9 @@
 package admin
 
-// thai maps English page text to Thai (see tr in lang.go). Step 1 covers the
-// menu, the theme and language switches, the account picker, Home and Comment
-// leads; other pages fall back to English. Keep fmt verbs (%d, %s) in the
-// same order as the English line. Issue: DEV-Johnstocker/chatwoot#1
+// thai maps English page text to Thai (see tr in lang.go). This file holds
+// the menu, switches, account picker, Home and Comment leads; each other page
+// adds its own lines from i18n_th_<page>.go with addThai. Keep fmt verbs
+// (%d, %s) in the same order as the English line. Issue: DEV-Johnstocker/chatwoot#1
 var thai = map[string]string{
 	// Menu, switches and account picker (every page)
 	"Home":                   "หน้าแรก",
@@ -157,4 +157,19 @@ var thai = map[string]string{
 	"That comment is no longer waiting. It may have been answered, dismissed or deleted.":                                  "คอมเมนต์นี้ไม่ได้รออยู่แล้ว อาจถูกตอบ ข้าม หรือลบไปแล้ว",
 	"Facebook will not accept a private reply to this comment (%s). It was moved to the history.":                          "Facebook ไม่รับข้อความส่วนตัวสำหรับคอมเมนต์นี้ (%s) ย้ายไปที่ประวัติแล้ว",
 	"Not sent. The comment still waits; try again. If it keeps failing, check the Page access token and the service logs.": "ส่งไม่สำเร็จ คอมเมนต์ยังรออยู่ ลองอีกครั้ง ถ้ายังไม่ได้ ให้ตรวจ Page access token และ log ของระบบ",
+}
+
+// thaiConflicts lists English lines that two page files translate
+// differently; a test keeps it empty so one line reads the same everywhere.
+var thaiConflicts []string
+
+// addThai merges a page's lines into thai. Call it from an init function.
+func addThai(lines map[string]string) {
+	for en, th := range lines {
+		if old, ok := thai[en]; ok && old != th {
+			thaiConflicts = append(thaiConflicts, en)
+			continue
+		}
+		thai[en] = th
+	}
 }

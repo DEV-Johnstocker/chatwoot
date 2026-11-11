@@ -229,3 +229,9 @@ func TestThai_KeepsFormatVerbs(t *testing.T) {
 		}
 	}
 }
+
+func TestThai_NoConflictingLines(t *testing.T) {
+	if len(thaiConflicts) > 0 {
+		t.Fatalf("translated differently in two files: %q", thaiConflicts)
+	}
+}
