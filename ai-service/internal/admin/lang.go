@@ -68,7 +68,7 @@ func (h *Handler) setLang(w http.ResponseWriter, r *http.Request) {
 		c.MaxAge = -1
 	}
 	http.SetCookie(w, c)
-	http.Redirect(w, r, backPath(r.PostForm.Get("back")), http.StatusSeeOther)
+	http.Redirect(w, r, backTo(r.PostForm.Get("back"), r.PostForm.Get("account")), http.StatusSeeOther)
 }
 
 // tr translates one English line into lang and fills in args (fmt verbs).
