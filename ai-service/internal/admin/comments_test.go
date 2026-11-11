@@ -264,7 +264,7 @@ func TestComments_DraftIsLabelledAsAnAISuggestion(t *testing.T) {
 	body := serve(e.mux, commentsGet("account=2")).Body.String()
 
 	// Assert
-	if !strings.Contains(body, "AI suggestion: check it before sending") {
+	if !strings.Contains(body, "Written by AI from the comment. Read it before sending") {
 		t.Fatal("draft not labelled")
 	}
 }
@@ -309,7 +309,7 @@ func TestComments_CardFlagsRepeatsAndPeopleAlreadyAnswered(t *testing.T) {
 	body := serve(e.mux, commentsGet("account=2")).Body.String()
 
 	// Assert
-	for _, want := range []string{"1 more comment from this person on this post", "Already sent this person a private reply on"} {
+	for _, want := range []string{"This person left 2 comments on this post.", "You already messaged this person"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -319,4 +319,22 @@ func TestComments_CardFlagsRepeatsAndPeopleAlreadyAnswered(t *testing.T) {
 // sendNow sends the stored comment through the queue, as the owner would.
 func (e *commentsEnv) sendNow(c comments.Comment) error {
 	return (&comments.Queue{Store: e.store, Sender: e.sender}).Send(context.Background(), c.AccountID, c.ID, c.Version, "hello", "owner")
+}
+
+func TestHoldReason_SpeaksToTheOwner(t *testing.T) {
+	cases := map[string]string{
+		"has a link":               "the reply has a link",
+		"the tone may not fit":     "the tone may not fit your business",
+		"a reason added later":     "a reason added later", // unknown reasons show as they are
+		comments.ReasonPostUnknown: "it could not read the post the comment is on",
+	}
+	for in, want := range cases {
+		// Act
+		got := holdReason(in)
+
+		// Assert
+		if got != want {
+			t.Errorf("holdReason(%q) = %q, want %q", in, got, want)
+		}
+	}
 }

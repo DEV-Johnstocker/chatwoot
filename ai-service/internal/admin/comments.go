@@ -46,8 +46,8 @@ type commentItem struct {
 	Draft    string
 	PostURL  string
 	Post     string // a snippet of the post the comment is on
-	Repeat   string // "1 more comment from this person on this post"
-	Replied  string // "Already sent this person a private reply on …"
+	Repeat   string // how many waiting comments this person left on this post, e.g. "2"
+	Replied  string // when this person was last sent a private reply, e.g. "12 Nov 03:52"
 	LastFail string
 	Shadow   string // the shadow reviewer's call, or ""
 	Hold     bool   // the shadow reviewer would hold it
@@ -58,7 +58,33 @@ type commentRow struct {
 	Shadow                             string // "Agreed", "Would have sent", "Would have held", or ""
 }
 
-var agreementLabels = map[string]string{"agreed": "Agreed", "too_loose": "Would have sent", "too_strict": "Would have held"}
+var agreementLabels = map[string]string{"agreed": "Same as you", "too_loose": "Would have sent it", "too_strict": "Would have waited for you"}
+
+// holdReasons turns the reviewer's stored reasons into words for the owner.
+// The reviewer's own reasons stay unchanged in the database; an unknown one is
+// shown as it is.
+var holdReasons = map[string]string{
+	"has a link":                                "the reply has a link",
+	"has a long number":                         "the reply has a long number",
+	"mentions a price or discount":              "the reply mentions a price or discount",
+	"longer than 600 characters":                "the reply is longer than 600 characters",
+	"no draft":                                  "there is no reply yet",
+	"intent is complaint":                       "the comment looks like a complaint",
+	"intent is other":                           "the comment does not look like a lead",
+	"unsure what the comment wants":             "it is not sure what the person wants",
+	"the comment may be trying to steer the AI": "the comment may contain instructions aimed at the AI",
+	"the draft may not answer the comment":      "the reply may not answer the comment",
+	"the draft may promise something the profile does not say": "the reply may promise something your business profile does not say",
+	"the tone may not fit":     "the tone may not fit your business",
+	comments.ReasonPostUnknown: "it could not read the post the comment is on",
+}
+
+func holdReason(r string) string {
+	if v, ok := holdReasons[r]; ok {
+		return v
+	}
+	return r
+}
 
 var intentLabels = map[comments.Intent]string{
 	comments.IntentLead: "Likely buyer", comments.IntentQuestion: "Question",
@@ -179,20 +205,17 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData) error {
 		if !it.Expired {
 			it.Left = timeLeft(c.CreatedAt.Add(comments.ReplyWindow).Sub(now))
 		}
-		switch {
-		case c.MoreOnPost == 1:
-			it.Repeat = "1 more comment from this person on this post"
-		case c.MoreOnPost > 1:
-			it.Repeat = strconv.Itoa(c.MoreOnPost) + " more comments from this person on this post"
+		if c.MoreOnPost > 0 {
+			it.Repeat = strconv.Itoa(c.MoreOnPost + 1)
 		}
 		if !c.RepliedAt.IsZero() {
-			it.Replied = "Already sent this person a private reply on " + h.stamp(c.RepliedAt)
+			it.Replied = h.stamp(c.RepliedAt)
 		}
 		if c.Review != nil {
 			it.Hold = !c.Review.Pass
-			it.Shadow = "Would send it as drafted"
+			it.Shadow = "would send this reply as written."
 			if it.Hold {
-				it.Shadow = "Would hold it: " + c.Review.Reason
+				it.Shadow = "would wait for you, because " + holdReason(c.Review.Reason) + "."
 			}
 		}
 		data.Items = append(data.Items, it)
