@@ -373,6 +373,7 @@
 {{define "theme-form"}}
   <form class="theme" method="post" action="/admin/theme" aria-label="{{T "Colour theme"}}">
     <input type="hidden" name="back" value="{{if eq . "home"}}/admin{{else}}/admin/{{.}}{{end}}">
+    {{with pageAccount}}<input type="hidden" name="account" value="{{.}}" data-switch>{{end}}
     <span class="theme-label">{{T "Theme"}}</span>
     <span class="seg">
       <button name="theme" value="auto"{{if eq theme ""}} aria-pressed="true"{{else}} aria-pressed="false"{{end}} title="{{T "Follow this device"}}">{{T "Auto"}}</button>
@@ -382,6 +383,7 @@
   </form>
   <form class="theme" method="post" action="/admin/lang" aria-label="ภาษา / Language">
     <input type="hidden" name="back" value="{{if eq . "home"}}/admin{{else}}/admin/{{.}}{{end}}">
+    {{with pageAccount}}<input type="hidden" name="account" value="{{.}}" data-switch>{{end}}
     <span class="theme-label">ภาษา / Language</span>
     <span class="seg">
       <button name="lang" value="th" lang="th" aria-pressed="{{if eq lang "th"}}true{{else}}false{{end}}">ไทย</button>

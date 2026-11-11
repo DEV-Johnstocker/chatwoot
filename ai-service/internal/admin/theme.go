@@ -2,6 +2,7 @@ package admin
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -34,7 +35,18 @@ func (h *Handler) setTheme(w http.ResponseWriter, r *http.Request) {
 		c.MaxAge = -1
 	}
 	http.SetCookie(w, c)
-	http.Redirect(w, r, backPath(r.PostForm.Get("back")), http.StatusSeeOther)
+	http.Redirect(w, r, backTo(r.PostForm.Get("back"), r.PostForm.Get("account")), http.StatusSeeOther)
+}
+
+// backTo is the page a switch returns to: an /admin path (backPath), with the
+// page's account when it is a plain positive number, so the owner stays on the
+// account they were looking at.
+func backTo(path, account string) string {
+	p := backPath(path)
+	if n, err := strconv.ParseInt(strings.TrimSpace(account), 10, 64); err == nil && n > 0 {
+		p += "?account=" + strconv.FormatInt(n, 10)
+	}
+	return p
 }
 
 func backPath(p string) string {

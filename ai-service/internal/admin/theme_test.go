@@ -108,3 +108,49 @@ func TestTheme_RequiresAuthAndSameOrigin(t *testing.T) {
 		t.Fatalf("noauth=%d cross=%d", a.Code, c.Code)
 	}
 }
+
+// The switches used to return to the page without its account, so the owner
+// landed on account 1. Only a plain positive account number is carried back.
+func TestSwitches_ReturnToTheSameAccount(t *testing.T) {
+	cases := map[string]string{
+		"3":                    "/admin/comments?account=3",
+		" 12 ":                 "/admin/comments?account=12",
+		"":                     "/admin/comments",
+		"0":                    "/admin/comments",
+		"-1":                   "/admin/comments",
+		"abc":                  "/admin/comments",
+		"3&x=//evil":           "/admin/comments",
+		"3#frag":               "/admin/comments",
+		"99999999999999999999": "/admin/comments",
+	}
+	for account, want := range cases {
+		for name, post := range map[string]func(url.Values) *http.Request{"theme": themePost, "lang": langPost} {
+			// Arrange
+			e := setup(t, nil)
+			v := url.Values{"back": {"/admin/comments"}, "account": {account}, "theme": {"dark"}, "lang": {"th"}}
+
+			// Act
+			rec := e.do(post(v))
+
+			// Assert
+			if got := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || got != want {
+				t.Errorf("%s account %q: %d %q, want %q", name, account, rec.Code, got, want)
+			}
+		}
+	}
+}
+
+func TestSwitches_FormsCarryThePageAccount(t *testing.T) {
+	// Arrange
+	e := setup(t, nil)
+	r := httptest.NewRequest(http.MethodGet, "/admin/knowledge?account=7", nil)
+	r.SetBasicAuth(Username, pw)
+
+	// Act
+	body := e.do(r).Body.String()
+
+	// Assert
+	if strings.Count(body, `name="account" value="7" data-switch`) < 4 {
+		t.Fatal("theme and language forms do not carry the account")
+	}
+}
