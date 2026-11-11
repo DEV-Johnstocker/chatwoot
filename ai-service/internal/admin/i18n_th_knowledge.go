@@ -80,7 +80,7 @@ func init() {
 		"(or":                           "(หรือ",
 		"become the title when there is no title.":                                            "จะใช้เป็นหัวข้อเมื่อไม่มีหัวข้อ",
 		"JSON Lines works the same way: one object per line with the same names, for example": "JSON Lines ใช้แบบเดียวกัน: หนึ่ง object ต่อบรรทัด ใช้ชื่อเดียวกัน เช่น",
-		"Optional": "คอลัมน์ที่ไม่บังคับ",
+		"Optional|columns": "คอลัมน์ที่ไม่บังคับ",
 		"columns (YYYY-MM-DD) limit when the bot may use a row, for example a promotion.":                                "(YYYY-MM-DD) กำหนดช่วงที่บอตใช้แถวนั้นได้ เช่น โปรโมชัน",
 		"Delete a row and the bot stops using it at once; it is removed for good a week later. Up to 500 rows per file.": "ลบแถวแล้วบอตจะเลิกใช้ทันที และลบถาวรหลังจากหนึ่งสัปดาห์ ไฟล์หนึ่งมีได้ไม่เกิน 500 แถว",
 		"Source":             "แหล่งข้อมูล",

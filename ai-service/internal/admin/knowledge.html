@@ -162,7 +162,7 @@
         <li>{{T "The first row holds the column names. An"}} <code>id</code> {{T "column is required: it must stay the same when you edit a row, so the bot updates that answer instead of adding a new one."}}</li>
         <li>{{T "For questions and answers use"}} <code>question</code> {{T "and"}} <code>answer</code> {{T "columns. For longer text use"}} <code>title</code> {{T "and"}} <code>content</code> {{T "(or"}} <code>text</code>); <code>category</code> {{T "and"}} <code>section</code> {{T "become the title when there is no title."}}</li>
         <li>{{T "JSON Lines works the same way: one object per line with the same names, for example"}} <code>{"id": "product-001", "category": "Price", "section": "Lifetime", "text": "…"}</code>.</li>
-        <li>{{T "Optional"}} <code>start_date</code> {{T "and"}} <code>last_day</code> {{T "columns (YYYY-MM-DD) limit when the bot may use a row, for example a promotion."}}</li>
+        <li>{{T "Optional|columns"}} <code>start_date</code> {{T "and"}} <code>last_day</code> {{T "columns (YYYY-MM-DD) limit when the bot may use a row, for example a promotion."}}</li>
         <li>{{T "Delete a row and the bot stops using it at once; it is removed for good a week later. Up to 500 rows per file."}}</li>
       </ol>
     </details>
