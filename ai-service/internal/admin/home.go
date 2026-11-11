@@ -38,6 +38,7 @@ type recentView struct {
 // to fix each missing step, so the owner never has to guess what to do next.
 func (h *Handler) showHome(w http.ResponseWriter, r *http.Request) {
 	acct := accountParam(r.URL.Query().Get("account"))
+	lang := langOf(r)
 	cur := h.Store.Get()
 	d := homeData{AccountID: acct, Model: cur.Primary.Model, Fallback: cur.Fallback.Configured(), Profiles: h.Profiles != nil}
 
@@ -68,7 +69,7 @@ func (h *Handler) showHome(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if !last.IsZero() {
-				d.LastUpdated = h.day(last)
+				d.LastUpdated = h.dayIn(lang, last)
 			}
 		}
 	}
@@ -79,7 +80,7 @@ func (h *Handler) showHome(w http.ResponseWriter, r *http.Request) {
 			h.Logger.Warn("home: recent changes failed", "account_id", acct, "error", err)
 		}
 		for _, ev := range events {
-			d.Recent = append(d.Recent, recentView{When: h.when(ev.At), Who: ev.Actor, What: ev.Action, Detail: ev.Summary})
+			d.Recent = append(d.Recent, recentView{When: h.whenIn(lang, ev.At), Who: ev.Actor, What: ev.Action, Detail: ev.Summary})
 		}
 	}
 	acctQ := "?account=" + strconv.FormatInt(acct, 10)
@@ -88,6 +89,10 @@ func (h *Handler) showHome(w http.ResponseWriter, r *http.Request) {
 		{Title: "Turn on knowledge search", Hint: "An embeddings model, so the bot can search your documents.", Link: "/admin/providers", Action: "Set up", Done: cur.Embedding.Configured()},
 		{Title: "Describe your business", Hint: "Name, what you sell, tone and rules.", Link: "/admin/business" + acctQ, Action: "Edit profile", Done: d.Business != ""},
 		{Title: "Add knowledge", Hint: "Prices, schedules, policies and FAQs the bot may quote.", Link: "/admin/knowledge" + acctQ, Action: "Add knowledge", Done: d.Documents > 0},
+	}
+	for i := range d.Steps {
+		s := &d.Steps[i]
+		s.Title, s.Hint, s.Action = tr(lang, s.Title), tr(lang, s.Hint), tr(lang, s.Action)
 	}
 	for _, s := range d.Steps {
 		if !s.Done {

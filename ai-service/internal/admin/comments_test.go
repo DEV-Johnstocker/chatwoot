@@ -330,7 +330,7 @@ func TestHoldReason_SpeaksToTheOwner(t *testing.T) {
 	}
 	for in, want := range cases {
 		// Act
-		got := holdReason(in)
+		got := holdReason(langEN, in)
 
 		// Assert
 		if got != want {
