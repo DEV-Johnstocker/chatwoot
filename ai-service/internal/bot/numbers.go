@@ -2,7 +2,9 @@ package bot
 
 import (
 	"regexp"
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/numtext"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
@@ -29,13 +31,25 @@ const maxPaymentDigits = 6
 type guard struct {
 	bank    string          // the owner's bank-transfer text, put in for the marker
 	numbers map[string]bool // every long number in the profile, as digits
+	// words are the owner's own links, coupon codes and IDs: profile words
+	// with a letter and a digit. Copied exactly, their digits are not an
+	// account ("JOHNAUTOCUT99", a course link with an ID). A bare number is
+	// never one of them, so a profile phone still counts in a payment reply.
+	words []string
 }
 
 func newGuard(p profile.Profile) guard {
 	g := guard{bank: p.BankTransfer, numbers: map[string]bool{}}
+	seen := map[string]bool{}
 	for _, field := range []string{p.BusinessName, p.About, p.Tone, p.Contact, p.Rules, p.BankTransfer} {
 		// Line by line and space by space too, so two numbers the owner wrote
 		// side by side ("044-115-229 081-516-9097") are each known alone.
+		for _, w := range strings.Fields(field) {
+			if len(w) >= 6 && strings.IndexFunc(w, unicode.IsLetter) >= 0 && strings.IndexFunc(w, unicode.IsDigit) >= 0 && !seen[w] {
+				seen[w] = true
+				g.words = append(g.words, w)
+			}
+		}
 		for _, line := range strings.Split(field, "\n") {
 			for _, part := range append([]string{line}, strings.Fields(line)...) {
 				for _, n := range numtext.Long(part) {
@@ -44,6 +58,8 @@ func newGuard(p profile.Profile) guard {
 			}
 		}
 	}
+	// Longest first, so a link is removed whole before any word inside it.
+	sort.Slice(g.words, func(i, j int) bool { return len(g.words[i]) > len(g.words[j]) })
 	return g
 }
 
@@ -60,6 +76,9 @@ func (g guard) check(reply string) (string, bool) {
 		return reply, false
 	}
 	rest := bankMarker.ReplaceAllLiteralString(reply, " ")
+	for _, w := range g.words {
+		rest = strings.ReplaceAll(rest, w, " ")
+	}
 	if hasMarker || paymentWords.MatchString(reply) || paymentWords.MatchString(numtext.Normalize(reply)) {
 		// Both checks: no long number of any kind (profile phones included),
 		// and not too many loose digits however they are split.
