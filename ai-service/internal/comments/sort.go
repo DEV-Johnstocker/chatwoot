@@ -3,6 +3,7 @@ package comments
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
@@ -30,6 +31,9 @@ type Sorter interface {
 // "other" comments at 0.90 or more and no real lead "other".
 const SkipOtherAt = 0.90
 
+// sortPause is how long sorting stops after a failed Sorter call.
+const sortPause = time.Minute
+
 // sortFirst asks the Sorter for the comment's intent. A sure "other" is
 // stored as ignored (skipped, and saved unless the store failed); any other
 // intent is handed to the drafter in SortedAs. An unsure "other" or a failed
@@ -44,7 +48,9 @@ func (w *Worker) sortFirst(ctx context.Context, c Comment) (out Comment, skipped
 	s, err := w.Sorter.Sort(sctx, c, p)
 	cancel()
 	if err != nil {
-		w.Logger.Warn("sort page comment: the drafter sorts it instead", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+		w.sortPauseUntil = w.now().Add(sortPause)
+		w.Logger.Warn("sort page comment: the drafter sorts until the pause ends", "account_id", c.AccountID, "comment_id", c.CommentID,
+			"pause_seconds", int(sortPause.Seconds()), "error", err)
 		return c, false, false
 	}
 	if s.Intent != IntentOther {

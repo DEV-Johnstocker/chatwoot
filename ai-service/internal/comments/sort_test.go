@@ -153,3 +153,63 @@ func TestJevReviewer_SortAsksOnlyTheIntent(t *testing.T) {
 		t.Fatalf("request questions %v state %v", qs, state)
 	}
 }
+
+func TestWorker_FailedSortingPausesTheSorter(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store := &Memory{}
+	for _, id := range []string{"c1", "c2", "c3"} {
+		_, _ = store.Add(ctx, Comment{AccountID: 1, CommentID: id, Message: "ราคา?", CreatedAt: time.Now()})
+	}
+	sorter := &fixedSorter{err: errors.New("jev via api.typesafe.ai: timeout")}
+	scorer := &recordingScorer{}
+
+	// Act
+	n := sortingWorker(store, sorter, scorer).RunOnce(ctx)
+
+	// Assert
+	if sorter.calls != 1 || scorer.calls != 3 || n != 3 {
+		t.Fatalf("sorter calls %d llm calls %d scored %d: a down sorter must cost one call per pause", sorter.calls, scorer.calls, n)
+	}
+}
+
+func TestJevReviewer_SortRejectsBadAnswers(t *testing.T) {
+	cases := map[string]string{
+		"unknown choice":         `{"answers":{"intent":{"choice":"buy","probabilities":{"lead":1}}}}`,
+		"no intent answer":       `{"answers":{}}`,
+		"no probabilities":       `{"answers":{"intent":{"choice":"lead","probabilities":{"lead":0,"other":-1}}}}`,
+		"choice not most likely": `{"answers":{"intent":{"choice":"other","probabilities":{"lead":0.7,"other":0.3}}}}`,
+		"not JSON":               `oops`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) }))
+			defer srv.Close()
+
+			// Act
+			_, err := (&JevReviewer{URL: srv.URL, APIKey: "k"}).Sort(context.Background(), Comment{Message: "x"}, profile.Profile{})
+
+			// Assert
+			if !errors.Is(err, ErrBadReview) {
+				t.Fatalf("err %v, want ErrBadReview", err)
+			}
+		})
+	}
+}
+
+func TestJevReviewer_SortStripsNULFromTheModelName(t *testing.T) {
+	// Arrange: Postgres refuses NUL, which would jam the comment forever
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"model":"jev\u0000x","answers":{"intent":{"choice":"other","probabilities":{"other":1}}}}`)
+	}))
+	defer srv.Close()
+
+	// Act
+	s, err := (&JevReviewer{URL: srv.URL, APIKey: "k"}).Sort(context.Background(), Comment{Message: "x"}, profile.Profile{})
+
+	// Assert
+	if err != nil || strings.ContainsRune(s.Model, 0) {
+		t.Fatalf("model %q err %v", s.Model, err)
+	}
+}

@@ -180,6 +180,8 @@ TEST_DATABASE_URL=postgres://… go test -p 1 ./internal/comments/ ./internal/kn
 
 ## Reviews
 
+- 2026-11-13: `ai-service-security-reviewer` on PR #108 (Jev sorts): no blocking issues. Fixed: a NUL in Jev's model name could make the ignored row unsaveable and jam the batch (now stripped); a down Jev cost one timeout per comment (a failed sort now pauses sorting for a minute and the LLM sorts meanwhile); negative tests for bad Jev answers. Accepted: a commenter can talk Jev into skipping their own comment (it affects only that comment; check History); comments Jev skips get no shadow review; a forced lead whose draft the LLM left empty waits without a draft (fails safe).
+
 - 2026-11-10: `ai-service-migration-reviewer` gave **changes required**.
   - Fixed: a refused row blocked the whole delivery; unreadable comments stalled scoring (added the `attempts` column); no tests at the length limits; no restore-check note in `deploy/README.md`.
   - Account scoping (one Page per service) is documented as an accepted risk above.

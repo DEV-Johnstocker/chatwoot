@@ -228,6 +228,9 @@ type Worker struct {
 	// attempt: 30 s, doubling to 10 min, reset by the next success. Only the
 	// Run goroutine touches these.
 	pauseUntil time.Time
+	// A failed sort pauses sorting for sortPause, so a slow or down Sorter
+	// costs one timeout, not one per comment; the drafter sorts meanwhile.
+	sortPauseUntil time.Time
 	backoff    time.Duration
 }
 
@@ -276,7 +279,7 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 		if l, ok := w.Scorer.(knowledgeLookup); ok {
 			c = l.Lookup(ctx, c) // the reviewer checks the draft against the same entries
 		}
-		if w.Sorter != nil {
+		if w.Sorter != nil && !w.now().Before(w.sortPauseUntil) {
 			var skipped, saved bool
 			if c, skipped, saved = w.sortFirst(ctx, c); skipped {
 				if saved {

@@ -362,5 +362,5 @@ func (j *JevReviewer) Sort(ctx context.Context, c Comment, p profile.Profile) (S
 			return Sorting{}, fmt.Errorf("%w: choice is not the most likely intent", ErrBadReview)
 		}
 	}
-	return Sorting{Intent: Intent(in.Choice), P: pChoice, Model: clip(out.Model, 100)}, nil
+	return Sorting{Intent: Intent(in.Choice), P: pChoice, Model: clip(noNUL(out.Model), 100)}, nil
 }
