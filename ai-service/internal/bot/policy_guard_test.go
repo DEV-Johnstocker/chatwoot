@@ -33,7 +33,7 @@ func TestPolicy_ChatsLikeAPerson(t *testing.T) {
 
 	// Assert
 	for _, want := range []string{
-		"plain text", "at most one question", "same thing again", "Thai script", "offer to connect them with a staff member",
+		"plain text", "at most one question", "same thing again", "Thai script", "do not offer a staff member unless they ask for a person",
 		"hand off in the same message", "flirting", "never say staff will reply", "too expensive", "hand off now instead of offering", "several messages since your last reply",
 	} {
 		if !strings.Contains(p, want) {
@@ -65,11 +65,14 @@ func TestPolicy_SellsBeforeAskingAndUsesEmojiSparingly(t *testing.T) {
 
 	// Act + Assert
 	for _, want := range []string{
-		"add one short reason it is worth it",
-		"using only a feature or fact stated in the business profile or knowledge excerpts",
+		"say the benefit in their terms",
+		"using only facts from the business profile or knowledge excerpts",
 		"Never create urgency or scarcity",
-		"never promise results, sales or income",
-		"Never ask a question you already asked",
+		"Never promise results, sales or income",
+		"never ask one you already asked or one they skipped",
+		"at most two questions about the customer's own situation",
+		"do not end two replies in a row with a question",
+		"while you do not know what they make or need, one short question about their situation",
 		"Emoji: at most one, at the end",
 		"Never use one on prices, payment, refunds",
 		"no business facts, no question, no handoff",
@@ -88,7 +91,7 @@ func TestPolicy_ObjectionsGetOneHelpfulCounterThenRespect(t *testing.T) {
 	for _, want := range []string{
 		"accept it warmly first, then once give one or two helpful facts",
 		"No pressure, no urgency, no question. If they say no again, stop selling.",
-		"usually 3-6 short lines with each point on its own line",
+		"usually two or three short lines",
 		"address the customer as \"คุณลูกค้า\", or \"คุณ\" followed by their name",
 		"never the bare word \"คุณ\" on its own",
 		"Use คุณลูกค้า at most once in a reply",
@@ -120,5 +123,40 @@ func TestPolicy_HandoffNamesTheTeamNotASpecialist(t *testing.T) {
 		if !strings.Contains(p, want) {
 			t.Errorf("policy is missing %q", want)
 		}
+	}
+}
+
+func TestPolicy_OwnerRatingsRound6(t *testing.T) {
+	// Arrange: John's ratings of 2026-11-11 (memory: owner-reply-taste).
+	p := policyPrompt(time.Now())
+
+	// Act + Assert
+	for _, want := range []string{
+		"Never write that you do not know",
+		"ไม่ทราบ, ยังไม่มีข้อมูล, ยังไม่แน่ใจ, ขอเช็กให้ชัวร์",
+		"the first time a customer asks about or for a refund, do not hand off",
+		"never offer to cut a sample from their own footage unless the customer asks for one",
+		"knowing what they make, or saying they are interested, is not a buying signal",
+		"always give the course link and the coupon in a close",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("policy is missing %q", want)
+		}
+	}
+	if strings.Contains(p, "offer to connect them with a staff member") {
+		t.Error("'are you a bot' must not offer a staff member any more")
+	}
+}
+
+func TestPolicy_TestQuestionGetsANextStep(t *testing.T) {
+	// Arrange: owner, 2026-11-13: "1+1" should be followed by the next step or a question back.
+	p := policyPrompt(time.Now())
+
+	// Act + Assert
+	if !strings.Contains(p, "A tiny aside or test (1+1) gets a short answer, then the one next step from the selling rule") {
+		t.Error("a test question must be answered and followed by one next step")
+	}
+	if strings.Contains(p, "a test question or a") || strings.Contains(p, "gets a few friendly words only") {
+		t.Error("the old 'test question gets no step' wording must be gone")
 	}
 }
