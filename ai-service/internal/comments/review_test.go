@@ -262,9 +262,9 @@ func TestWorker_ReviewerFailureLeavesTheCommentAlone(t *testing.T) {
 	// Act
 	n := w.RunOnce(ctx)
 
-	// Assert: both scored, only the lead was reviewed, nothing stored for it
+	// Assert: both scored and both reviewed (the noise for its intent only), nothing stored for the lead
 	waiting, _ := store.Waiting(ctx, 1)
-	if n != 2 || rv.calls != 1 || len(waiting) != 1 || waiting[0].Review != nil {
+	if n != 2 || rv.calls != 2 || len(waiting) != 1 || waiting[0].Review != nil {
 		t.Fatalf("n %d calls %d waiting %+v", n, rv.calls, waiting)
 	}
 }
@@ -329,5 +329,34 @@ func TestAgreement_UnchangedMultiLineDraftSentFromABrowserAgrees(t *testing.T) {
 	// Assert
 	if got != "agreed" {
 		t.Fatalf("got %q, want agreed", got)
+	}
+}
+
+// Jev's intent was never measured on comments the drafter called "other",
+// the case where a wrong call would silently lose a lead.
+
+func TestWorker_IgnoredCommentGetsAShadowIntentOnly(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store := &Memory{}
+	_, _ = store.Add(ctx, Comment{AccountID: 1, CommentID: "noise", CreatedAt: time.Now()})
+	rv := &fixedReviewer{r: goodReview()} // the reviewer thinks it is a lead
+	w := &Worker{Store: store, Scorer: pickyIntent{}, Reviewer: rv,
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Timeout: time.Second}
+
+	// Act
+	w.RunOnce(ctx)
+
+	// Assert
+	recent, _ := store.Recent(ctx, 1, 10)
+	if rv.calls != 1 || len(recent) != 1 || recent[0].Status != StatusIgnored {
+		t.Fatalf("calls %d recent %+v", rv.calls, recent)
+	}
+	r := recent[0].Review
+	if r == nil || r.Intent != IntentLead || r.Pass || r.Reason != "no draft" {
+		t.Fatalf("an ignored comment must keep the reviewer's intent and never pass: %+v", r)
+	}
+	if stats, _ := store.ReviewStats(ctx, 1); stats.Decided != 0 {
+		t.Fatalf("ignored comments must stay out of the agreement numbers: %+v", stats)
 	}
 }

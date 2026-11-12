@@ -268,8 +268,11 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 		w.backoff = 0
 		w.Logger.Info("page comment scored", "account_id", c.AccountID, "comment_id", c.CommentID, "intent", string(intent))
 		done++
-		if intent != IntentOther && draft != "" {
-			w.review(ctx, c, draft)
+		// "other" has no draft, but the reviewer still records its own
+		// intent: that measures how often it would call a skipped comment a
+		// lead before it is ever trusted to sort comments (shadow only).
+		if intent == IntentOther || draft != "" {
+			w.review(ctx, c, intent, draft)
 		}
 	}
 	return done
@@ -318,7 +321,7 @@ func (w *Worker) withPost(ctx context.Context, c Comment) Comment {
 
 // review runs the shadow reviewer on a fresh draft. A failure only loses
 // that review; it never holds up the comment.
-func (w *Worker) review(ctx context.Context, c Comment, draft string) {
+func (w *Worker) review(ctx context.Context, c Comment, intent Intent, draft string) {
 	if w.Reviewer == nil {
 		return
 	}
@@ -343,5 +346,5 @@ func (w *Worker) review(ctx context.Context, c Comment, draft string) {
 		return
 	}
 	w.Logger.Info("page comment reviewed (shadow)", "account_id", c.AccountID, "comment_id", c.CommentID,
-		"would_send", r.Pass, "model", r.Model, "latency_ms", r.Latency.Milliseconds())
+		"would_send", r.Pass, "intent", string(intent), "reviewer_intent", string(r.Intent), "model", r.Model, "latency_ms", r.Latency.Milliseconds())
 }
