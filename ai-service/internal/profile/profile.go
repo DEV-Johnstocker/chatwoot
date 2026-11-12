@@ -15,10 +15,13 @@ import (
 	"unicode/utf8"
 )
 
-// Field limits, in characters (Thai text is 3 bytes per character).
+// Field limits, in characters (Thai text is 3 bytes per character). Rules get
+// more room than the other fields: a tested sales bot's rules list many cases
+// (about 7,800 characters for AutoCut), and shortening them lost answers.
 const (
 	MaxNameRunes  = 120
 	MaxFieldRunes = 4000
+	MaxRulesRunes = 10000
 )
 
 // Profile is one account's business profile. Empty fields are left out of the prompt.
@@ -78,7 +81,7 @@ func (p Profile) Validate() error {
 	check("about", p.About, MaxFieldRunes)
 	check("tone", p.Tone, MaxFieldRunes)
 	check("contact", p.Contact, MaxFieldRunes)
-	check("rules", p.Rules, MaxFieldRunes)
+	check("rules", p.Rules, MaxRulesRunes)
 	return errors.Join(errs...)
 }
 
