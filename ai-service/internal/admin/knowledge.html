@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en"{{with theme}} data-theme="{{.}}"{{end}}>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
 <head>
 {{template "head"}}
-<title>Knowledge base · Pronto</title>
+<title>{{T "Knowledge base · Pronto"}}</title>
 </head>
 <body>
 <div class="shell">
@@ -10,25 +10,25 @@
 <main>
   <div class="page-head">
     <div>
-      <h1>Knowledge base</h1>
-      <p class="lead">What the bot may answer from. Keep it current: edit a document when something changes, and give promotions an end date.</p>
+      <h1>{{T "Knowledge base"}}</h1>
+      <p class="lead">{{T "What the bot may answer from. Keep it current: edit a document when something changes, and give promotions an end date."}}</p>
     </div>
     {{template "account-picker" (dict "Action" "/admin/knowledge" "Current" .AccountID)}}
   </div>
 
   {{if not .Enabled}}
-  <div class="alert err" role="alert"><strong>Knowledge base is off.</strong> Set <code>DATABASE_URL</code> for ai-service (Postgres with pgvector) and restart it.</div>
+  <div class="alert err" role="alert"><strong>{{T "Knowledge base is off."}}</strong> {{T "Set"}} <code>DATABASE_URL</code> {{T "for ai-service (Postgres with pgvector) and restart it."}}</div>
   {{else}}
-  {{if not .Embedding}}<div class="alert err" role="alert"><strong>No embeddings provider.</strong> Set one on the <a href="/admin/providers">AI providers</a> page before adding knowledge.</div>{{end}}
+  {{if not .Embedding}}<div class="alert err" role="alert"><strong>{{T "No embeddings provider."}}</strong> {{T "Set one on the"}} <a href="/admin/providers">{{T "AI providers"}}</a> {{T "page before adding knowledge."}}</div>{{end}}
   {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
-  {{if and .Error (eq .ErrorForm "list")}}<div class="alert err" role="alert"><strong>Failed.</strong> {{.Error}}</div>{{end}}
+  {{if and .Error (eq .ErrorForm "list")}}<div class="alert err" role="alert"><strong>{{T "Failed."}}</strong> {{.Error}}</div>{{end}}
 
   {{if .Dupes}}
   <section class="card dupes" aria-labelledby="dupe-title" role="alert">
-    <h2 id="dupe-title" class="card-title">This looks like something you already have</h2>
-    <p class="hint">Two documents that say different things confuse the bot. Edit the existing one instead, or add yours anyway.</p>
+    <h2 id="dupe-title" class="card-title">{{T "This looks like something you already have"}}</h2>
+    <p class="hint">{{T "Two documents that say different things confuse the bot. Edit the existing one instead, or add yours anyway."}}</p>
     <ul class="sources">
-      {{range .Dupes}}<li><strong>{{.Title}}</strong> <span class="preview">{{.Score}} similar</span> · <a href="/admin/knowledge?account={{$.AccountID}}&amp;edit={{.DocumentID}}">Edit this one</a></li>{{end}}
+      {{range .Dupes}}<li><strong>{{.Title}}</strong> <span class="preview">{{T "%s similar" .Score}}</span> · <a href="/admin/knowledge?account={{$.AccountID}}&amp;edit={{.DocumentID}}">{{T "Edit this one"}}</a></li>{{end}}
     </ul>
     <form method="post" action="/admin/knowledge" class="card-foot">
       <input type="hidden" name="account" value="{{.AccountID}}">
@@ -41,93 +41,93 @@
       {{else}}
       <input type="hidden" name="action" value="add_doc"><input type="hidden" name="title" value="{{.DocTitle}}"><input type="hidden" name="content" value="{{.DocContent}}">
       {{end}}
-      <a class="btn" href="/admin/knowledge?account={{.AccountID}}">Cancel</a>
-      <button type="submit">Add mine anyway</button>
+      <a class="btn" href="/admin/knowledge?account={{.AccountID}}">{{T "Cancel"}}</a>
+      <button type="submit">{{T "Add mine anyway"}}</button>
     </form>
   </section>
   {{end}}
 
   {{with .Edit}}
-  <p class="back-link"><a href="{{$.Lib.Back $.AccountID .ID}}">← Back to library</a></p>
+  <p class="back-link"><a href="{{$.Lib.Back $.AccountID .ID}}">{{T "← Back to library"}}</a></p>
   <section class="card" aria-labelledby="edit-title">
-    <h2 id="edit-title" class="card-title">Edit {{if eq .Kind "faq"}}FAQ{{else}}document{{end}}</h2>
-    <p class="hint">Saving re-indexes it. The bot uses the new version from the next message. Usage counts are kept.</p>
-    {{if .Synced}}<div class="alert warn" role="note"><strong>This comes from a website page or data file.</strong> Your edit can be replaced at the next sync. To change it for good, edit the page or the file.</div>{{end}}
-    {{if and $.Error (eq $.ErrorForm "edit")}}<div class="alert err" role="alert"><strong>Not saved.</strong><span class="pre">{{$.Error}}</span></div>{{end}}
+    <h2 id="edit-title" class="card-title">{{if eq .Kind "faq"}}{{T "Edit FAQ"}}{{else}}{{T "Edit document"}}{{end}}</h2>
+    <p class="hint">{{T "Saving re-indexes it. The bot uses the new version from the next message. Usage counts are kept."}}</p>
+    {{if .Synced}}<div class="alert warn" role="note"><strong>{{T "This comes from a website page or data file."}}</strong> {{T "Your edit can be replaced at the next sync. To change it for good, edit the page or the file."}}</div>{{end}}
+    {{if and $.Error (eq $.ErrorForm "edit")}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{$.Error}}</span></div>{{end}}
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="update">
       <input type="hidden" name="account" value="{{$.AccountID}}">
       <input type="hidden" name="id" value="{{.ID}}">
       {{template "lib-fields" $.Lib}}
       {{if eq .Kind "faq"}}
-      <label for="e-question">Question</label>
+      <label for="e-question">{{T "Question"}}</label>
       <input id="e-question" name="question" type="text" maxlength="300" required value="{{.Question}}">
-      <label for="e-answer">Answer</label>
+      <label for="e-answer">{{T "Answer"}}</label>
       <textarea id="e-answer" name="answer" required rows="5">{{.Answer}}</textarea>
       {{else}}
-      <label for="e-title">Title</label>
+      <label for="e-title">{{T "Title"}}</label>
       <input id="e-title" name="title" type="text" maxlength="300" required value="{{.DocTitle}}">
-      <label for="e-content">Text</label>
+      <label for="e-content">{{T "Text"}}</label>
       <textarea id="e-content" name="content" required rows="14">{{.DocContent}}</textarea>
       {{end}}
       <div class="grid2">
-        <div><label for="e-inbox">Inbox (optional)</label>
+        <div><label for="e-inbox">{{T "Inbox (optional)"}}</label>
         {{template "inbox-select" (dict "ID" "e-inbox" "Account" $.AccountID "Current" .InboxID)}}</div>
         <div></div>
         {{template "dates" (dict "P" "e" "From" .From "Until" .Until)}}
       </div>
-      <div class="actions"><a class="btn" href="{{$.Lib.Back $.AccountID .ID}}">Cancel</a><button type="submit" class="primary">Save changes</button></div>
+      <div class="actions"><a class="btn" href="{{$.Lib.Back $.AccountID .ID}}">{{T "Cancel"}}</a><button type="submit" class="primary">{{T "Save changes"}}</button></div>
     </form>
   </section>
   {{else}}
   <div class="cols2">
   <section class="card" aria-labelledby="faq-title">
-    <h2 id="faq-title" class="card-title">Add an FAQ</h2>
-    <p class="hint">One question and its answer. Best for short facts: hours, prices, delivery, returns.</p>
-    {{if and .Error (eq .ErrorForm "faq")}}<div class="alert err" role="alert"><strong>Not added.</strong><span class="pre">{{.Error}}</span></div>{{end}}
+    <h2 id="faq-title" class="card-title">{{T "Add an FAQ"}}</h2>
+    <p class="hint">{{T "One question and its answer. Best for short facts: hours, prices, delivery, returns."}}</p>
+    {{if and .Error (eq .ErrorForm "faq")}}<div class="alert err" role="alert"><strong>{{T "Not added."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="add_faq">
       <input type="hidden" name="account" value="{{.AccountID}}">
-      <label for="question">Question</label>
+      <label for="question">{{T "Question"}}</label>
       <input id="question" name="question" type="text" maxlength="300" required value="{{.Question}}" placeholder="ร้านเปิดกี่โมง">
-      <label for="answer">Answer</label>
+      <label for="answer">{{T "Answer"}}</label>
       <textarea id="answer" name="answer" required rows="4" placeholder="เปิดทุกวัน 9:00–18:00 น.">{{.Answer}}</textarea>
       <details{{if or .From .Until .InboxID}} open{{end}}>
-        <summary>Dates and inbox (optional)</summary>
+        <summary>{{T "Dates and inbox (optional)"}}</summary>
         <div class="grid2">
           {{template "dates" (dict "P" "faq" "From" .From "Until" .Until)}}
-          <div class="span2"><label for="faq-inbox">Inbox</label>
+          <div class="span2"><label for="faq-inbox">{{T "Inbox"}}</label>
           {{template "inbox-select" (dict "ID" "faq-inbox" "Account" .AccountID "Current" .InboxID "Hint" "inbox-hint")}}
-          <p class="field-hint" id="inbox-hint">Use it only when one page or channel has different answers.</p></div>
+          <p class="field-hint" id="inbox-hint">{{T "Use it only when one page or channel has different answers."}}</p></div>
         </div>
       </details>
-      <div class="actions"><button type="submit" class="primary">Add FAQ</button></div>
+      <div class="actions"><button type="submit" class="primary">{{T "Add FAQ"}}</button></div>
     </form>
   </section>
 
   <section class="card" aria-labelledby="doc-title">
-    <h2 id="doc-title" class="card-title">Add a document</h2>
-    <p class="hint">Longer text such as a price list, policy or product guide. Paste it, or upload a file: .txt or .md (max 2 MB), or a PDF with real text, not a scan (max 10 MB). From Word or Google Docs, save as PDF first.</p>
-    {{if and .Error (eq .ErrorForm "doc")}}<div class="alert err" role="alert"><strong>Not added.</strong><span class="pre">{{.Error}}</span></div>{{end}}
+    <h2 id="doc-title" class="card-title">{{T "Add a document"}}</h2>
+    <p class="hint">{{T "Longer text such as a price list, policy or product guide. Paste it, or upload a file: .txt or .md (max 2 MB), or a PDF with real text, not a scan (max 10 MB). From Word or Google Docs, save as PDF first."}}</p>
+    {{if and .Error (eq .ErrorForm "doc")}}<div class="alert err" role="alert"><strong>{{T "Not added."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
     <form method="post" action="/admin/knowledge" enctype="multipart/form-data" autocomplete="off">
       <input type="hidden" name="action" value="add_doc">
       <input type="hidden" name="account" value="{{.AccountID}}">
-      <label for="title">Title</label>
-      <input id="title" name="title" type="text" maxlength="300" value="{{.DocTitle}}" placeholder="Shipping and returns policy" aria-describedby="title-hint">
-      <p class="field-hint" id="title-hint">Blank uses the first # heading, else the file name.</p>
-      <label for="content">Text</label>
+      <label for="title">{{T "Title"}}</label>
+      <input id="title" name="title" type="text" maxlength="300" value="{{.DocTitle}}" placeholder="{{T "Shipping and returns policy"}}" aria-describedby="title-hint">
+      <p class="field-hint" id="title-hint">{{T "Blank uses the first # heading, else the file name."}}</p>
+      <label for="content">{{T "Text"}}</label>
       <textarea id="content" name="content" rows="6">{{.DocContent}}</textarea>
-      <label for="file">Or upload a file</label>
+      <label for="file">{{T "Or upload a file"}}</label>
       <input id="file" name="file" type="file" accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf">
       <details{{if or .From .Until .InboxID}} open{{end}}>
-        <summary>Dates and inbox (optional)</summary>
+        <summary>{{T "Dates and inbox (optional)"}}</summary>
         <div class="grid2">
           {{template "dates" (dict "P" "doc" "From" .From "Until" .Until)}}
-          <div class="span2"><label for="doc-inbox">Inbox</label>
+          <div class="span2"><label for="doc-inbox">{{T "Inbox"}}</label>
           {{template "inbox-select" (dict "ID" "doc-inbox" "Account" .AccountID "Current" .InboxID)}}</div>
         </div>
       </details>
-      <div class="actions"><button type="submit" class="primary">Add document</button></div>
+      <div class="actions"><button type="submit" class="primary">{{T "Add document"}}</button></div>
     </form>
   </section>
   </div>
@@ -136,66 +136,66 @@
   {{if and .WebOn (not .Edit)}}
   <section class="card" aria-labelledby="web-title">
     <div class="card-head">
-      <h2 id="web-title" class="card-title">Website pages and data files</h2>
-      {{if .Pages}}<form method="post" action="/admin/knowledge"><input type="hidden" name="action" value="sync_all"><input type="hidden" name="account" value="{{.AccountID}}"><button type="submit" class="btn small">Sync all now</button></form>{{end}}
+      <h2 id="web-title" class="card-title">{{T "Website pages and data files"}}</h2>
+      {{if .Pages}}<form method="post" action="/admin/knowledge"><input type="hidden" name="action" value="sync_all"><input type="hidden" name="account" value="{{.AccountID}}"><button type="submit" class="btn small">{{T "Sync all now"}}</button></form>{{end}}
     </div>
-    <p class="hint">Add a public page (for example your price or policy page), or a data file where each row is one answer: a Google Sheet, or a CSV or JSON Lines file. Google Sheets and Docs links can be pasted straight from the address bar. The bot reads it now and checks it on a schedule: changes update automatically, and anything that disappears stops being used.</p>
-    {{if and .Error (eq .ErrorForm "page")}}<div class="alert err" role="alert"><strong>Not added.</strong> {{.Error}}</div>{{end}}
+    <p class="hint">{{T "Add a public page (for example your price or policy page), or a data file where each row is one answer: a Google Sheet, or a CSV or JSON Lines file. Google Sheets and Docs links can be pasted straight from the address bar. The bot reads it now and checks it on a schedule: changes update automatically, and anything that disappears stops being used."}}</p>
+    {{if and .Error (eq .ErrorForm "page")}}<div class="alert err" role="alert"><strong>{{T "Not added."}}</strong> {{.Error}}</div>{{end}}
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="add_page"><input type="hidden" name="account" value="{{.AccountID}}">
       <fieldset class="kind-choice">
-        <legend class="visually-hidden">What is it?</legend>
-        <label><input type="radio" name="kind" value="page"{{if ne .PageKind "feed"}} checked{{end}}> Web page</label>
-        <label><input type="radio" name="kind" value="feed"{{if eq .PageKind "feed"}} checked{{end}}> Data file (one answer per row)</label>
+        <legend class="visually-hidden">{{T "What is it?"}}</legend>
+        <label><input type="radio" name="kind" value="page"{{if ne .PageKind "feed"}} checked{{end}}> {{T "Web page"}}</label>
+        <label><input type="radio" name="kind" value="feed"{{if eq .PageKind "feed"}} checked{{end}}> {{T "Data file (one answer per row)"}}</label>
       </fieldset>
       <div class="row" style="margin-top:8px">
-        <label for="page-url" class="visually-hidden">Address</label>
+        <label for="page-url" class="visually-hidden">{{T "Address"}}</label>
         <input id="page-url" name="url" type="url" required placeholder="https://www.example.com/pricing" value="{{.PageURL}}" style="flex:3;min-width:240px">
-        <button type="submit" class="primary">Add</button>
+        <button type="submit" class="primary">{{T "Add"}}</button>
       </div>
     </form>
     <details class="feed-help">
-      <summary>How to use Google Sheets, Google Docs or a data file</summary>
+      <summary>{{T "How to use Google Sheets, Google Docs or a data file"}}</summary>
       <ol>
-        <li>Google Sheets: paste the link from the address bar. In the sheet, set <strong>Share → General access</strong> to <strong>Anyone with the link</strong> (Viewer) first. The tab open in the link is the one read; a sheet is always added as a data file. Or use <strong>File → Share → Publish to web</strong> as <strong>Comma-separated values (.csv)</strong> and paste that link.</li>
-        <li>Google Docs: paste the link the same way, with the same sharing. The whole document becomes one answer source and is checked on the schedule like a web page.</li>
-        <li>The first row holds the column names. An <code>id</code> column is required: it must stay the same when you edit a row, so the bot updates that answer instead of adding a new one.</li>
-        <li>For questions and answers use <code>question</code> and <code>answer</code> columns. For longer text use <code>title</code> and <code>content</code> (or <code>text</code>); <code>category</code> and <code>section</code> become the title when there is no title.</li>
-        <li>JSON Lines works the same way: one object per line with the same names, for example <code>{"id": "product-001", "category": "Price", "section": "Lifetime", "text": "…"}</code>.</li>
-        <li>Optional <code>start_date</code> and <code>last_day</code> columns (YYYY-MM-DD) limit when the bot may use a row, for example a promotion.</li>
-        <li>Delete a row and the bot stops using it at once; it is removed for good a week later. Up to 500 rows per file.</li>
+        <li>{{T "Google Sheets: paste the link from the address bar. In the sheet, set"}} <strong>Share → General access</strong> {{T "to"}} <strong>Anyone with the link</strong> {{T "(Viewer) first. The tab open in the link is the one read; a sheet is always added as a data file. Or use"}} <strong>File → Share → Publish to web</strong> {{T "as"}} <strong>Comma-separated values (.csv)</strong> {{T "and paste that link."}}</li>
+        <li>{{T "Google Docs: paste the link the same way, with the same sharing. The whole document becomes one answer source and is checked on the schedule like a web page."}}</li>
+        <li>{{T "The first row holds the column names. An"}} <code>id</code> {{T "column is required: it must stay the same when you edit a row, so the bot updates that answer instead of adding a new one."}}</li>
+        <li>{{T "For questions and answers use"}} <code>question</code> {{T "and"}} <code>answer</code> {{T "columns. For longer text use"}} <code>title</code> {{T "and"}} <code>content</code> {{T "(or"}} <code>text</code>); <code>category</code> {{T "and"}} <code>section</code> {{T "become the title when there is no title."}}</li>
+        <li>{{T "JSON Lines works the same way: one object per line with the same names, for example"}} <code>{"id": "product-001", "category": "Price", "section": "Lifetime", "text": "…"}</code>.</li>
+        <li>{{T "Optional|columns"}} <code>start_date</code> {{T "and"}} <code>last_day</code> {{T "columns (YYYY-MM-DD) limit when the bot may use a row, for example a promotion."}}</li>
+        <li>{{T "Delete a row and the bot stops using it at once; it is removed for good a week later. Up to 500 rows per file."}}</li>
       </ol>
     </details>
     {{if .Pages}}
     <table class="spaced">
-      <thead><tr><th scope="col">Source</th><th scope="col">Status</th><th scope="col">Last checked</th><th scope="col">Check</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <thead><tr><th scope="col">{{T "Source"}}</th><th scope="col">{{T "Status"}}</th><th scope="col">{{T "Last checked"}}</th><th scope="col">{{T "Check"}}</th><th scope="col"><span class="visually-hidden">{{T "Actions"}}</span></th></tr></thead>
       <tbody>
       {{range .Pages}}
         <tr>
-          <td class="src"><strong>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</strong>{{if .Feed}} <span class="badge">Data file</span>{{end}}<div class="preview">{{.URL}}</div></td>
-          <td data-label="Status"><span class="badge {{if eq .Status "ok"}}active{{else if eq .Status "new"}}scheduled{{else}}expired{{end}}">{{.Label}}</span>{{with .Detail}}<div class="preview">{{.}}</div>{{end}}</td>
-          <td class="num" data-label="Last checked">{{.Checked}}</td>
-          <td data-label="Check">
+          <td class="src"><strong>{{if .Title}}{{.Title}}{{else}}{{.URL}}{{end}}</strong>{{if .Feed}} <span class="badge">{{T "Data file"}}</span>{{end}}<div class="preview">{{.URL}}</div></td>
+          <td data-label="{{T "Status"}}"><span class="badge {{if eq .Status "ok"}}active{{else if eq .Status "new"}}scheduled{{else}}expired{{end}}">{{.Label}}</span>{{with .Detail}}<div class="preview">{{.}}</div>{{end}}</td>
+          <td class="num" data-label="{{T "Last checked"}}">{{.Checked}}</td>
+          <td data-label="{{T "Check"}}">
             <form class="inline sched" method="post" action="/admin/knowledge">
               <input type="hidden" name="action" value="page_interval"><input type="hidden" name="account" value="{{$.AccountID}}"><input type="hidden" name="id" value="{{.ID}}">
-              <label for="iv-{{.ID}}" class="visually-hidden">How often to check</label>
+              <label for="iv-{{.ID}}" class="visually-hidden">{{T "How often to check"}}</label>
               <select id="iv-{{.ID}}" name="interval">
-                <option value="1"{{if eq .Interval 1}} selected{{end}}>Every hour</option>
-                <option value="6"{{if eq .Interval 6}} selected{{end}}>Every 6 hours</option>
-                <option value="24"{{if eq .Interval 24}} selected{{end}}>Daily</option>
-                <option value="168"{{if eq .Interval 168}} selected{{end}}>Weekly</option>
+                <option value="1"{{if eq .Interval 1}} selected{{end}}>{{T "Every hour"}}</option>
+                <option value="6"{{if eq .Interval 6}} selected{{end}}>{{T "Every 6 hours"}}</option>
+                <option value="24"{{if eq .Interval 24}} selected{{end}}>{{T "Daily"}}</option>
+                <option value="168"{{if eq .Interval 168}} selected{{end}}>{{T "Weekly"}}</option>
               </select>
-              <button type="submit" class="btn small">Save</button>
+              <button type="submit" class="btn small">{{T "Save"}}</button>
             </form>
           </td>
           <td class="row-actions">
             <form class="inline" method="post" action="/admin/knowledge">
               <input type="hidden" name="action" value="sync_page"><input type="hidden" name="account" value="{{$.AccountID}}"><input type="hidden" name="id" value="{{.ID}}">
-              <button type="submit" class="btn small" aria-label="Sync now: {{.URL}}">Sync now</button>
+              <button type="submit" class="btn small" aria-label="{{T "Sync now: %s" .URL}}">{{T "Sync now"}}</button>
             </form>
-            <form class="inline" method="post" action="/admin/knowledge" data-confirm="{{if .Feed}}Stop syncing this file and delete its {{.Items}} answers? Add the file again to bring them back.{{else}}Stop syncing {{.URL}} and delete its knowledge?{{end}}">
+            <form class="inline" method="post" action="/admin/knowledge" data-confirm="{{if .Feed}}{{T "Stop syncing this file and delete its %d answers? Add the file again to bring them back." .Items}}{{else}}{{T "Stop syncing %s and delete its knowledge?" .URL}}{{end}}">
               <input type="hidden" name="action" value="remove_page"><input type="hidden" name="account" value="{{$.AccountID}}"><input type="hidden" name="id" value="{{.ID}}">
-              <button type="submit" class="btn small danger" aria-label="Remove {{.URL}}">Remove</button>
+              <button type="submit" class="btn small danger" aria-label="{{T "Remove %s" .URL}}">{{T "Remove"}}</button>
             </form>
           </td>
         </tr>
@@ -209,51 +209,51 @@
   {{if not .Edit}}
   <section class="card" aria-labelledby="list-title">
     <div class="card-head">
-      <h2 id="list-title" class="card-title">Document library</h2>
-      <span class="seg" role="group" aria-label="Layout">
-        <a href="{{.Lib.With .AccountID "view" ""}}" aria-current="{{if eq .Lib.View ""}}true{{else}}false{{end}}">Grid</a>
-        <a href="{{.Lib.With .AccountID "view" "list"}}" aria-current="{{if eq .Lib.View "list"}}true{{else}}false{{end}}">List</a>
+      <h2 id="list-title" class="card-title">{{T "Document library"}}</h2>
+      <span class="seg" role="group" aria-label="{{T "Layout"}}">
+        <a href="{{.Lib.With .AccountID "view" ""}}" aria-current="{{if eq .Lib.View ""}}true{{else}}false{{end}}">{{T "Grid"}}</a>
+        <a href="{{.Lib.With .AccountID "view" "list"}}" aria-current="{{if eq .Lib.View "list"}}true{{else}}false{{end}}">{{T "List"}}</a>
       </span>
     </div>
-    <ul class="stats" aria-label="Filter by type or status">
-      <li><a href="{{.Lib.With .AccountID "all" ""}}" aria-current="{{if and (eq .Lib.Type "") (eq .Lib.Show "")}}true{{else}}false{{end}}"><span class="stat-num">{{.Total}}</span> <span class="stat-label">Total</span></a></li>
-      <li><a href="{{.Lib.With .AccountID "type" "faq"}}" aria-current="{{if eq .Lib.Type "faq"}}true{{else}}false{{end}}"><span class="stat-num">{{.FAQs}}</span> <span class="stat-label">FAQs</span></a></li>
-      <li><a href="{{.Lib.With .AccountID "type" "doc"}}" aria-current="{{if eq .Lib.Type "doc"}}true{{else}}false{{end}}"><span class="stat-num">{{.Texts}}</span> <span class="stat-label">Documents</span></a></li>
-      <li><a href="{{.Lib.With .AccountID "type" "synced"}}" aria-current="{{if eq .Lib.Type "synced"}}true{{else}}false{{end}}"><span class="stat-num">{{.Synced}}</span> <span class="stat-label">From website or file</span></a></li>
-      <li><a href="{{.Lib.With .AccountID "show" "unused"}}" aria-current="{{if eq .Lib.Show "unused"}}true{{else}}false{{end}}"><span class="stat-num">{{.Unused}}</span> <span class="stat-label">Not used yet</span></a></li>
-      <li><a href="{{.Lib.With .AccountID "show" "inactive"}}" aria-current="{{if eq .Lib.Show "inactive"}}true{{else}}false{{end}}"><span class="stat-num">{{.Inactive}}</span> <span class="stat-label">Expired or scheduled</span></a></li>
+    <ul class="stats" aria-label="{{T "Filter by type or status"}}">
+      <li><a href="{{.Lib.With .AccountID "all" ""}}" aria-current="{{if and (eq .Lib.Type "") (eq .Lib.Show "")}}true{{else}}false{{end}}"><span class="stat-num">{{.Total}}</span> <span class="stat-label">{{T "Total"}}</span></a></li>
+      <li><a href="{{.Lib.With .AccountID "type" "faq"}}" aria-current="{{if eq .Lib.Type "faq"}}true{{else}}false{{end}}"><span class="stat-num">{{.FAQs}}</span> <span class="stat-label">{{T "FAQs"}}</span></a></li>
+      <li><a href="{{.Lib.With .AccountID "type" "doc"}}" aria-current="{{if eq .Lib.Type "doc"}}true{{else}}false{{end}}"><span class="stat-num">{{.Texts}}</span> <span class="stat-label">{{T "Documents"}}</span></a></li>
+      <li><a href="{{.Lib.With .AccountID "type" "synced"}}" aria-current="{{if eq .Lib.Type "synced"}}true{{else}}false{{end}}"><span class="stat-num">{{.Synced}}</span> <span class="stat-label">{{T "From website or file"}}</span></a></li>
+      <li><a href="{{.Lib.With .AccountID "show" "unused"}}" aria-current="{{if eq .Lib.Show "unused"}}true{{else}}false{{end}}"><span class="stat-num">{{.Unused}}</span> <span class="stat-label">{{T "Not used yet"}}</span></a></li>
+      <li><a href="{{.Lib.With .AccountID "show" "inactive"}}" aria-current="{{if eq .Lib.Show "inactive"}}true{{else}}false{{end}}"><span class="stat-num">{{.Inactive}}</span> <span class="stat-label">{{T "Expired or scheduled"}}</span></a></li>
     </ul>
     <form class="lib-search" method="get" action="/admin/knowledge" role="search">
       <input type="hidden" name="account" value="{{.AccountID}}">
       {{with .Lib.Type}}<input type="hidden" name="type" value="{{.}}">{{end}}{{with .Lib.Show}}<input type="hidden" name="show" value="{{.}}">{{end}}{{with .Lib.View}}<input type="hidden" name="view" value="{{.}}">{{end}}
-      <div><label for="lib-q" class="visually-hidden">Search titles and text</label>
-      <input id="lib-q" name="q" type="search" maxlength="200" value="{{.Lib.Query}}" placeholder="Search titles and text"></div>
-      <button type="submit">Search</button>
-      {{if .Lib.Active}}<a class="btn" href="{{.Lib.With .AccountID "clear" ""}}">Clear</a>{{end}}
+      <div><label for="lib-q" class="visually-hidden">{{T "Search titles and text"}}</label>
+      <input id="lib-q" name="q" type="search" maxlength="200" value="{{.Lib.Query}}" placeholder="{{T "Search titles and text"}}"></div>
+      <button type="submit">{{T "Search"}}</button>
+      {{if .Lib.Active}}<a class="btn" href="{{.Lib.With .AccountID "clear" ""}}">{{T "Clear"}}</a>{{end}}
     </form>
-    {{if .Lib.Active}}<p class="hint" role="status">{{.Shown}} of {{.Total}} shown.</p>{{end}}
-    {{if eq .Lib.Show "unused"}}<p class="hint">No customer question has reached these yet. Check they are worded the way customers ask, or delete what is no longer true.</p>{{end}}
-    {{if eq .Lib.Show "inactive"}}<p class="hint">The bot does not use these right now. Expired ones can be deleted, or edited with new dates.</p>{{end}}
+    {{if .Lib.Active}}<p class="hint" role="status">{{T "%d of %d shown." .Shown .Total}}</p>{{end}}
+    {{if eq .Lib.Show "unused"}}<p class="hint">{{T "No customer question has reached these yet. Check they are worded the way customers ask, or delete what is no longer true."}}</p>{{end}}
+    {{if eq .Lib.Show "inactive"}}<p class="hint">{{T "The bot does not use these right now. Expired ones can be deleted, or edited with new dates."}}</p>{{end}}
     {{if .Stale}}
-    <div class="alert err" role="alert">{{.Stale}} {{if eq .Stale 1}}chunk was{{else}}chunks were{{end}} made with a different embeddings model, so the bot cannot find them.
+    <div class="alert err" role="alert">{{if eq .Stale 1}}{{T "%d chunk was made with a different embeddings model, so the bot cannot find them." .Stale}}{{else}}{{T "%d chunks were made with a different embeddings model, so the bot cannot find them." .Stale}}{{end}}
       <form class="inline" method="post" action="/admin/knowledge">
         <input type="hidden" name="action" value="reindex"><input type="hidden" name="account" value="{{.AccountID}}">
-        <button type="submit">Re-index now</button>
+        <button type="submit">{{T "Re-index now"}}</button>
       </form>
     </div>
     {{end}}
     {{if .Docs}}
     {{if eq .Lib.View "list"}}
     <table>
-      <thead><tr><th scope="col">Title</th><th scope="col">Status</th><th scope="col">Used by customers</th><th scope="col">Scope</th><th scope="col">Updated</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <thead><tr><th scope="col">{{T "Title"}}</th><th scope="col">{{T "Status"}}</th><th scope="col">{{T "Used by customers"}}</th><th scope="col">{{T "Scope"}}</th><th scope="col">{{T "Updated"}}</th><th scope="col"><span class="visually-hidden">{{T "Actions"}}</span></th></tr></thead>
       <tbody>
       {{range .Docs}}
         <tr id="doc-{{.ID}}">
-          <td><strong>{{.Title}}</strong> <span class="preview">{{.Kind}}{{if .Synced}} · from website or file{{end}}</span><div class="preview">{{.Preview}}</div></td>
-          <td data-label="Status"><span class="badge {{.Status}}">{{template "status-label" .Status}}</span>{{with .Window}}<div class="preview">{{.}}</div>{{end}}</td>
-          <td data-label="Used by customers"{{if .Unused}} class="muted-cell"{{end}}>{{.Used}}</td>
-          <td data-label="Scope">{{.Inbox}}{{if .Stale}} <span class="warn">({{.Stale}} old chunks)</span>{{end}}</td>
-          <td class="num" data-label="Updated">{{.Updated}}</td>
+          <td><strong>{{.Title}}</strong> <span class="preview">{{.Kind}}{{if .Synced}} · {{T "from website or file"}}{{end}}</span><div class="preview">{{.Preview}}</div></td>
+          <td data-label="{{T "Status"}}"><span class="badge {{.Status}}">{{template "status-label" .Status}}</span>{{with .Window}}<div class="preview">{{.}}</div>{{end}}</td>
+          <td data-label="{{T "Used by customers"}}"{{if .Unused}} class="muted-cell"{{end}}>{{.Used}}</td>
+          <td data-label="{{T "Scope"}}">{{.Inbox}}{{if .Stale}} <span class="warn">{{T "(%d old chunks)" .Stale}}</span>{{end}}</td>
+          <td class="num" data-label="{{T "Updated"}}">{{.Updated}}</td>
           <td class="row-actions">{{template "doc-actions" (dict "D" . "Lib" $.Lib "Account" $.AccountID)}}</td>
         </tr>
       {{end}}
@@ -263,25 +263,25 @@
     <ul class="library">
       {{range .Docs}}
       <li class="doc" id="doc-{{.ID}}">
-        <div class="doc-tags"><span class="badge">{{.Kind}}</span>{{if .Synced}}<span class="badge">From website or file</span>{{end}}<span class="badge {{.Status}}">{{template "status-label" .Status}}</span></div>
+        <div class="doc-tags"><span class="badge">{{.Kind}}</span>{{if .Synced}}<span class="badge">{{T "From website or file"}}</span>{{end}}<span class="badge {{.Status}}">{{template "status-label" .Status}}</span></div>
         <h3 class="doc-title">{{.Title}}</h3>
         {{with .Preview}}<p class="preview doc-preview">{{.}}</p>{{end}}
         <dl class="doc-meta">
-          <dt>Used</dt><dd{{if .Unused}} class="muted-cell"{{end}}>{{.Used}}</dd>
-          <dt>Updated</dt><dd>{{.Updated}}</dd>
-          <dt>Scope</dt><dd>{{.Inbox}}</dd>
-          {{with .Window}}<dt>Dates</dt><dd>{{.}}</dd>{{end}}
+          <dt>{{T "Used"}}</dt><dd{{if .Unused}} class="muted-cell"{{end}}>{{.Used}}</dd>
+          <dt>{{T "Updated"}}</dt><dd>{{.Updated}}</dd>
+          <dt>{{T "Scope"}}</dt><dd>{{.Inbox}}</dd>
+          {{with .Window}}<dt>{{T "Dates"}}</dt><dd>{{.}}</dd>{{end}}
         </dl>
-        {{if .Stale}}<p class="warn preview">{{.Stale}} old chunks: re-index above.</p>{{end}}
+        {{if .Stale}}<p class="warn preview">{{T "%d old chunks: re-index above." .Stale}}</p>{{end}}
         <div class="card-foot">{{template "doc-actions" (dict "D" . "Lib" $.Lib "Account" $.AccountID)}}</div>
       </li>
       {{end}}
     </ul>
     {{end}}
     {{else if .Total}}
-    <p class="hint spaced">Nothing matches. <a href="{{.Lib.With .AccountID "clear" ""}}">Show all</a></p>
+    <p class="hint spaced">{{T "Nothing matches."}} <a href="{{.Lib.With .AccountID "clear" ""}}">{{T "Show all"}}</a></p>
     {{else}}
-    <p class="hint spaced">Nothing yet. Add an FAQ or a document above.</p>
+    <p class="hint spaced">{{T "Nothing yet. Add an FAQ or a document above."}}</p>
     {{end}}
   </section>
   {{end}}
@@ -291,21 +291,21 @@
 </body>
 </html>
 
-{{define "status-label"}}{{if eq . "active"}}Active{{else if eq . "scheduled"}}Scheduled{{else}}Expired{{end}}{{end}}
+{{define "status-label"}}{{if eq . "active"}}{{T "Active"}}{{else if eq . "scheduled"}}{{T "Scheduled"}}{{else}}{{T "Expired"}}{{end}}{{end}}
 
-{{define "doc-actions"}}<a class="btn small" href="{{.Lib.Edit .Account .D.ID}}">Edit<span class="visually-hidden"> {{.D.Title}}</span></a>
-<form class="inline" method="post" action="/admin/knowledge" data-confirm="Delete “{{.D.Title}}”? The bot stops using it at once.">
+{{define "doc-actions"}}<a class="btn small" href="{{.Lib.Edit .Account .D.ID}}">{{T "Edit"}}<span class="visually-hidden"> {{.D.Title}}</span></a>
+<form class="inline" method="post" action="/admin/knowledge" data-confirm="{{T "Delete “%s”? The bot stops using it at once." .D.Title}}">
   <input type="hidden" name="action" value="delete"><input type="hidden" name="account" value="{{.Account}}"><input type="hidden" name="id" value="{{.D.ID}}">{{template "lib-fields" .Lib}}
-  <button type="submit" class="btn small danger" aria-label="Delete {{.D.Title}}">Delete</button>
+  <button type="submit" class="btn small danger" aria-label="{{T "Delete %s" .D.Title}}">{{T "Delete"}}</button>
 </form>{{end}}
 
 {{define "lib-fields"}}{{with .Query}}<input type="hidden" name="q" value="{{.}}">{{end}}{{with .Type}}<input type="hidden" name="type" value="{{.}}">{{end}}{{with .Show}}<input type="hidden" name="show" value="{{.}}">{{end}}{{with .View}}<input type="hidden" name="view" value="{{.}}">{{end}}{{end}}
 
 {{define "dates"}}
-<div><label for="{{.P}}-from">Start date</label>
+<div><label for="{{.P}}-from">{{T "Start date"}}</label>
 <input id="{{.P}}-from" name="valid_from" type="date" value="{{.From}}" aria-describedby="{{.P}}-from-hint">
-<p class="field-hint" id="{{.P}}-from-hint">Blank = from now.</p></div>
-<div><label for="{{.P}}-until">Last day</label>
+<p class="field-hint" id="{{.P}}-from-hint">{{T "Blank = from now."}}</p></div>
+<div><label for="{{.P}}-until">{{T "Last day"}}</label>
 <input id="{{.P}}-until" name="valid_until" type="date" value="{{.Until}}" aria-describedby="{{.P}}-until-hint">
-<p class="field-hint" id="{{.P}}-until-hint">The bot stops using it after this day. Blank = no end.</p></div>
+<p class="field-hint" id="{{.P}}-until-hint">{{T "The bot stops using it after this day. Blank = no end."}}</p></div>
 {{end}}

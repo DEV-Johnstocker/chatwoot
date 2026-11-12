@@ -99,12 +99,15 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderApprovals(w http.ResponseWriter, r *http.Request, status int, data approvalsData) {
+	lang := langOf(r)
+	// Errors are set in English; show them in the page language.
+	data.Error = tr(lang, data.Error)
 	data.Enabled = h.approvalsOn()
 	if data.Enabled {
-		items, err := h.approvalItems(r.Context(), data.Account)
+		items, err := h.approvalItems(r.Context(), lang, data.Account)
 		if err != nil {
 			h.Logger.Error("load ai changes", "account_id", data.Account, "error", err)
-			data.Error = "Could not load the waiting changes. Check the database connection."
+			data.Error = tr(lang, "Could not load the waiting changes. Check the database connection.")
 		}
 		data.Items = items
 	}
@@ -112,20 +115,20 @@ func (h *Handler) renderApprovals(w http.ResponseWriter, r *http.Request, status
 }
 
 // approvalItems shows each waiting change next to what customers see now.
-func (h *Handler) approvalItems(ctx context.Context, acct int64) ([]approvalItem, error) {
+func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([]approvalItem, error) {
 	changes, err := h.Pending.List(ctx, acct)
 	if err != nil {
 		return nil, err
 	}
 	items := make([]approvalItem, 0, len(changes))
 	for _, c := range changes {
-		it := approvalItem{ID: c.ID, Version: c.Version, From: c.Actor, When: h.when(c.At)}
+		it := approvalItem{ID: c.ID, Version: c.Version, From: c.Actor, When: h.whenIn(lang, c.At)}
 		switch c.Kind {
 		case pending.KindProfile:
-			it.Heading = "Business profile"
-			it.Fields, err = h.profileDiff(ctx, acct, c.Proposed)
+			it.Heading = tr(lang, "Business profile")
+			it.Fields, err = h.profileDiff(ctx, lang, acct, c.Proposed)
 		case pending.KindDocument:
-			it.Heading, it.New, it.Fields, err = h.documentDiff(ctx, acct, c.Target, c.Proposed)
+			it.Heading, it.New, it.Fields, err = h.documentDiff(ctx, lang, acct, c.Target, c.Proposed)
 		}
 		if err != nil {
 			return nil, err
@@ -138,7 +141,7 @@ func (h *Handler) approvalItems(ctx context.Context, acct int64) ([]approvalItem
 	return items, nil
 }
 
-func (h *Handler) profileDiff(ctx context.Context, acct int64, raw []byte) ([]fieldDiff, error) {
+func (h *Handler) profileDiff(ctx context.Context, lang string, acct int64, raw []byte) ([]fieldDiff, error) {
 	var proposed map[string]string
 	if err := json.Unmarshal(raw, &proposed); err != nil {
 		return nil, err
@@ -154,13 +157,13 @@ func (h *Handler) profileDiff(ctx context.Context, acct int64, raw []byte) ([]fi
 	var out []fieldDiff
 	for _, f := range profileLabels {
 		if v, ok := proposed[f.key]; ok {
-			out = append(out, fieldDiff{Label: f.label, Current: now[f.key], Proposed: v})
+			out = append(out, fieldDiff{Label: tr(lang, f.label), Current: now[f.key], Proposed: v})
 		}
 	}
 	return out, nil
 }
 
-func (h *Handler) documentDiff(ctx context.Context, acct int64, key string, raw []byte) (string, bool, []fieldDiff, error) {
+func (h *Handler) documentDiff(ctx context.Context, lang string, acct int64, key string, raw []byte) (string, bool, []fieldDiff, error) {
 	var d struct {
 		Kind      string `json:"kind"`
 		InboxID   int64  `json:"inbox_id"`
@@ -184,44 +187,44 @@ func (h *Handler) documentDiff(ctx context.Context, acct int64, key string, raw 
 			return "", false, nil, err
 		}
 	}
-	fields := []fieldDiff{{Label: "Title", Current: cur.Title, Proposed: d.Title}, {Label: "Text", Current: cur.Content, Proposed: d.Content}}
+	fields := []fieldDiff{{Label: tr(lang, "Title"), Current: cur.Title, Proposed: d.Title}, {Label: tr(lang, "Text"), Current: cur.Content, Proposed: d.Content}}
 	// Everything the approval applies is shown: where it is used, and the
 	// kind of a new document (an existing one keeps its kind).
-	usedIn := fieldDiff{Label: "Used in", Proposed: inboxLabel(d.InboxID)}
+	usedIn := fieldDiff{Label: tr(lang, "Used in"), Proposed: inboxLabel(lang, d.InboxID)}
 	if !isNew && h.Knowledge != nil {
-		usedIn.Current = inboxLabel(cur.InboxID)
+		usedIn.Current = inboxLabel(lang, cur.InboxID)
 	}
 	fields = append(fields, usedIn)
 	if isNew {
-		kind := "Text"
+		kind := tr(lang, "Text")
 		if d.Kind == "faq" {
-			kind = "FAQ (question and answer)"
+			kind = tr(lang, "FAQ (question and answer)")
 		}
-		fields = append(fields, fieldDiff{Label: "Kind", Proposed: kind})
+		fields = append(fields, fieldDiff{Label: tr(lang, "Kind"), Proposed: kind})
 	}
 	if d.StartDate != "" || d.LastDay != "" {
-		fields = append(fields, fieldDiff{Label: "Dates", Proposed: "from " + orNow(d.StartDate) + " to " + orNoEnd(d.LastDay)})
+		fields = append(fields, fieldDiff{Label: tr(lang, "Dates"), Proposed: tr(lang, "from %s to %s", orNow(lang, d.StartDate), orNoEnd(lang, d.LastDay))})
 	}
-	return "Knowledge: " + key, isNew, fields, nil
+	return tr(lang, "Knowledge: %s", key), isNew, fields, nil
 }
 
-func orNow(s string) string {
+func orNow(lang, s string) string {
 	if s == "" {
-		return "now"
+		return tr(lang, "now")
 	}
 	return s
 }
 
-func orNoEnd(s string) string {
+func orNoEnd(lang, s string) string {
 	if s == "" {
-		return "no end"
+		return tr(lang, "no end")
 	}
 	return s
 }
 
-func inboxLabel(id int64) string {
+func inboxLabel(lang string, id int64) string {
 	if id > 0 {
-		return "Only inbox " + strconv.FormatInt(id, 10)
+		return tr(lang, "Only inbox %d", id)
 	}
-	return "All inboxes"
+	return tr(lang, "All inboxes")
 }

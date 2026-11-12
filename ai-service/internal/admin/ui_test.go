@@ -144,7 +144,7 @@ func TestUI_ProvidersEnterSaves(t *testing.T) {
 	src := templateSources(t)["page.html"]
 
 	// Act
-	save := strings.Index(src, `>Save settings</button>`)
+	save := strings.Index(src, `>{{T "Save settings"}}</button>`)
 	test := strings.Index(src, `name="test"`)
 
 	// Assert: implicit submission uses the first submit button in the form

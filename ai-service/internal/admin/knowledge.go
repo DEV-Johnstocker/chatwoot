@@ -106,12 +106,13 @@ type knowledgeData struct {
 
 func (h *Handler) showKnowledge(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	lang := langOf(r)
 	data := knowledgeData{AccountID: accountParam(q.Get("account")), Lib: parseLibrary(q)}
-	data.Notice = noticeFor(q)
+	data.Notice = noticeIn(lang, q)
 	if id, err := strconv.ParseInt(q.Get("edit"), 10, 64); err == nil && id > 0 && h.Knowledge != nil {
 		d, err := h.Knowledge.Get(r.Context(), data.AccountID, id)
 		if err != nil {
-			data.Error, data.ErrorForm = "That document no longer exists.", "list"
+			data.Error, data.ErrorForm = tr(lang, "That document no longer exists."), "list"
 		} else {
 			f := h.formFromDoc(d)
 			data.Edit = &f
@@ -128,6 +129,7 @@ func listFilter(v string) string {
 }
 
 func (h *Handler) renderKnowledge(w http.ResponseWriter, r *http.Request, status int, data knowledgeData) {
+	lang := langOf(r)
 	if h.Knowledge != nil {
 		data.Enabled = true
 		data.Embedding = h.Knowledge.Embedder.Model()
@@ -135,12 +137,12 @@ func (h *Handler) renderKnowledge(w http.ResponseWriter, r *http.Request, status
 		if err != nil {
 			h.Logger.Error("list knowledge", "account_id", data.AccountID, "error", err)
 			if data.Error == "" {
-				data.Error, data.ErrorForm = "Could not load the knowledge base. Check the database connection.", "list"
+				data.Error, data.ErrorForm = tr(lang, "Could not load the knowledge base. Check the database connection."), "list"
 			}
 		}
 		now := time.Now()
 		for _, d := range docs {
-			v := h.toDocView(d, now)
+			v := h.toDocViewIn(lang, d, now)
 			data.Total++
 			data.Stale += d.StaleChunks
 			if v.Unused {
@@ -174,42 +176,76 @@ func (h *Handler) renderKnowledge(w http.ResponseWriter, r *http.Request, status
 			h.Logger.Error("list web pages", "account_id", data.AccountID, "error", err)
 		}
 		for _, p := range pages {
-			v := pageView{ID: p.ID, Interval: p.IntervalHours, URL: p.URL, Title: p.Title, Status: p.Status, Checked: "Not yet",
-				Feed: p.IsFeed(), Items: p.Items}
-			if !p.CheckedAt.IsZero() {
-				v.Checked = h.when(p.CheckedAt)
-			}
-			switch p.Status {
-			case "ok":
-				v.Label = "In sync"
-				var parts []string
-				if p.IsFeed() {
-					parts = append(parts, strconv.Itoa(p.Items)+" rows")
-				}
-				if !p.ChangedAt.IsZero() {
-					parts = append(parts, "changed "+h.day(p.ChangedAt))
-				}
-				if p.Error != "" { // a feed with skipped rows
-					parts = append(parts, p.Error)
-				}
-				v.Detail = strings.Join(parts, " · ")
-			case "error":
-				v.Label, v.Detail = "Problem", p.Error
-			case "gone":
-				v.Label, v.Detail = "Page gone", "hidden from the bot; deleted a week after it disappeared"
-				if p.IsFeed() {
-					v.Label = "File gone"
-				}
-			default:
-				v.Label = "Waiting"
-				if p.IsFeed() {
-					v.Label = "Reading…"
-				}
-			}
-			data.Pages = append(data.Pages, v)
+			data.Pages = append(data.Pages, h.toPageView(lang, p))
 		}
 	}
 	h.renderPage(w, r, status, "knowledge.html", data)
+}
+
+// toPageView is one website page or data file in the sync table, in lang.
+func (h *Handler) toPageView(lang string, p websync.Source) pageView {
+	v := pageView{ID: p.ID, Interval: p.IntervalHours, URL: p.URL, Title: p.Title, Status: p.Status, Checked: tr(lang, "Not yet"),
+		Feed: p.IsFeed(), Items: p.Items}
+	if !p.CheckedAt.IsZero() {
+		v.Checked = h.whenIn(lang, p.CheckedAt)
+	}
+	switch p.Status {
+	case "ok":
+		v.Label = tr(lang, "In sync")
+		var parts []string
+		if p.IsFeed() {
+			parts = append(parts, tr(lang, "%d rows", p.Items))
+		}
+		if !p.ChangedAt.IsZero() {
+			parts = append(parts, tr(lang, "changed %s", h.dayIn(lang, p.ChangedAt)))
+		}
+		if p.Error != "" { // a feed with skipped rows
+			parts = append(parts, msgIn(lang, p.Error))
+		}
+		v.Detail = strings.Join(parts, " · ")
+	case "error":
+		v.Label, v.Detail = tr(lang, "Problem"), msgIn(lang, p.Error)
+	case "gone":
+		v.Label, v.Detail = tr(lang, "Page gone"), tr(lang, "hidden from the bot; deleted a week after it disappeared")
+		if p.IsFeed() {
+			v.Label = tr(lang, "File gone")
+		}
+	default:
+		v.Label = tr(lang, "Waiting")
+		if p.IsFeed() {
+			v.Label = tr(lang, "Reading…")
+		}
+	}
+	return v
+}
+
+// ownerErr is an error the owner sees; its text is translated when shown.
+type ownerErr struct{ ownerMsg }
+
+func (e ownerErr) Error() string { return e.in(langEN) }
+
+// errIn is an error as the owner reads it in lang: an ownerErr with its
+// values, any other error line by line (errors.Join puts one per line) by
+// its exact English text, left in English when the line is not translated.
+func errIn(lang string, err error) string {
+	var oe ownerErr
+	if errors.As(err, &oe) {
+		return oe.in(lang)
+	}
+	return msgIn(lang, err.Error())
+}
+
+// msgIn translates a message line by line; lines without a translation
+// (such as a site's own error text) stay as they are.
+func msgIn(lang, msg string) string {
+	if lang != langTH {
+		return msg
+	}
+	lines := strings.Split(msg, "\n")
+	for i, l := range lines {
+		lines[i] = tr(lang, l)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (h *Handler) loc() *time.Location {
@@ -225,33 +261,38 @@ func (h *Handler) day(t time.Time) string { return t.In(h.loc()).Format("2 Jan 2
 func (h *Handler) when(t time.Time) string { return t.In(h.loc()).Format("2 Jan 2006, 15:04") }
 
 func (h *Handler) toDocView(d knowledge.Document, now time.Time) docView {
+	return h.toDocViewIn(langEN, d, now)
+}
+
+// toDocViewIn is one library card or row, with its labels and dates in lang.
+func (h *Handler) toDocViewIn(lang string, d knowledge.Document, now time.Time) docView {
 	v := docView{
 		ID: d.ID, Title: d.Title, Chunks: d.Chunks, Stale: d.StaleChunks,
-		Updated: h.day(d.UpdatedAt),
-		Inbox:   "All inboxes",
-		Kind:    "Document",
+		Updated: h.dayIn(lang, d.UpdatedAt),
+		Inbox:   tr(lang, "All inboxes"),
+		Kind:    tr(lang, "Document"),
 		Status:  d.Status(now),
 		Unused:  d.UseCount == 0,
-		Used:    "Not used yet",
+		Used:    tr(lang, "Not used yet"),
 		Synced:  knowledge.SyncedKey(d.SourceKey),
 	}
 	if d.UseCount > 0 && !d.LastUsedAt.IsZero() {
-		times := "times"
+		used := "%d times, last %s"
 		if d.UseCount == 1 {
-			times = "time"
+			used = "%d time, last %s"
 		}
-		v.Used = fmt.Sprintf("%d %s, last %s", d.UseCount, times, h.day(d.LastUsedAt))
+		v.Used = tr(lang, used, d.UseCount, h.dayIn(lang, d.LastUsedAt))
 	}
 	switch {
 	case !d.ValidFrom.IsZero() && !d.ValidUntil.IsZero():
-		v.Window = h.day(d.ValidFrom) + " – " + h.day(d.ValidUntil.Add(-time.Nanosecond))
+		v.Window = h.dayIn(lang, d.ValidFrom) + " – " + h.dayIn(lang, d.ValidUntil.Add(-time.Nanosecond))
 	case !d.ValidUntil.IsZero():
-		v.Window = "Until " + h.day(d.ValidUntil.Add(-time.Nanosecond))
+		v.Window = tr(lang, "Until %s", h.dayIn(lang, d.ValidUntil.Add(-time.Nanosecond)))
 	case !d.ValidFrom.IsZero():
-		v.Window = "From " + h.day(d.ValidFrom)
+		v.Window = tr(lang, "From %s", h.dayIn(lang, d.ValidFrom))
 	}
 	if d.InboxID > 0 {
-		v.Inbox = "Inbox " + strconv.FormatInt(d.InboxID, 10)
+		v.Inbox = tr(lang, "Inbox %d", d.InboxID)
 	}
 	if d.Kind == knowledge.KindFAQ {
 		v.Kind = "FAQ"
@@ -330,45 +371,48 @@ func num(q url.Values, key string) string {
 	return strconv.Itoa(n)
 }
 
-func noticeFor(q url.Values) string {
+func noticeFor(q url.Values) string { return noticeIn(langEN, q) }
+
+// noticeIn is the message after an action, in lang.
+func noticeIn(lang string, q url.Values) string {
 	switch q.Get("done") {
 	case "added":
 		if q.Get("pdf") != "" {
 			cut := ""
 			if q.Get("cut") == "1" {
-				cut = fmt.Sprintf(" The PDF was cut off at %d pages or %d characters; split it to add the rest.", pdftext.MaxPages, pdftext.MaxRunes)
+				cut = tr(lang, " The PDF was cut off at %d pages or %d characters; split it to add the rest.", pdftext.MaxPages, pdftext.MaxRunes)
 			}
-			return fmt.Sprintf("Read %s pages from the PDF and indexed them (%s chunks). Open the document and check the text: "+
+			return tr(lang, "Read %s pages from the PDF and indexed them (%s chunks). Open the document and check the text: "+
 				"tables lose their layout, and some PDF makers drop Thai tone marks (ไม้เอก, ไม้โท).%s", num(q, "pdf"), num(q, "chunks"), cut)
 		}
-		return fmt.Sprintf("Added and indexed (%s chunks). The bot can use it right away.", num(q, "chunks"))
+		return tr(lang, "Added and indexed (%s chunks). The bot can use it right away.", num(q, "chunks"))
 	case "page":
 		switch q.Get("outcome") {
 		case "added":
-			return "Page added and indexed. It is checked again every day."
+			return tr(lang, "Page added and indexed. It is checked again every day.")
 		case "updated":
-			return "The page had changed; the bot now uses the new version."
+			return tr(lang, "The page had changed; the bot now uses the new version.")
 		case "unchanged":
-			return "Checked: the page has not changed."
+			return tr(lang, "Checked: the page has not changed.")
 		case "failed":
-			return "The page could not be read. See the reason in the list; the last good version stays."
+			return tr(lang, "The page could not be read. See the reason in the list; the last good version stays.")
 		case "hidden", "deleted":
-			return "The page no longer exists, so the bot stopped using it."
+			return tr(lang, "The page no longer exists, so the bot stopped using it.")
 		}
 	case "page_removed":
-		return "Removed. The bot no longer uses it."
+		return tr(lang, "Removed. The bot no longer uses it.")
 	case "feed_started":
-		return "Reading the file in the background. Refresh in a minute to see how many rows were added."
+		return tr(lang, "Reading the file in the background. Refresh in a minute to see how many rows were added.")
 	case "page_interval":
-		return "Schedule saved."
+		return tr(lang, "Schedule saved.")
 	case "sync_all":
-		return fmt.Sprintf("Checking %s pages now in the background. Refresh in a minute to see the results.", num(q, "count"))
+		return tr(lang, "Checking %s pages now in the background. Refresh in a minute to see the results.", num(q, "count"))
 	case "updated":
-		return fmt.Sprintf("Saved and re-indexed (%s chunks). The bot uses the new version right away.", num(q, "chunks"))
+		return tr(lang, "Saved and re-indexed (%s chunks). The bot uses the new version right away.", num(q, "chunks"))
 	case "deleted":
-		return "Deleted. The bot no longer uses it."
+		return tr(lang, "Deleted. The bot no longer uses it.")
 	case "reindexed":
-		return fmt.Sprintf("Re-indexed %s documents with the current embeddings model.", num(q, "count"))
+		return tr(lang, "Re-indexed %s documents with the current embeddings model.", num(q, "count"))
 	}
 	return ""
 }
@@ -409,7 +453,7 @@ func (h *Handler) submitKnowledge(w http.ResponseWriter, r *http.Request) {
 		From: pf.Get("valid_from"), Until: pf.Get("valid_until"),
 	}}
 	fail := func(form string, err error) {
-		data.Error, data.ErrorForm = err.Error(), form
+		data.Error, data.ErrorForm = errIn(langOf(r), err), form
 		h.renderKnowledge(w, r, http.StatusUnprocessableEntity, data)
 	}
 	back := "/admin/knowledge?account=" + strconv.FormatInt(acct, 10)
@@ -561,7 +605,7 @@ func readUpload(r *http.Request, doc *knowledge.Document) (pdfPages int, err err
 	}
 	ext := strings.ToLower(filepath.Ext(fh.Filename))
 	if ext != ".pdf" && !allowedUploads[ext] {
-		return 0, fmt.Errorf("file type %q is not supported; upload .txt, .md or .pdf (Word: save as PDF first)", ext)
+		return 0, ownerErr{ownerMsg{"file type %q is not supported; upload .txt, .md or .pdf (Word: save as PDF first)", []any{ext}}}
 	}
 	f, err := fh.Open()
 	if err != nil {
@@ -640,7 +684,7 @@ func (h *Handler) webAction(w http.ResponseWriter, r *http.Request, acct int64, 
 	}
 	back := "/admin/knowledge?account=" + strconv.FormatInt(acct, 10)
 	fail := func(msg string) {
-		data.Error, data.ErrorForm = msg, "page"
+		data.Error, data.ErrorForm = msgIn(langOf(r), msg), "page"
 		h.renderKnowledge(w, r, http.StatusUnprocessableEntity, data)
 	}
 	var src websync.Source

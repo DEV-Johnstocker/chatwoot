@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en"{{with theme}} data-theme="{{.}}"{{end}}>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
 <head>
 {{template "head"}}
-<title>Test bot · Pronto</title>
+<title>{{T "Test bot · Pronto"}}</title>
 </head>
 <body>
 <div class="shell">
@@ -10,92 +10,92 @@
 <main>
   <div class="page-head">
     <div>
-      <h1>Test bot</h1>
-      <p class="lead">Chat with the bot as a customer would. It uses your saved business profile and knowledge base. Nothing is sent to customers or staff.</p>
+      <h1>{{T "Test bot"}}</h1>
+      <p class="lead">{{T "Chat with the bot as a customer would. It uses your saved business profile and knowledge base. Nothing is sent to customers or staff."}}</p>
     </div>
     {{template "account-picker" (dict "Action" "/admin/test" "Current" .AccountID)}}
   </div>
 
   {{if not .Enabled}}
-  <div class="alert err" role="alert"><strong>Test chat is off.</strong> The bot is not running in this service.</div>
+  <div class="alert err" role="alert"><strong>{{T "Test chat is off."}}</strong> {{T "The bot is not running in this service."}}</div>
   {{else}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
   <div class="test-grid">
     <section class="card" aria-labelledby="chat-h">
-      <h2 id="chat-h" class="visually-hidden">Conversation</h2>
+      <h2 id="chat-h" class="visually-hidden">{{T "Conversation"}}</h2>
       {{if .Turns}}
-      <div class="chat" role="log" aria-label="Test conversation">
+      <div class="chat" role="log" aria-label="{{T "Test conversation"}}">
         {{range .Turns}}
-        <div class="bubble {{.Role}}"><span class="who">{{if eq .Role "user"}}You (as customer){{else}}Bot{{end}}</span>{{.Content}}</div>
+        <div class="bubble {{.Role}}"><span class="who">{{if eq .Role "user"}}{{T "You (as customer)"}}{{else}}{{T "Bot"}}{{end}}</span>{{.Content}}</div>
         {{end}}
       </div>
       {{else}}
-      <p class="empty">Ask something your customers ask, for example the price, how to pay, or what the course includes.</p>
+      <p class="empty">{{T "Ask something your customers ask, for example the price, how to pay, or what the course includes."}}</p>
       {{end}}
-      <form method="post" action="/admin/test" autocomplete="off" enctype="multipart/form-data" data-busy="Sending…">
+      <form method="post" action="/admin/test" autocomplete="off" enctype="multipart/form-data" data-busy="{{T "Sending…"}}">
         <input type="hidden" name="account" value="{{.AccountID}}">
         {{range .Turns}}<input type="hidden" name="role" value="{{.Role}}"><input type="hidden" name="text" value="{{.Content}}">
         {{end}}
-        <label for="message">{{if .Turns}}Reply as the customer{{else}}Message{{end}}</label>
+        <label for="message">{{if .Turns}}{{T "Reply as the customer"}}{{else}}{{T "Message"}}{{end}}</label>
         <textarea id="message" name="message" rows="3" maxlength="2000" data-enter-send="enter-hint"{{if not .Turns}} autofocus{{end}}></textarea>
-        <p class="field-hint" id="enter-hint" hidden>Enter sends. Shift+Enter starts a new line.</p>
-        <label for="files">Attach files</label>
+        <p class="field-hint" id="enter-hint" hidden>{{T "Enter sends. Shift+Enter starts a new line."}}</p>
+        <label for="files">{{T "Attach files"}}</label>
         <input id="files" name="files" type="file" multiple aria-describedby="files-hint">
-        <p class="field-hint" id="files-hint">Voice notes (ogg, m4a, mp3, wav), photos and stickers (png, jpeg, webp, gif), or any other file to see how the bot handles it. Up to 4 files, 10 MB each. They follow the switches on the <a href="/admin/business?account={{.AccountID}}">Business profile</a> page.</p>
+        <p class="field-hint" id="files-hint">{{T "Voice notes (ogg, m4a, mp3, wav), photos and stickers (png, jpeg, webp, gif), or any other file to see how the bot handles it. Up to 4 files, 10 MB each."}} {{T "They follow the switches on the"}} <a href="/admin/business?account={{.AccountID}}">{{T "Business profile"}}</a> {{T "page."}}</p>
         <details>
-          <summary>Test a specific inbox</summary>
-          <label for="inbox">Inbox</label>
-          {{template "inbox-select" (dict "ID" "inbox" "Account" .AccountID "Current" .Inbox "Hint" "inbox-hint" "Blank" "Any inbox (shared knowledge only)")}}
-          <p class="field-hint" id="inbox-hint">"Any inbox" uses knowledge shared by all inboxes. Picking one adds that inbox's own documents.</p>
+          <summary>{{T "Test a specific inbox"}}</summary>
+          <label for="inbox">{{T "Inbox"}}</label>
+          {{template "inbox-select" (dict "ID" "inbox" "Account" .AccountID "Current" .Inbox "Hint" "inbox-hint" "Blank" (T "Any inbox (shared knowledge only)"))}}
+          <p class="field-hint" id="inbox-hint">{{T "\"Any inbox\" uses knowledge shared by all inboxes. Picking one adds that inbox's own documents."}}</p>
         </details>
         <div class="actions">
-          {{if .Turns}}<a class="btn" href="/admin/test?account={{.AccountID}}">Start over</a>{{end}}
-          <button type="submit" class="primary">Send</button>
+          {{if .Turns}}<a class="btn" href="/admin/test?account={{.AccountID}}">{{T "Start over"}}</a>{{end}}
+          <button type="submit" class="primary">{{T "Send"}}</button>
         </div>
       </form>
     </section>
 
     <aside class="card side" aria-labelledby="why-h">
-      <h2 id="why-h" class="card-title">How the bot answered</h2>
+      <h2 id="why-h" class="card-title">{{T "How the bot answered"}}</h2>
       {{if .Sent}}
         {{if .Handoff}}
-        <div class="status todo" role="status">Passes to staff</div>
+        <div class="status todo" role="status">{{T "Passes to staff"}}</div>
         <p class="hint">{{.Reason}}</p>
         {{else}}
-        <div class="status ready" role="status">Answered by the bot</div>
+        <div class="status ready" role="status">{{T "Answered by the bot"}}</div>
         {{end}}
         {{if .Files}}
-        <h3 class="sub">Files</h3>
+        <h3 class="sub">{{T "Files"}}</h3>
         <ul class="sources">{{range .Files}}<li>{{.Name}} <span class="preview">{{.Size}}</span></li>{{end}}</ul>
-        {{if .Media}}<p class="hint">Read by the bot: {{range $i, $m := .Media}}{{if $i}}, {{end}}{{$m}}{{end}}</p>{{else}}<p class="hint">The bot could not read these files.</p>{{end}}
-        {{if .Transcript}}<p class="hint">Transcript: “{{.Transcript}}”</p>{{end}}
+        {{if .Media}}<p class="hint">{{T "Read by the bot:"}} {{range $i, $m := .Media}}{{if $i}}, {{end}}{{$m}}{{end}}</p>{{else}}<p class="hint">{{T "The bot could not read these files."}}</p>{{end}}
+        {{if .Transcript}}<p class="hint">{{T "Transcript: “%s”" .Transcript}}</p>{{end}}
         {{end}}
         {{if or .Model .Sources}}
-        <h3 class="sub">Knowledge used</h3>
+        <h3 class="sub">{{T "Knowledge used"}}</h3>
         {{if .Sources}}
-        <ul class="sources">{{range .Sources}}<li>{{.Title}} <span class="preview">{{.Score}} match</span></li>{{end}}</ul>
+        <ul class="sources">{{range .Sources}}<li>{{.Title}} <span class="preview">{{T "%s match" .Score}}</span></li>{{end}}</ul>
         {{else}}
-        <p class="hint">No document matched. The answer came from the business profile only.</p>
+        <p class="hint">{{T "No document matched. The answer came from the business profile only."}}</p>
         {{end}}
         <p class="field-hint">{{if .Model}}{{.Model}} · {{end}}{{.LatencyMS}} ms</p>
         {{end}}
         {{if and .Knowledge .Asked}}
         <details{{if not .Sources}} open{{end}} class="spaced">
-          <summary>Wrong or missing? Add the right answer</summary>
+          <summary>{{T "Wrong or missing? Add the right answer"}}</summary>
           <form method="post" action="/admin/knowledge" autocomplete="off">
             <input type="hidden" name="account" value="{{.AccountID}}">
             <input type="hidden" name="inbox" value="{{.Inbox}}">
             <input type="hidden" name="action" value="add_faq">
-            <label for="question">Question</label>
+            <label for="question">{{T "Question"}}</label>
             <input id="question" name="question" value="{{.Asked}}" required>
-            <label for="answer">Correct answer</label>
+            <label for="answer">{{T "Correct answer"}}</label>
             <textarea id="answer" name="answer" rows="4" required></textarea>
-            <div class="card-foot"><button type="submit">Add to knowledge base</button></div>
+            <div class="card-foot"><button type="submit">{{T "Add to knowledge base"}}</button></div>
           </form>
         </details>
         {{end}}
       {{else}}
-      <p class="hint">After you send a message, this shows whether the bot would answer or pass the chat to staff, and which knowledge it used.</p>
+      <p class="hint">{{T "After you send a message, this shows whether the bot would answer or pass the chat to staff, and which knowledge it used."}}</p>
       {{end}}
     </aside>
   </div>

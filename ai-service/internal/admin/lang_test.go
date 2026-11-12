@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -162,20 +164,25 @@ func TestThaiDates(t *testing.T) {
 	}
 }
 
-// Every line Home, Comment leads and the shared menu show must have Thai,
+// Every line on every admin page must have Thai,
 // and each Thai line keeps the English line's fmt verbs in the same order.
-var templateText = regexp.MustCompile(`\{\{T "([^"]+)"`)
+var templateText = regexp.MustCompile(`[{(]T ("(?:[^"\\]|\\.)*")`)
 
-func TestThai_CatalogCoversStepOnePages(t *testing.T) {
+func TestThai_CatalogCoversEveryPage(t *testing.T) {
 	// Arrange
 	var keys []string
-	for _, f := range []string{"home.html", "comments.html", "layout.html"} {
+	files, _ := filepath.Glob("*.html")
+	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, m := range templateText.FindAllStringSubmatch(string(b), -1) {
-			keys = append(keys, m[1])
+			k, err := strconv.Unquote(m[1])
+			if err != nil {
+				t.Fatalf("%s: %v in %s", f, err, m[1])
+			}
+			keys = append(keys, k)
 		}
 	}
 	for _, m := range []map[comments.Intent]string{intentLabels} {
@@ -227,5 +234,21 @@ func TestThai_KeepsFormatVerbs(t *testing.T) {
 		if strings.Join(a, " ") != strings.Join(b, " ") {
 			t.Errorf("%q has %v, Thai %q has %v", en, a, th, b)
 		}
+	}
+}
+
+func TestThai_NoConflictingLines(t *testing.T) {
+	if len(thaiConflicts) > 0 {
+		t.Fatalf("translated differently in two files: %q", thaiConflicts)
+	}
+}
+
+func TestTr_ContextSuffixIsNeverShown(t *testing.T) {
+	// Act
+	en, th, plain := tr(langEN, "Never|expires"), tr(langTH, "Never|expires"), tr(langTH, "Never")
+
+	// Assert
+	if en != "Never" || th != "ไม่หมดอายุ" || plain != "ไม่เคย" {
+		t.Fatalf("en %q th %q plain %q", en, th, plain)
 	}
 }

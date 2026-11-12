@@ -72,8 +72,10 @@ func (h *Handler) setLang(w http.ResponseWriter, r *http.Request) {
 }
 
 // tr translates one English line into lang and fills in args (fmt verbs).
+// A "|context" suffix tells apart lines that read the same in English but
+// not in Thai ("Never|expires"); it is never shown.
 func tr(lang, english string, args ...any) string {
-	s := english
+	s, _, _ := strings.Cut(english, "|")
 	if lang == langTH {
 		if t, ok := thai[english]; ok {
 			s = t
