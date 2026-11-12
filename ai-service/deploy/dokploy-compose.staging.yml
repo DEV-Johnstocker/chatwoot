@@ -178,7 +178,7 @@ services:
       COMMENT_REVIEWER: ${COMMENT_REVIEWER:-llm}
       COMMENT_REVIEW_MODEL: ${COMMENT_REVIEW_MODEL:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
-      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-latest}
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-1.14.0}
       # Short line posted under a comment, as the Page, after its private reply
       # was sent and the owner ticked it (needs pages_manage_engagement). Empty: off.
       COMMENT_PUBLIC_REPLY: ${COMMENT_PUBLIC_REPLY:-}

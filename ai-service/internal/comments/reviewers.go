@@ -285,7 +285,7 @@ type jevResponse struct {
 func (j *JevReviewer) ask(ctx context.Context, state map[string]any, questions map[string]jevQuestion) (jevResponse, error) {
 	model := j.Model
 	if model == "" {
-		model = "jev-latest"
+		model = "jev-1.14.0" // pinned, like config.JevModel
 	}
 	body, err := json.Marshal(map[string]any{"state": state, "model": model, "questions": questions})
 	if err != nil {

@@ -148,6 +148,13 @@ const DefaultAttachmentMessage = "ได้รับไฟล์แล้วค�
 const DefaultFailureMessage = "ขออภัยครับ เรื่องนี้ขอส่งต่อให้ทีมงานเข้ามาดูแลต่อในแชทนี้นะครับ 🙏"
 
 // Load reads Config from the given lookup function (os.LookupEnv in production).
+
+// JevModel is the pinned Jev version the comment sorter and reviewer use
+// unless TYPESAFE_MODEL says otherwise. "jev-latest" would let TypeSafe
+// change the model, and its accuracy, without a deploy; move the pin only
+// after re-running cmd/comment-eval (-sort and the review) on the new version.
+const JevModel = "jev-1.14.0"
+
 func Load(lookup func(string) (string, bool)) (Config, error) {
 	get := func(key, def string) string {
 		if v, ok := lookup(key); ok && strings.TrimSpace(v) != "" {
@@ -327,7 +334,7 @@ func loadMeta(cfg *Config, get func(key, def string) string, errs []error) []err
 	cfg.CommentReviewer = get("COMMENT_REVIEWER", "llm")
 	cfg.CommentReviewModel = get("COMMENT_REVIEW_MODEL", "")
 	cfg.TypeSafeAPIKey = get("TYPESAFE_API_KEY", "")
-	cfg.TypeSafeModel = get("TYPESAFE_MODEL", "jev-latest")
+	cfg.TypeSafeModel = get("TYPESAFE_MODEL", JevModel)
 	cfg.CommentPublicReply = strings.TrimSpace(get("COMMENT_PUBLIC_REPLY", ""))
 	if utf8.RuneCountInString(cfg.CommentPublicReply) > 300 {
 		errs = append(errs, errors.New("COMMENT_PUBLIC_REPLY must be at most 300 characters"))

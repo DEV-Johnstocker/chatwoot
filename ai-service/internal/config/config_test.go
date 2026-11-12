@@ -43,6 +43,9 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	if len(cfg.HandoffKeywords) == 0 {
 		t.Error("expected default handoff keywords")
 	}
+	if cfg.TypeSafeModel != "jev-1.14.0" {
+		t.Errorf("Jev must be pinned by default, got %q", cfg.TypeSafeModel)
+	}
 }
 
 func TestLoad_ReportsAllMissingRequired(t *testing.T) {
