@@ -45,6 +45,9 @@ func TestGuard_Check(t *testing.T) {
 		"marker plus a second number":  {"โอนได้ที่ [[BANK]] หรือ 1234567890", false},
 		"payment reply with prices":    {"โอนได้ที่ [[BANK]] ยอด 8,900 บาท (ใบกำกับภาษี 9,523 บาท) Workshop 12 ธ.ค. 2569 09:00-17:00 รับ 30 ที่นั่ง แล้วส่งสลิปในแชทนี้", true},
 		"instalments":                  {"ผ่อนผ่านบัตร 3 หรือ 6 เดือน ชำระบนเว็บได้เลย", true},
+		"time hiding in a phone":       {"โอนเข้า 0812:345678", false},
+		"year hiding in an account":    {"โอนเข้าบัญชี 9952569-0946", false},
+		"percent hiding digits":        {"โอน 99523% 10946", false},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

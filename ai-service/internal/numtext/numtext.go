@@ -160,40 +160,40 @@ func asciiDigit(r rune) rune {
 	return r
 }
 
-// Strict forms for PaymentDigits: in a message about paying, only these may
-// carry digits freely. A price needs its currency, so "1,234-567,890" is not one.
+// Strict forms for PaymentDigits. Each must be the whole number as Long's
+// pattern reads it, so a time or year inside a longer number ("0812:345678")
+// is never taken out of it.
 var (
-	// Up to 999,999: a course or workshop price, never a 7-digit amount that
-	// could carry half an account number.
-	paidPrice   = regexp.MustCompile(`(?i)฿\s*[1-9]\d{0,2}(?:,\d{3})?(?:\.\d{1,2})?|[1-9]\d{0,2}(?:,\d{3})?(?:\.\d{1,2})?\s*(?:บาท|฿|baht|thb)|\b\d{1,4}\s*(?:บาท|฿|baht|thb)`)
-	paidTime    = regexp.MustCompile(`(?:[01]?\d|2[0-3])[:.][0-5]\d(?:\s*[-–]\s*(?:[01]?\d|2[0-3])[:.][0-5]\d)?`)
-	paidYear    = regexp.MustCompile(`(?:^|[^\d])(?:25[5-9]\d|20[2-3]\d)(?:$|[^\d])`)
-	paidPercent = regexp.MustCompile(`\d{1,2}\s*%`)
+	paidSafe = func() *regexp.Regexp {
+		clock := `(?:[01]?\d|2[0-3])[:.][0-5]\d`
+		hours := clock + `(?:\s*[-–]\s*` + clock + `)?`
+		year := `(?:25[5-9]\d|20[2-3]\d)`
+		return regexp.MustCompile(`^(?:` + hours + `|` + year + `|` + year + `\s+` + hours + `)$`)
+	}()
+	// A price up to 999,999: a course or workshop price, never a 7-digit
+	// amount that could carry half an account number. Its currency must be
+	// right before or right after it.
+	paidPrice    = regexp.MustCompile(`^[1-9]\d{0,2}(?:,\d{3})?(?:\.\d{1,2})?$|^\d{1,4}$`)
+	currencyNext = regexp.MustCompile(`(?i)^\s*(?:บาท|฿|baht|thb|%)`)
+	currencyPrev = regexp.MustCompile(`฿\s*$`)
 )
 
-// PaymentDigits counts the digits in text that are not part of a price with
-// its currency, a time, a year or a percentage. In a message about paying,
-// every other digit counts, wherever it stands: an account number split into
-// short pieces by words ("995231 ต่อด้วย 0946") still adds up.
+// PaymentDigits counts the digits in text that are not a price with its
+// currency, a time or opening hours, a year or a percentage. In a message
+// about paying, every other digit counts, wherever it stands: an account
+// number split into short pieces by words ("995231 ต่อด้วย 0946") still adds up.
 func PaymentDigits(text string) int {
-	s := Normalize(text)
-	for _, re := range []*regexp.Regexp{paidPrice, paidTime, paidPercent} {
-		s = re.ReplaceAllString(s, " ")
-	}
-	// Years one at a time: neighbours share a separator character.
-	for {
-		next := paidYear.ReplaceAllStringFunc(s, func(m string) string {
-			return strings.Map(func(r rune) rune {
-				if r >= '0' && r <= '9' {
-					return ' '
-				}
-				return r
-			}, m)
-		})
-		if next == s {
-			break
+	s := punctRun.ReplaceAllString(Normalize(text), "--")
+	n := 0
+	for _, loc := range numberLines.FindAllStringIndex(s, -1) {
+		m := strings.TrimSpace(s[loc[0]:loc[1]])
+		if paidSafe.MatchString(m) {
+			continue
 		}
-		s = next
+		if paidPrice.MatchString(m) && (currencyNext.MatchString(s[loc[1]:]) || currencyPrev.MatchString(s[:loc[0]])) {
+			continue
+		}
+		n += digitCount(m)
 	}
-	return len(Digits(s))
+	return n
 }

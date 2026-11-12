@@ -61,7 +61,9 @@ func (g guard) check(reply string) (string, bool) {
 	}
 	rest := bankMarker.ReplaceAllLiteralString(reply, " ")
 	if hasMarker || paymentWords.MatchString(reply) || paymentWords.MatchString(numtext.Normalize(reply)) {
-		if numtext.PaymentDigits(rest) > maxPaymentDigits {
+		// Both checks: no long number of any kind (profile phones included),
+		// and not too many loose digits however they are split.
+		if len(numtext.Long(rest)) > 0 || numtext.PaymentDigits(rest) > maxPaymentDigits {
 			return reply, false
 		}
 	} else {
