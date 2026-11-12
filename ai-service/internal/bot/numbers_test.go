@@ -14,7 +14,7 @@ const bankText = "ธนาคารไทยพาณิชย์ ชื่อ�
 
 var testProfile = profile.Profile{AccountID: 1, BusinessName: "Shop", BankTransfer: bankText,
 	Contact: "โทรสำนักงาน: 044-115-229\nคุณชมพู่ 081-516-9097, คุณนพ 083-919-0009",
-	Rules:   "ส่งลิงก์หน้าคอร์ส https://www.johnstockeraistudio.com/courses/62ebf852-e7e7-4b03-8369-046ae0fe6338 ใส่คูปอง JOHNAUTOCUT99"}
+	Rules:   "ส่งลิงก์หน้าคอร์ส https://www.johnstockeraistudio.com/courses/62ebf852-e7e7-4b03-8369-046ae0fe6338 ใส่คูปอง JOHNAUTOCUT99 หรือโทร081-516-9097 ทัก https://wa.me/0815169097"}
 
 func TestGuard_Check(t *testing.T) {
 	g := newGuard(testProfile)
@@ -48,6 +48,8 @@ func TestGuard_Check(t *testing.T) {
 		"instalments":                  {"ผ่อนผ่านบัตร 3 หรือ 6 เดือน ชำระบนเว็บได้เลย", true},
 		"buying steps with link":       {"กดซื้อที่ https://www.johnstockeraistudio.com/courses/62ebf852-e7e7-4b03-8369-046ae0fe6338 ใส่คูปอง JOHNAUTOCUT99 เหลือ 3,900 บาท แล้วชำระด้วยบัตร ผ่อน 0% 3 หรือ 6 เดือน", true},
 		"link not in the profile":      {"ชำระที่ https://pay.example/9952310946 ได้เลย", false},
+		"profile word hiding a phone":  {"โอนพร้อมเพย์ โทร081-516-9097", false},
+		"profile link hiding a phone":  {"โอนพร้อมเพย์ https://wa.me/0815169097", false},
 		"profile link, digits changed": {"ชำระที่ https://www.johnstockeraistudio.com/courses/62ebf852-e7e7-4b03-8369-046ae0fe6339", false},
 		"time hiding in a phone":       {"โอนเข้า 0812:345678", false},
 		"year hiding in an account":    {"โอนเข้าบัญชี 9952569-0946", false},

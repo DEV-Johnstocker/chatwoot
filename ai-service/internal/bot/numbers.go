@@ -13,6 +13,8 @@ import (
 var (
 	// bankMarker matches profile.BankMarker and near-misses ("[[ bank ]]").
 	bankMarker = regexp.MustCompile(`(?i)\[\[\s*bank\s*\]\]`)
+	// link is a web address written as one word.
+	link = regexp.MustCompile(`(?i)(?:https?://|www\.)\S+`)
 	// paymentWords mark a reply about paying: there, the only account or
 	// phone number allowed is the bank text the bot puts in for the marker.
 	paymentWords = regexp.MustCompile(`(?i)โอน|บัญชี|พร้อมเพย์|พร้อมเพ|promptpay|prompt\s*pay|ธนาคาร|ชำระ|จ่ายเงิน|สลิป|qr|account|transfer|bank|wallet|วอลเล็ท|ทรูมันนี่`)
@@ -36,25 +38,36 @@ type guard struct {
 	// account ("JOHNAUTOCUT99", a course link with an ID). A bare number is
 	// never one of them, so a profile phone still counts in a payment reply.
 	words []string
+	// plain are the profile's long numbers written outside links: phones and
+	// bank numbers. A link that holds one of them is not exempt.
+	plain map[string]bool
 }
 
 func newGuard(p profile.Profile) guard {
-	g := guard{bank: p.BankTransfer, numbers: map[string]bool{}}
+	g := guard{bank: p.BankTransfer, numbers: map[string]bool{}, plain: map[string]bool{}}
 	seen := map[string]bool{}
 	for _, field := range []string{p.BusinessName, p.About, p.Tone, p.Contact, p.Rules, p.BankTransfer} {
 		// Line by line and space by space too, so two numbers the owner wrote
 		// side by side ("044-115-229 081-516-9097") are each known alone.
-		for _, w := range strings.Fields(field) {
-			if len(w) >= 6 && strings.IndexFunc(w, unicode.IsLetter) >= 0 && strings.IndexFunc(w, unicode.IsDigit) >= 0 && !seen[w] {
-				seen[w] = true
-				g.words = append(g.words, w)
-			}
-		}
 		for _, line := range strings.Split(field, "\n") {
 			for _, part := range append([]string{line}, strings.Fields(line)...) {
 				for _, n := range numtext.Long(part) {
 					g.numbers[n] = true
 				}
+			}
+		}
+	}
+	for _, field := range []string{p.BusinessName, p.About, p.Tone, p.Contact, p.Rules, p.BankTransfer} {
+		for _, n := range numtext.Long(link.ReplaceAllString(field, " ")) {
+			g.plain[n] = true
+		}
+	}
+	for _, field := range []string{p.BusinessName, p.About, p.Tone, p.Contact, p.Rules} {
+		for _, w := range strings.Fields(field) {
+			w = strings.Trim(w, "()[]<>\"',.;")
+			if !seen[w] && g.ownWord(w) {
+				seen[w] = true
+				g.words = append(g.words, w)
 			}
 		}
 	}
@@ -93,4 +106,25 @@ func (g guard) check(reply string) (string, bool) {
 		}
 	}
 	return bankMarker.ReplaceAllLiteralString(reply, g.bank), true
+}
+
+// ownWord reports whether a profile word may be taken out of a reply before
+// counting digits: a link (whole, and holding none of the profile's phone or
+// bank numbers), or a code with letters and at most a few digits
+// ("JOHNAUTOCUT99"). A word that carries a phone or account number ("โทร081-
+// 516-9097" written without a space) is never one.
+func (g guard) ownWord(w string) bool {
+	if len(w) < 6 || strings.IndexFunc(w, unicode.IsLetter) < 0 || strings.IndexFunc(w, unicode.IsDigit) < 0 {
+		return false
+	}
+	if link.MatchString(w) {
+		digits := numtext.Digits(numtext.Normalize(w))
+		for n := range g.plain {
+			if strings.Contains(digits, n) {
+				return false
+			}
+		}
+		return true
+	}
+	return len(numtext.Long(w)) == 0 && numtext.PaymentDigits(w) <= maxPaymentDigits
 }
