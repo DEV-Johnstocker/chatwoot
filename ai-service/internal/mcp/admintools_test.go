@@ -245,7 +245,7 @@ func TestAdminTools_UpdateProfileRefusals(t *testing.T) {
 	}{
 		"read-only token":       {ro, map[string]any{"tone": "x"}, false, "read-only"},
 		"no fields":             {rw, map[string]any{}, false, "give at least one field"},
-		"too long":              {rw, map[string]any{"rules": strings.Repeat("ก", profile.MaxFieldRunes+1)}, false, "limit"},
+		"too long":              {rw, map[string]any{"rules": strings.Repeat("ก", profile.MaxRulesRunes+1)}, false, "limit"},
 		"nul byte":              {rw, map[string]any{"about": "a\x00b"}, false, "UTF-8"},
 		"forged account":        {rw, map[string]any{"account_id": 2, "rules": "x"}, false, "invalid arguments"},
 		"contact is admin-only": {rw, map[string]any{"contact": "Pay to account 123"}, false, "invalid arguments"},

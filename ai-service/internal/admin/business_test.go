@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -156,7 +157,7 @@ func TestBusiness_MaxLengthThaiFitsTheFormLimit(t *testing.T) {
 	mux, mp := businessEnv(t, true)
 	field := strings.Repeat("ก", profile.MaxFieldRunes)
 	form := url.Values{"account": {"1"}, "business_name": {strings.Repeat("ข", profile.MaxNameRunes)},
-		"about": {field}, "tone": {field}, "contact": {field}, "rules": {field}}
+		"about": {field}, "tone": {field}, "contact": {field}, "rules": {strings.Repeat("ร", profile.MaxRulesRunes)}}
 
 	// Act
 	w := serve(mux, bpost(form))
@@ -226,5 +227,22 @@ func TestBusiness_UntickingTurnsFeaturesOff(t *testing.T) {
 	// Assert
 	if f := mp.saved[1].Features; f != (profile.Features{}) {
 		t.Errorf("features = %+v, want all off when nothing is ticked", f)
+	}
+}
+
+func TestBusiness_RulesBoxAllowsTheRulesLimit(t *testing.T) {
+	// Arrange
+	mux, _ := businessEnv(t, true)
+	get := httptest.NewRequest(http.MethodGet, "/admin/business?account=1", nil)
+	get.SetBasicAuth(Username, pw)
+
+	// Act
+	page := serve(mux, get).Body.String()
+
+	// Assert
+	rules := fmt.Sprintf(`id="rules" name="rules" rows="3" maxlength="%d"`, profile.MaxRulesRunes)
+	about := fmt.Sprintf(`id="about" name="about" rows="3" maxlength="%d"`, profile.MaxFieldRunes)
+	if !strings.Contains(page, rules) || !strings.Contains(page, about) {
+		t.Errorf("page lacks %q or %q", rules, about)
 	}
 }

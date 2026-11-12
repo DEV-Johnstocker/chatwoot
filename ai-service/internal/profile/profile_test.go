@@ -45,7 +45,8 @@ func TestValidateRejectsBadInput(t *testing.T) {
 	cases := map[string]Profile{
 		"no account":    {BusinessName: "x"},
 		"long name":     {AccountID: 1, BusinessName: strings.Repeat("ก", MaxNameRunes+1)},
-		"long rules":    {AccountID: 1, Rules: strings.Repeat("a", MaxFieldRunes+1)},
+		"long rules":    {AccountID: 1, Rules: strings.Repeat("a", MaxRulesRunes+1)},
+		"long about":    {AccountID: 1, About: strings.Repeat("a", MaxFieldRunes+1)},
 		"invalid utf-8": {AccountID: 1, About: "\xff"},
 		"NUL character": {AccountID: 1, Rules: "a\x00b"},
 	}
@@ -72,6 +73,22 @@ func TestValidateAcceptsThaiAtLimit(t *testing.T) {
 	// Assert
 	if err != nil {
 		t.Fatalf("Validate() = %v, want nil", err)
+	}
+}
+
+func TestValidateAcceptsLongRules(t *testing.T) {
+	// Arrange: rules hold many cases, so their limit is above the other fields'.
+	p := Profile{AccountID: 1, Rules: strings.Repeat("ร", MaxRulesRunes)}
+
+	// Act
+	err := p.Validate()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+	if MaxRulesRunes <= MaxFieldRunes {
+		t.Fatalf("MaxRulesRunes = %d, want above MaxFieldRunes (%d)", MaxRulesRunes, MaxFieldRunes)
 	}
 }
 

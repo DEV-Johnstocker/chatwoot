@@ -9,7 +9,7 @@ import (
 )
 
 // maxProfileForm bounds a business profile post. Urlencoded Thai is 9 bytes
-// per character, so every field at its limit is (120 + 4×4,000) × 9 ≈ 145 KB.
+// per character, so every field at its limit is (120 + 3×4,000 + 10,000) × 9 ≈ 200 KB.
 const maxProfileForm = 256 << 10
 
 type businessData struct {
@@ -18,7 +18,7 @@ type businessData struct {
 	Updated string
 	Saved   bool
 	Error   string
-	Limits  struct{ Name, Field int }
+	Limits  struct{ Name, Field, Rules int }
 }
 
 func (h *Handler) showBusiness(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +74,7 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderBusiness(w http.ResponseWriter, r *http.Request, status int, data businessData) {
-	data.Limits.Name, data.Limits.Field = profile.MaxNameRunes, profile.MaxFieldRunes
+	data.Limits.Name, data.Limits.Field, data.Limits.Rules = profile.MaxNameRunes, profile.MaxFieldRunes, profile.MaxRulesRunes
 	if !data.Profile.UpdatedAt.IsZero() {
 		data.Updated = h.whenIn(langOf(r), data.Profile.UpdatedAt)
 	}
