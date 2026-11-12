@@ -42,6 +42,8 @@ type Case struct {
 	Name    string `json:"name"`
 	Comment string `json:"comment"`
 	Draft   string `json:"draft"`
+	// Post is the post the comment was left on, when known.
+	Post string `json:"post,omitempty"`
 	// Knowledge is the entries the drafter saw; the reviewer sees them too.
 	Knowledge  []comments.Fact `json:"knowledge,omitempty"`
 	WantIntent comments.Intent `json:"want_intent"`
@@ -305,7 +307,7 @@ func runAll(r comments.Reviewer, cases []Case, p profile.Profile, workers int) [
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			rv, err := r.Review(ctx, comments.Comment{FromName: c.Name, Message: c.Comment, Knowledge: c.Knowledge}, c.Draft, p)
+			rv, err := r.Review(ctx, c.comment(), c.Draft, p)
 			out[i] = Result{Case: c, Review: rv, Err: err}
 		}()
 	}
@@ -541,6 +543,11 @@ func Tune(results []Result, start comments.Thresholds) comments.Thresholds {
 	return best
 }
 
+// comment is the case as the reviewer and the sorter see it.
+func (c Case) comment() comments.Comment {
+	return comments.Comment{FromName: c.Name, Message: c.Comment, Knowledge: c.Knowledge, PostText: c.Post, PostKnown: c.Post != ""}
+}
+
 // SortResult is one case sorted before drafting.
 type SortResult struct {
 	Case    Case
@@ -560,7 +567,7 @@ func runSort(s comments.Sorter, cases []Case, p profile.Profile, workers int) []
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			got, err := s.Sort(ctx, comments.Comment{FromName: c.Name, Message: c.Comment, Knowledge: c.Knowledge}, p)
+			got, err := s.Sort(ctx, c.comment(), p)
 			out[i] = SortResult{Case: c, Sorting: got, Err: err}
 		}()
 	}
@@ -568,27 +575,65 @@ func runSort(s comments.Sorter, cases []Case, p profile.Profile, workers int) []
 	return out
 }
 
-// printSorting reports what sorting first would do: how many comments it
-// sorts right, how many it skips, and every comment worth answering that it
-// would skip (the costly mistake: a lost lead).
+// printSorting reports what sorting first would do: the confusion table,
+// and for several skip bars how many "other" comments would be skipped and
+// how many comments worth answering would be lost (the costly mistake).
 func printSorting(w io.Writer, rs []SortResult) {
-	right, skipped, errs := 0, 0, 0
-	var lost []string
+	intents := []comments.Intent{comments.IntentLead, comments.IntentQuestion, comments.IntentComplaint, comments.IntentOther}
+	confusion := map[[2]comments.Intent]int{}
+	right, errs := 0, 0
 	for _, r := range rs {
-		switch {
-		case r.Err != nil:
+		if r.Err != nil {
 			errs++
 			continue
-		case r.Sorting.Intent == r.Case.WantIntent:
+		}
+		confusion[[2]comments.Intent{r.Case.WantIntent, r.Sorting.Intent}]++
+		if r.Sorting.Intent == r.Case.WantIntent {
 			right++
 		}
-		if r.Sorting.Intent == comments.IntentOther && r.Sorting.P >= comments.SkipOtherAt {
-			skipped++
-			if r.Case.WantIntent != comments.IntentOther {
-				lost = append(lost, fmt.Sprintf("%s (%s, p=%.2f)", r.Case.ID, r.Case.WantIntent, r.Sorting.P))
-			}
+	}
+	fmt.Fprintf(w, "sorting %d cases: %d right (%.0f%%), %d errors\n\nwant \\ got", len(rs), right, 100*float64(right)/float64(max(len(rs)-errs, 1)), errs)
+	for _, g := range intents {
+		fmt.Fprintf(w, "\t%s", g)
+	}
+	fmt.Fprintln(w)
+	for _, want := range intents {
+		fmt.Fprintf(w, "%s", want)
+		for _, got := range intents {
+			fmt.Fprintf(w, "\t%d", confusion[[2]comments.Intent{want, got}])
+		}
+		fmt.Fprintln(w)
+	}
+	fmt.Fprintln(w, "\nmissorted (want -> got, p):")
+	for _, r := range rs {
+		if r.Err == nil && r.Sorting.Intent != r.Case.WantIntent {
+			fmt.Fprintf(w, "  %s %s -> %s %.2f\n", r.Case.ID, r.Case.WantIntent, r.Sorting.Intent, r.Sorting.P)
 		}
 	}
-	fmt.Fprintf(w, "sorting %d cases: %d right, %d errors; skipped as sure \"other\" (p >= %.2f): %d; worth answering but skipped: %d %v\n",
-		len(rs), right, errs, comments.SkipOtherAt, skipped, len(lost), lost)
+	fmt.Fprintln(w, "\nskip bar\tother skipped\tworth answering, lost")
+	for _, bar := range []float64{0.80, 0.85, 0.90, 0.95, 0.98} {
+		others, skipped := 0, 0
+		var lost []string
+		for _, r := range rs {
+			if r.Err != nil {
+				continue
+			}
+			if r.Case.WantIntent == comments.IntentOther {
+				others++
+			}
+			if r.Sorting.Intent != comments.IntentOther || r.Sorting.P < bar {
+				continue
+			}
+			if r.Case.WantIntent == comments.IntentOther {
+				skipped++
+			} else {
+				lost = append(lost, fmt.Sprintf("%s(%s %.2f)", r.Case.ID, r.Case.WantIntent, r.Sorting.P))
+			}
+		}
+		mark := ""
+		if bar == comments.SkipOtherAt {
+			mark = " (shipped)"
+		}
+		fmt.Fprintf(w, "%.2f%s\t%d of %d\t%d %v\n", bar, mark, skipped, others, len(lost), lost)
+	}
 }
