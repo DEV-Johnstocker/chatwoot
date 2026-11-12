@@ -19,9 +19,9 @@ import (
 const MaxShortDigits = 6
 
 var (
-	// numberLines is one number, with up to six non-letter characters
-	// (spaces, dashes, commas, colons, line breaks...) between digit groups.
-	numberLines = regexp.MustCompile(`\d(?:[^\p{L}\p{N}]{0,6}\d)*`)
+	// numberLines is one number: digit groups joined by any run of non-letters
+	// (spaces, dashes, commas, colons, emoji, line breaks...).
+	numberLines = regexp.MustCompile(`\d(?:[^\p{L}\p{N}]*\d)*`)
 	bigPrice    = regexp.MustCompile(`(?:^|[^\d,])[1-9]\d{0,2}(?:,\d{3}){2}`) // any price in a range or list
 	currency    = regexp.MustCompile(`(?i)฿|บาท|\bbaht\b|\bthb\b`)
 	spaces      = regexp.MustCompile(`[^\S\n]+`)
@@ -117,9 +117,9 @@ func Normalize(text string) string {
 			continue
 		}
 		switch r {
-		case 'O', 'o':
+		case 'O', 'o', 'О', 'о', 'Ο', 'ο': // Latin, Cyrillic and Greek O
 			out[i] = '0'
-		case 'I', 'l':
+		case 'I', 'l', 'І', 'і', 'Ι', '|': // Latin, Cyrillic and Greek I, and a bar
 			out[i] = '1'
 		}
 	}
@@ -158,4 +158,42 @@ func asciiDigit(r rune) rune {
 		return '9' // another digit form: still counted as a digit
 	}
 	return r
+}
+
+// Strict forms for PaymentDigits: in a message about paying, only these may
+// carry digits freely. A price needs its currency, so "1,234-567,890" is not one.
+var (
+	// Up to 999,999: a course or workshop price, never a 7-digit amount that
+	// could carry half an account number.
+	paidPrice   = regexp.MustCompile(`(?i)฿\s*[1-9]\d{0,2}(?:,\d{3})?(?:\.\d{1,2})?|[1-9]\d{0,2}(?:,\d{3})?(?:\.\d{1,2})?\s*(?:บาท|฿|baht|thb)|\b\d{1,4}\s*(?:บาท|฿|baht|thb)`)
+	paidTime    = regexp.MustCompile(`(?:[01]?\d|2[0-3])[:.][0-5]\d(?:\s*[-–]\s*(?:[01]?\d|2[0-3])[:.][0-5]\d)?`)
+	paidYear    = regexp.MustCompile(`(?:^|[^\d])(?:25[5-9]\d|20[2-3]\d)(?:$|[^\d])`)
+	paidPercent = regexp.MustCompile(`\d{1,2}\s*%`)
+)
+
+// PaymentDigits counts the digits in text that are not part of a price with
+// its currency, a time, a year or a percentage. In a message about paying,
+// every other digit counts, wherever it stands: an account number split into
+// short pieces by words ("995231 ต่อด้วย 0946") still adds up.
+func PaymentDigits(text string) int {
+	s := Normalize(text)
+	for _, re := range []*regexp.Regexp{paidPrice, paidTime, paidPercent} {
+		s = re.ReplaceAllString(s, " ")
+	}
+	// Years one at a time: neighbours share a separator character.
+	for {
+		next := paidYear.ReplaceAllStringFunc(s, func(m string) string {
+			return strings.Map(func(r rune) rune {
+				if r >= '0' && r <= '9' {
+					return ' '
+				}
+				return r
+			}, m)
+		})
+		if next == s {
+			break
+		}
+		s = next
+	}
+	return len(Digits(s))
 }

@@ -71,7 +71,10 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.record(r, p.AccountID, "business profile saved", p.BusinessName, nil)
-	if oldErr == nil && old.BankTransfer != p.BankTransfer {
+	if oldErr != nil {
+		h.Logger.Warn("bank account change not checked: previous profile unreadable", "account_id", p.AccountID, "error", oldErr)
+		h.record(r, p.AccountID, "bank account saved (previous unknown)", maskBank(p.BankTransfer), nil)
+	} else if old.BankTransfer != p.BankTransfer {
 		// Masked both ways: the history shows that the account changed and to
 		// which ending, without keeping a full account number in it.
 		h.record(r, p.AccountID, "bank account changed", maskBank(old.BankTransfer)+" → "+maskBank(p.BankTransfer), nil)

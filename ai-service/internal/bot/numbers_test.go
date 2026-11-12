@@ -23,8 +23,8 @@ func TestGuard_Check(t *testing.T) {
 	}{
 		"marker filled in":             {"โอนได้ที่\n[[BANK]]\nแล้วส่งสลิปในแชทนี้ครับ", true},
 		"marker near-miss":             {"โอนได้ที่ [[ bank ]]", true},
-		"profile account typed":        {"เลขบัญชี 995-2-31094-5", true},
-		"profile phones":               {"โทร 044-115-229 หรือ 0815169097", true},
+		"account typed, not by marker": {"เลขบัญชี 995-2-31094-5", false},
+		"profile phones, no payment":   {"โทร 044-115-229 หรือ 0815169097", true},
 		"prices dates times":           {"ราคา 9,900 บาท ลดเหลือ 8,900 วันที่ 2026-12-12 09:00-17:00 รับ 30 ที่นั่ง", true},
 		"one digit wrong":              {"เลขบัญชี 9952310946", false},
 		"one digit missing":            {"เลขบัญชี 995231094", false},
@@ -34,7 +34,17 @@ func TestGuard_Check(t *testing.T) {
 		"zero-width":                   {"995​2310946", false},
 		"full-width":                   {"９９５２３１０９４６", false},
 		"split by a line break":        {"99523\n10946", false},
-		"a phone used as PromptPay ok": {"พร้อมเพย์ 0815169097", true},
+		"staff phone as PromptPay":     {"พร้อมเพย์ 0815169097", false},
+		"office phone in a payment":    {"โอนแล้วโทรเช็ค 044-115-229 ได้", false},
+		"price-list smuggle":           {"โอนเข้าบัญชี 1,234-567,890", false},
+		"13-digit PromptPay as prices": {"พร้อมเพย์ 1,234,567-890,123 บาท", false},
+		"split by words":               {"โอนเข้า 995231 ต่อด้วย 0946", false},
+		"split by emoji run":           {"เลขบัญชี 995231 🙂 🙂 🙂 0946", false},
+		"split by a dash run":          {"เลขบัญชี 995231 - - - - 0946", false},
+		"cyrillic O":                   {"ติดต่อ 081234О678", false},
+		"marker plus a second number":  {"โอนได้ที่ [[BANK]] หรือ 1234567890", false},
+		"payment reply with prices":    {"โอนได้ที่ [[BANK]] ยอด 8,900 บาท (ใบกำกับภาษี 9,523 บาท) Workshop 12 ธ.ค. 2569 09:00-17:00 รับ 30 ที่นั่ง แล้วส่งสลิปในแชทนี้", true},
+		"instalments":                  {"ผ่อนผ่านบัตร 3 หรือ 6 เดือน ชำระบนเว็บได้เลย", true},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -146,5 +156,24 @@ func TestPreviewAndAnswer_GuardTheReply(t *testing.T) {
 	}
 	if ok.Content != "โอนได้ที่ "+bankText+" ครับ" {
 		t.Errorf("answer with marker = %q, want the bank text filled in", ok.Content)
+	}
+}
+
+func TestProcess_HistoryKeepsTheMarkerNotTheAccount(t *testing.T) {
+	// Arrange
+	cw := &fakeChatwoot{}
+	b, h := newBot(cw, &fakeLLM{reply: "โอนได้ที่ [[BANK]] ครับ"})
+	b.opts.Profiles = &fakeProfiles{byAccount: map[int64]profile.Profile{1: testProfile}}
+
+	// Act
+	b.Process(context.Background(), customerMsg("ขอเลขบัญชี"))
+
+	// Assert
+	turns := h.Get(1, 7)
+	if last := turns[len(turns)-1].Content; last != "โอนได้ที่ [[BANK]] ครับ" {
+		t.Errorf("history = %q, want the marker kept", last)
+	}
+	if !strings.Contains(cw.joined(), "9952310945") {
+		t.Errorf("the customer did not get the bank text: %s", cw.joined())
 	}
 }

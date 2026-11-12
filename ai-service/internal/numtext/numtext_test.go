@@ -71,3 +71,25 @@ func TestPatternsSurviveNormalization(t *testing.T) {
 		}
 	}
 }
+
+func TestPaymentDigits(t *testing.T) {
+	cases := map[string]int{
+		"โอนยอด 8,900 บาท (VAT 9,523 บาท) วันที่ 12 ธ.ค. 2569 09:00-17:00 รับ 30 ที่นั่ง": 4,
+		"ผ่อน 3 หรือ 6 เดือน":         2,
+		"995231 ต่อด้วย 0946":         10,
+		"1,234,567-890,123 บาท":       7,
+		"โทร 081234О678":              10,
+		"ราคา ฿3,900 หรือ 500 บาท 7%": 0,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			// Act
+			got := PaymentDigits(in)
+
+			// Assert
+			if got != want {
+				t.Fatalf("PaymentDigits(%q) = %d, want %d", in, got, want)
+			}
+		})
+	}
+}

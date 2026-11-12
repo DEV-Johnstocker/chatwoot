@@ -337,8 +337,10 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	}
 
 	text, wantsHuman := SplitHandoff(res.Content)
+	// History and the trace keep the marker, not the account number.
+	stored := text
 	text, ok := g.check(text)
-	tr.Output = text
+	tr.Output = stored
 	if !ok {
 		// The reply is not logged: it may hold a customer's number.
 		log.Warn("reply held: a long number not in the business profile, or a bank marker with no bank set")
@@ -351,8 +353,11 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		if text == "" {
 			text = b.opts.HandoffMessage
 		}
-		tr.Outcome, tr.Output = "handoff:"+ReasonAIRequest, text
-		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: text})
+		if stored == "" {
+			stored = text
+		}
+		tr.Outcome, tr.Output = "handoff:"+ReasonAIRequest, stored
+		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
 		b.handoff(ctx, log, acct, inbox, conv, text, ReasonAIRequest, images)
 		return
 	}
@@ -361,7 +366,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		return
 	}
 	tr.Outcome = "replied"
-	b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: text})
+	b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
 	// Content is not logged (personal data); lengths and usage are enough for cost tracking.
 	log.Info("ai replied",
 		"model", res.Model,
