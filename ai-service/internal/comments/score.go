@@ -145,8 +145,17 @@ func postBlock(c Comment) string {
 	return "<post>\n" + text + "\n</post>\n\n"
 }
 
-// untag keeps the comment inside its tags.
-func untag(s string) string { return commentTag.ReplaceAllString(s, "") }
+// untag keeps untrusted text inside its tags. It repeats until nothing
+// changes, so a nested tag ("<com<comment>ment>") cannot reassemble.
+func untag(s string) string {
+	for {
+		next := commentTag.ReplaceAllString(s, "")
+		if next == s {
+			return s
+		}
+		s = next
+	}
+}
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
