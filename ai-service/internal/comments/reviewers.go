@@ -212,11 +212,7 @@ type jevAnswer struct {
 
 // Review implements Reviewer.
 func (j *JevReviewer) Review(ctx context.Context, c Comment, draft string, p profile.Profile) (Review, error) {
-	criteria := map[string]string{}
-	for i, text := range intentText {
-		criteria[string(i)] = text
-	}
-	questions := map[string]jevQuestion{"intent": {Type: "choice", Instructions: questionText["intent"], Criteria: criteria}}
+	questions := map[string]jevQuestion{"intent": intentQuestion()}
 	for _, name := range checkNames {
 		q := jevQuestion{Type: "noul", Instructions: questionText[name]}
 		if !j.NoCriteria {
@@ -224,53 +220,10 @@ func (j *JevReviewer) Review(ctx context.Context, c Comment, draft string, p pro
 		}
 		questions[name] = q
 	}
-	model := j.Model
-	if model == "" {
-		model = "jev-latest"
-	}
-	body, err := json.Marshal(map[string]any{"state": reviewState(c, draft, p), "model": model, "questions": questions})
-	if err != nil {
-		return Review{}, err
-	}
-	endpoint := j.URL
-	if endpoint == "" {
-		endpoint = DefaultJevURL
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return Review{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+j.APIKey)
-	client := j.Client
-	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
-	}
 	start := time.Now()
-	res, err := client.Do(req)
+	out, err := j.ask(ctx, reviewState(c, draft, p), questions)
 	if err != nil {
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			err = ue.Err
-		}
-		return Review{}, fmt.Errorf("jev via %s: %w", req.URL.Host, err)
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 256<<10))
-	if res.StatusCode/100 != 2 {
-		// Status only: an error body may quote the comment it was sent.
-		return Review{}, fmt.Errorf("jev answered %d %s", res.StatusCode, http.StatusText(res.StatusCode))
-	}
-	var out struct {
-		Model   string               `json:"model"`
-		Answers map[string]jevAnswer `json:"answers"`
-		Usage   struct {
-			Input  int `json:"input_tokens"`
-			Output int `json:"output_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return Review{}, ErrBadReview
+		return Review{}, err
 	}
 	r, err := fromJev(out.Answers)
 	if err != nil {
@@ -315,4 +268,99 @@ func fromJev(answers map[string]jevAnswer) (Review, error) {
 		r.Checks[name] = clamp01(*a.Noul)
 	}
 	return r, nil
+}
+
+// jevResponse is System One's answer.
+type jevResponse struct {
+	Model   string               `json:"model"`
+	Answers map[string]jevAnswer `json:"answers"`
+	Usage   struct {
+		Input  int `json:"input_tokens"`
+		Output int `json:"output_tokens"`
+	} `json:"usage"`
+}
+
+// ask sends one System One request and reads the answer. Errors name the
+// host and status only: an error body may quote the comment.
+func (j *JevReviewer) ask(ctx context.Context, state map[string]any, questions map[string]jevQuestion) (jevResponse, error) {
+	model := j.Model
+	if model == "" {
+		model = "jev-latest"
+	}
+	body, err := json.Marshal(map[string]any{"state": state, "model": model, "questions": questions})
+	if err != nil {
+		return jevResponse{}, err
+	}
+	endpoint := j.URL
+	if endpoint == "" {
+		endpoint = DefaultJevURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return jevResponse{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+j.APIKey)
+	client := j.Client
+	if client == nil {
+		client = &http.Client{Timeout: 20 * time.Second}
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
+		return jevResponse{}, fmt.Errorf("jev via %s: %w", req.URL.Host, err)
+	}
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, 256<<10))
+	if res.StatusCode/100 != 2 {
+		return jevResponse{}, fmt.Errorf("jev answered %d %s", res.StatusCode, http.StatusText(res.StatusCode))
+	}
+	var out jevResponse
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return jevResponse{}, ErrBadReview
+	}
+	return out, nil
+}
+
+// intentQuestion is the Choice question shared by Review and Sort.
+func intentQuestion() jevQuestion {
+	criteria := map[string]string{}
+	for i, text := range intentText {
+		criteria[string(i)] = text
+	}
+	return jevQuestion{Type: "choice", Instructions: questionText["intent"], Criteria: criteria}
+}
+
+// Sort implements Sorter: one Choice question on the comment, its post, the
+// knowledge entries and the profile, without a draft.
+func (j *JevReviewer) Sort(ctx context.Context, c Comment, p profile.Profile) (Sorting, error) {
+	state := reviewState(c, "", p)
+	delete(state, "draft")
+	out, err := j.ask(ctx, state, map[string]jevQuestion{"intent": intentQuestion()})
+	if err != nil {
+		return Sorting{}, err
+	}
+	in, ok := out.Answers["intent"]
+	if !ok || !Intent(in.Choice).Valid() {
+		return Sorting{}, ErrBadReview
+	}
+	sum := 0.0
+	for k, v := range in.Probabilities {
+		if Intent(k).Valid() {
+			sum += max(v, 0)
+		}
+	}
+	if sum <= 0 {
+		return Sorting{}, ErrBadReview
+	}
+	pChoice := max(in.Probabilities[in.Choice], 0) / sum
+	for k, v := range in.Probabilities {
+		if Intent(k).Valid() && max(v, 0)/sum > pChoice {
+			return Sorting{}, fmt.Errorf("%w: choice is not the most likely intent", ErrBadReview)
+		}
+	}
+	return Sorting{Intent: Intent(in.Choice), P: pChoice, Model: clip(noNUL(out.Model), 100)}, nil
 }
