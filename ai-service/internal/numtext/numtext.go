@@ -174,7 +174,9 @@ var (
 	// amount that could carry half an account number. Its currency must be
 	// right before or right after it.
 	paidPrice    = regexp.MustCompile(`^[1-9]\d{0,2}(?:,\d{3})?(?:\.\d{1,2})?$|^\d{1,4}$`)
-	currencyNext = regexp.MustCompile(`(?i)^\s*(?:บาท|฿|baht|thb|%)`)
+	currencyNext = regexp.MustCompile(`(?i)^\s*(?:บาท|฿|baht|thb)`)
+	percent      = regexp.MustCompile(`^\d{1,2}(?:\.\d{1,2})?$`)
+	percentNext  = regexp.MustCompile(`^\s*%`)
 	currencyPrev = regexp.MustCompile(`฿\s*$`)
 )
 
@@ -191,6 +193,9 @@ func PaymentDigits(text string) int {
 			continue
 		}
 		if paidPrice.MatchString(m) && (currencyNext.MatchString(s[loc[1]:]) || currencyPrev.MatchString(s[:loc[0]])) {
+			continue
+		}
+		if percent.MatchString(m) && percentNext.MatchString(s[loc[1]:]) { // "7%", never "995,231%"
 			continue
 		}
 		n += digitCount(m)
