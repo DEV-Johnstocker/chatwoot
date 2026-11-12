@@ -6,6 +6,28 @@ customer chats ("real-49"), 3 runs each, on a local copy of the database,
 judged by answer-eval plus a "closer" sales judge. Pass counts are means over
 the 3 runs.
 
+## 2026-11-12: after-promotion price rule (k11, on top of h11)
+
+Changed: one profile rule. "Price after 30 Nov" moved from "hand off, admin
+checks the price" to "answer yourself: promo ended, 9,900 baht, no coupon,
+send the course link"; hand off only if the customer insists on 3,900. The
+test chat E39 (dated 2 Dec) now expects that answer (owner decision).
+
+| | h11 | k11 |
+|---|---|---|
+| john-95 pass | 54.3 | 55.7 (54.7 without E39) |
+| real-49 pass | 26.0 | 27.0 |
+| Fact accuracy | 96% / 98% | 95% / 99% |
+| E39 | hand-off | 3 of 3 pass, correct price, link, no coupon |
+| Hand-offs where an answer was expected | 0 | 3 (install problem x2, what is included x1) |
+
+Kept. The three extra hand-offs are on chats the rule doesn't touch, with
+the same install-problem rule as h11, so they read as run-to-run noise.
+Rules implied:
+- Owner decisions go in as rules; the test checks they cause no harm.
+- When a decision changes what a test chat should get, update that chat's
+  expectation in the same test and say so.
+
 ## 2026-11-12: round 6 bot code only, old profile kept (h11)
 
 Changed: only the round 6 bot code (prompt and reply rules). Profile, tone,
