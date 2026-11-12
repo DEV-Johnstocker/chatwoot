@@ -33,11 +33,11 @@ characters each):
 - the buying steps in one line, plus any required extra cost.
 
 This block repeats a few sheet facts on purpose. When a price changes,
-update both places in the same edit. Past about 15-20 products the block no
-longer fits the profile (rules and tone use most of the 4,000-character MCP
-limit). At that point the bot needs a code change that always attaches the
-right product's card. Raise it as a decision with the owner; don't keep
-growing the profile.
+update both places in the same edit. "About" is capped at 4,000 characters
+(rules at 10,000, `internal/profile/profile.go`). Past about 15-20 products
+the block no longer fits. At that point the bot needs a code change that
+always attaches the right product's card. Raise it as a decision with the
+owner; don't keep growing the profile.
 
 **Profile "rules": behaviour.** Hand-offs, what never to promise, refund
 handling, what to ask. Don't shorten the existing rules to make room: the
@@ -113,9 +113,13 @@ Tests: `python3 -m unittest discover -s .claude/skills/pronto-kb-dataset/scripts
 2. **Sync.** Use `sync_source` (pronto-prod MCP) or the Knowledge base page.
    Read the result: rows imported, skipped, and why.
 3. **Profile changes.** `update_profile` sends a proposal the owner approves
-   on `/admin` → Approvals. An AI tool can't add links, @handles, LINE IDs or
-   long numbers to the profile; the owner pastes those on the admin page.
-   Give them the exact text.
+   on `/admin` → Approvals. An AI tool can't send a field that contains
+   links, @handles, LINE IDs or long numbers, and each call replaces a whole
+   field, so it can't edit the AutoCut rules or contact at all (they hold the
+   course link and LINE @johnstocker). For those, give the owner the exact
+   lines to change on the admin page, or, with the owner's go-ahead, edit the
+   production database with an md5 guard and an `admin_events` row holding
+   the old text (as on 2026-11-12).
 4. **Spot check.** Run `test_bot` with the 5 key questions: price, how to
    buy, tax invoice, after the promotion, refund. The buy link, coupon and
    prices must be right.
