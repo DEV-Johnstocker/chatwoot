@@ -84,7 +84,8 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 		h.Logger.Info("ai change "+decision+"d", "account_id", acct, "change_id", id)
-		http.Redirect(w, r, "/admin/approvals?account="+strconv.FormatInt(acct, 10)+"&done="+decision+"d", http.StatusSeeOther)
+		done := map[string]string{"approve": "approved", "reject": "rejected"}[decision]
+		http.Redirect(w, r, "/admin/approvals?account="+strconv.FormatInt(acct, 10)+"&done="+done, http.StatusSeeOther)
 	case errors.Is(err, pending.ErrChanged):
 		h.renderApprovals(w, r, http.StatusConflict, approvalsData{Account: acct,
 			Error: "The app changed this after you opened it. Nothing was applied; check the new version below."})
