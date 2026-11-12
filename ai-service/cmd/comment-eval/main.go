@@ -38,10 +38,12 @@ import (
 
 // Case is one labelled comment and draft.
 type Case struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	Comment    string          `json:"comment"`
-	Draft      string          `json:"draft"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Comment string `json:"comment"`
+	Draft   string `json:"draft"`
+	// Knowledge is the entries the drafter saw; the reviewer sees them too.
+	Knowledge  []comments.Fact `json:"knowledge,omitempty"`
 	WantIntent comments.Intent `json:"want_intent"`
 	WantPass   bool            `json:"want_pass"`
 	Note       string          `json:"note"`
@@ -293,7 +295,7 @@ func runAll(r comments.Reviewer, cases []Case, p profile.Profile, workers int) [
 			defer func() { <-sem }()
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			rv, err := r.Review(ctx, comments.Comment{FromName: c.Name, Message: c.Comment}, c.Draft, p)
+			rv, err := r.Review(ctx, comments.Comment{FromName: c.Name, Message: c.Comment, Knowledge: c.Knowledge}, c.Draft, p)
 			out[i] = Result{Case: c, Review: rv, Err: err}
 		}()
 	}

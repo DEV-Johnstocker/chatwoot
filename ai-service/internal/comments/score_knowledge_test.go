@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
 
 // "ใช้ฟรีไหม" on a grant post was drafted as a grant question: the scorer
@@ -125,5 +127,60 @@ func TestScoreRules_PoliteOpeningAndNoNeedlessChecking(t *testing.T) {
 		if !strings.Contains(scoreRules, want) {
 			t.Errorf("rules lack %q", want)
 		}
+	}
+}
+
+// Staging 2026-11-12: Jev held a correct "free package" draft because it saw
+// only the business profile, not the knowledge entry the draft came from.
+
+type countingKnowledge struct {
+	stubKnowledge
+	calls int
+}
+
+func (c *countingKnowledge) Retrieve(ctx context.Context, account, inbox int64, queries ...string) ([]knowledge.Hit, error) {
+	c.calls++
+	return c.stubKnowledge.Retrieve(ctx, account, inbox, queries...)
+}
+
+func TestWorker_ReviewerSeesTheKnowledgeTheDraftCameFrom(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store := &Memory{}
+	_, _ = store.Add(ctx, Comment{AccountID: 3, CommentID: "c1", Message: "ใช้ฟรีไหมครับ", CreatedAt: time.Now()})
+	kb := &countingKnowledge{stubKnowledge: stubKnowledge{hits: []knowledge.Hit{{Title: "ใช้ฟรีไหม", Content: "แพ็กเกจฟรี ค้นหาทุนได้ 1 ครั้งต่อเดือน"}}}}
+	rv := &capturingReviewer{}
+	s := &Scorer{LLM: &stubLLM{content: okScore}, Knowledge: kb}
+
+	// Act
+	quietWorker(store, s, rv, nil).RunOnce(ctx)
+
+	// Assert
+	if kb.calls != 1 {
+		t.Fatalf("the knowledge base was searched %d times; one search must serve both", kb.calls)
+	}
+	if len(rv.got.Knowledge) != 1 || rv.got.Knowledge[0].Text != "แพ็กเกจฟรี ค้นหาทุนได้ 1 ครั้งต่อเดือน" {
+		t.Fatalf("reviewer got knowledge %+v", rv.got.Knowledge)
+	}
+}
+
+func TestReviewState_CarriesKnowledgeOnlyWhenThereIsSome(t *testing.T) {
+	// Arrange
+	with := Comment{Message: "ใช้ฟรีไหม", Knowledge: []Fact{{Title: "ใช้ฟรีไหม", Text: "แพ็กเกจฟรี"}}}
+
+	// Act
+	got, none := reviewState(with, "d", profile.Profile{}), reviewState(Comment{Message: "x"}, "d", profile.Profile{})
+
+	// Assert
+	facts, ok := got["knowledge"].([]Fact)
+	if !ok || len(facts) != 1 || facts[0].Text != "แพ็กเกจฟรี" {
+		t.Fatalf("knowledge in state: %#v", got["knowledge"])
+	}
+	if _, ok := none["knowledge"]; ok {
+		t.Fatal("an empty knowledge list must be left out")
+	}
+	if !strings.Contains(questionText[CheckNoUnbackedOffer], "`knowledge`") ||
+		!strings.Contains(checkCriteria[CheckNoUnbackedOffer]["true"], "`knowledge`") {
+		t.Fatal("the offer check must count knowledge entries as backing")
 	}
 }
