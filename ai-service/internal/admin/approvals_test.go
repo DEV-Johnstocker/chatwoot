@@ -147,8 +147,16 @@ func TestApprovals_ApproveAndReject(t *testing.T) {
 			if len(e.approver.calls) != 1 || e.approver.calls[0] != want {
 				t.Fatalf("calls = %+v, want %+v", e.approver.calls, want)
 			}
-			if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/admin/approvals?account=2&done="+op+"d" {
+			done := map[string]string{"approve": "approved", "reject": "rejected"}[op]
+			if res.Code != http.StatusSeeOther || res.Header().Get("Location") != "/admin/approvals?account=2&done="+done {
 				t.Fatalf("status %d location %q", res.Code, res.Header().Get("Location"))
+			}
+			// The page it returns to confirms the decision.
+			page := httptest.NewRequest(http.MethodGet, res.Header().Get("Location"), nil)
+			page.SetBasicAuth(Username, pw)
+			notice := map[string]string{"approve": "Approved. The bot uses it from the next message.", "reject": "Rejected. Nothing changed."}[op]
+			if body := serve(e.mux, page).Body.String(); !strings.Contains(body, notice) {
+				t.Fatalf("no %q notice after %s", notice, op)
 			}
 		})
 	}
