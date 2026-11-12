@@ -367,6 +367,10 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 	}
 	worker := &comments.Worker{Store: store, Scorer: &comments.Scorer{LLM: completer, Profiles: profiles, Knowledge: kb, Logger: log},
 		Logger: log, Timeout: cfg.LLMTimeout, Reviewer: reviewer, Profiles: profiles, Posts: posts}
+	if jev, ok := reviewer.(*comments.JevReviewer); ok {
+		worker.Sorter = jev // Jev sorts, the LLM writes (owner, 2026-11-13)
+		log.Info("comment sorter: jev", "skip_other_at", comments.SkipOtherAt)
+	}
 	go worker.Run(context.Background(), 20*time.Second)
 	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply}
 	if graph != nil {

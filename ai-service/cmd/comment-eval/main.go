@@ -95,6 +95,7 @@ func run() error {
 	tune := flag.Bool("tune", false, "pick thresholds per reviewer on the tuning half (no false sends), report on the held-out half")
 	jevBare := flag.Bool("jev-no-criteria", false, "also run Jev without the yes/no criteria, for comparison")
 	swap := flag.Bool("swap", false, "with -tune: tune on the other half and test on the first (cross-check)")
+	sortOnly := flag.Bool("sort", false, "with -jev: measure Jev sorting comments before drafting (no draft), instead of reviewing")
 	flag.Parse()
 
 	cases, err := loadCases(*casesPath)
@@ -104,6 +105,15 @@ func run() error {
 	p, err := loadProfile(*profilePath)
 	if err != nil {
 		return err
+	}
+	if *sortOnly {
+		key := os.Getenv("TYPESAFE_API_KEY")
+		if *jevModel == "" || key == "" {
+			return errors.New("-sort needs -jev and TYPESAFE_API_KEY")
+		}
+		j := &comments.JevReviewer{APIKey: key, Model: *jevModel, URL: envOr("TYPESAFE_URL", comments.DefaultJevURL)}
+		printSorting(os.Stdout, runSort(j, cases, p, *workers))
+		return nil
 	}
 	reviewers, prices, err := buildReviewers(*llmModels, *jevModel, *jevBare)
 	if err != nil {
@@ -529,4 +539,56 @@ func Tune(results []Result, start comments.Thresholds) comments.Thresholds {
 		}
 	}
 	return best
+}
+
+// SortResult is one case sorted before drafting.
+type SortResult struct {
+	Case    Case
+	Sorting comments.Sorting
+	Err     error
+}
+
+func runSort(s comments.Sorter, cases []Case, p profile.Profile, workers int) []SortResult {
+	out := make([]SortResult, len(cases))
+	sem := make(chan struct{}, max(workers, 1))
+	var wg sync.WaitGroup
+	for i, c := range cases {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+			defer cancel()
+			got, err := s.Sort(ctx, comments.Comment{FromName: c.Name, Message: c.Comment, Knowledge: c.Knowledge}, p)
+			out[i] = SortResult{Case: c, Sorting: got, Err: err}
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+// printSorting reports what sorting first would do: how many comments it
+// sorts right, how many it skips, and every comment worth answering that it
+// would skip (the costly mistake: a lost lead).
+func printSorting(w io.Writer, rs []SortResult) {
+	right, skipped, errs := 0, 0, 0
+	var lost []string
+	for _, r := range rs {
+		switch {
+		case r.Err != nil:
+			errs++
+			continue
+		case r.Sorting.Intent == r.Case.WantIntent:
+			right++
+		}
+		if r.Sorting.Intent == comments.IntentOther && r.Sorting.P >= comments.SkipOtherAt {
+			skipped++
+			if r.Case.WantIntent != comments.IntentOther {
+				lost = append(lost, fmt.Sprintf("%s (%s, p=%.2f)", r.Case.ID, r.Case.WantIntent, r.Sorting.P))
+			}
+		}
+	}
+	fmt.Fprintf(w, "sorting %d cases: %d right, %d errors; skipped as sure \"other\" (p >= %.2f): %d; worth answering but skipped: %d %v\n",
+		len(rs), right, errs, comments.SkipOtherAt, skipped, len(lost), lost)
 }

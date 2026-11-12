@@ -112,6 +112,10 @@ type Comment struct {
 	Knowledge      []Fact
 	KnowledgeKnown bool
 
+	// SortedAs is the intent the Sorter chose before drafting, or "" when
+	// the drafter sorts the comment itself; it is not stored.
+	SortedAs Intent
+
 	// Filled by Queue.Waiting for the page, not stored: other waiting
 	// comments from the same person on the same post, and when this person
 	// was last sent a private reply on any comment (zero: never).

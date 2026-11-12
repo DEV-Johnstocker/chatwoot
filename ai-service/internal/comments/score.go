@@ -78,18 +78,39 @@ func (s *Scorer) Score(ctx context.Context, c Comment) (Intent, string, string, 
 		}
 	}
 	msgs := []llm.Message{
-		{Role: "system", Content: profile.Prompt(scoreRules, p)},
+		{Role: "system", Content: profile.Prompt(scoreRules+sortedRule(c), p)},
 		{Role: "user", Content: postBlock(c) + knowledgeBlock(s.Lookup(ctx, c)) + "<comment>\nName: " + untag(oneLine(c.FromName)) + "\n\n" + untag(c.Message) + "\n</comment>"},
 	}
 	res, err := s.LLM.Complete(ctx, msgs)
 	if err != nil {
 		return "", "", "", err
 	}
-	return parseScore(res.Content)
+	intent, reason, reply, err := parseScore(res.Content)
+	if err != nil || c.SortedAs == "" {
+		return intent, reason, reply, err
+	}
+	if intent == IntentOther { // the drafter disagreed: the sorter's call stands, the reply was blanked
+		_, reason, reply, _ = parseScoreAs(res.Content, c.SortedAs)
+	}
+	return c.SortedAs, reason, reply, nil
+}
+
+// sortedRule tells the drafter the intent the Sorter already chose.
+func sortedRule(c Comment) string {
+	if c.SortedAs == "" {
+		return ""
+	}
+	return "\n\nsorted: this comment was already sorted as \"" + string(c.SortedAs) + "\". Use that intent and write the reply for it; do not change it."
 }
 
 // parseScore reads the model's JSON, tolerating a code fence around it.
 func parseScore(content string) (Intent, string, string, error) {
+	return parseScoreAs(content, "")
+}
+
+// parseScoreAs is parseScore with the intent fixed by the Sorter when as
+// is set: the reply is kept even when the model called the comment "other".
+func parseScoreAs(content string, as Intent) (Intent, string, string, error) {
 	start, end := strings.Index(content, "{"), strings.LastIndex(content, "}")
 	if start < 0 || end < start {
 		return "", "", "", ErrBadScore
@@ -99,6 +120,9 @@ func parseScore(content string) (Intent, string, string, error) {
 		return "", "", "", ErrBadScore
 	}
 	reason, reply := clip(strings.TrimSpace(noNUL(r.Reason)), 500), clip(strings.TrimSpace(noNUL(r.Reply)), MaxReplyRunes)
+	if as != "" {
+		r.Intent = as
+	}
 	if r.Intent == IntentOther {
 		reply = ""
 	}
@@ -185,6 +209,11 @@ type Worker struct {
 	Logger *slog.Logger
 	// Timeout bounds one model call.
 	Timeout time.Duration
+	// Sorter, when set, chooses each comment's intent before the drafter
+	// (Jev): a sure "other" is skipped without an LLM call, and the drafter
+	// writes for the intent it chose. Unsure or failed sorting leaves the
+	// choice to the drafter.
+	Sorter Sorter
 	// Reviewer, when set, reviews each new draft in shadow mode: its answer
 	// is stored next to the comment and never sends anything.
 	Reviewer Reviewer
@@ -246,6 +275,15 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 		c = w.withPost(ctx, c)
 		if l, ok := w.Scorer.(knowledgeLookup); ok {
 			c = l.Lookup(ctx, c) // the reviewer checks the draft against the same entries
+		}
+		if w.Sorter != nil {
+			var skipped, saved bool
+			if c, skipped, saved = w.sortFirst(ctx, c); skipped {
+				if saved {
+					done++
+				}
+				continue
+			}
 		}
 		cctx, cancel := context.WithTimeout(ctx, w.Timeout)
 		intent, reason, draft, err := w.Scorer.Score(cctx, c)
@@ -325,13 +363,10 @@ func (w *Worker) review(ctx context.Context, c Comment, intent Intent, draft str
 	if w.Reviewer == nil {
 		return
 	}
-	p := profile.Profile{}
-	if w.Profiles != nil {
-		var err error
-		if p, err = w.Profiles.Get(ctx, c.AccountID); err != nil {
-			w.Logger.Warn("review page comment: load profile", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
-			return
-		}
+	p, err := w.profileFor(ctx, c)
+	if err != nil {
+		w.Logger.Warn("review page comment: load profile", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+		return
 	}
 	rctx, cancel := context.WithTimeout(ctx, w.Timeout)
 	r, err := w.Reviewer.Review(rctx, c, draft, p)
