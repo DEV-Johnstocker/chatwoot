@@ -252,6 +252,12 @@ workflow does this itself when verify fails), or revert the PR, merge and
 promote again. Rolling back code does not roll
 back a schema change.
 
+- Below schema v15 code (or while old and new replicas overlap), a source an
+  AI app proposed is not understood: AI approvals shows it as a blank card,
+  and approving it there drops the proposal. Before such a rollback, approve
+  or reject the waiting ones listed by `SELECT id, account_id, target FROM
+  ai_pending_changes WHERE kind = 'source'`, or accept that the app must
+  propose them again.
 - Below schema v7 code (or while old and new replicas overlap), an app approved
   by a team member can become a grant with no approver, which removing that
   member does not disconnect. After such a rollback, check

@@ -2,8 +2,9 @@
 -- add_source over MCP no longer adds a page or data file at once: it waits in
 -- ai_pending_changes as kind 'source' (target = the address) until the owner
 -- approves it on /admin. This only widens the allowed kinds; existing rows
--- are untouched. Code older than v15 cannot apply a 'source' row and leaves
--- it waiting, so rolling the code back is safe.
+-- are untouched. Code older than v15 does not know a 'source' row: its
+-- /admin shows it as a blank card, and approving it there drops the
+-- proposal (nothing else changes). See deploy/README.md before rolling back.
 --
 -- v12 has two checks that mention kind: the list of kinds (named
 -- ai_pending_changes_kind_check by Postgres) and "one profile row per
