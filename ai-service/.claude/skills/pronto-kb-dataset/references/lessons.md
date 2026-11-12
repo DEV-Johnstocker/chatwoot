@@ -106,3 +106,28 @@ bot without its knowledge base. Production was not affected.
 - Refunds: "no" in principle; if the customer insists, hand off and
   compromise.
 - Promotion text names both dates, since the bot knows today's date.
+
+## 2026-11-13: the closer reply rules were never shipped (PR #72)
+
+Every rule test since 2026-11-11 (h11, k11, the refund rule) ran on a build of
+the local branch `feat/question-cap`. That branch's reply rules (question cap,
+top-closer rounds 3-6, the owner's round-6 ratings) were never merged, so
+production answered with the older rules all along. Found when a build of
+today's develop scored far below the 11 Nov build on the same chats.
+
+Same chats, rules and grader (LOCAL, quick screen):
+
+| | develop + #89 | PR #72 rebased |
+|---|---|---|
+| john sample | 21/57 | 32/57 |
+| real sample | 8/30 | 18/30 |
+| refund chats (real) | 0/6 | 5/6 |
+| hand-offs where an answer was expected | 7 | 0 |
+
+Rules implied:
+- Build eval binaries from a pushed commit (`go version -m <binary>` must show
+  `vcs.modified=false`) and record the commit next to the result.
+- A rule change tested on top of unmerged code is not a result for production:
+  rerun it on the shipped build before applying it.
+- Owner decision, same day: a test question ("1+1") is answered, then gets one
+  next step (usually a short question about their work), never a pitch.
