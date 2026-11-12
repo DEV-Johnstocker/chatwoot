@@ -121,8 +121,11 @@ func TestUntag_NestedTagsCannotReassemble(t *testing.T) {
 }
 
 // The owner found "เห็นว่า…" openings awkward and "ขอเช็กก่อน" too AI-like.
+// Staging 2026-11-13: with nothing to answer from, the drafter still wrote
+// "ขอเช็กให้ชัวร์ก่อน"; the rule now bans it there too and gives the wording.
 func TestScoreRules_PoliteOpeningAndNoNeedlessChecking(t *testing.T) {
-	for _, want := range []string{"สวัสดีครับ", "Never open with เห็นว่า or เห็นถาม", "do not say you need to check first"} {
+	for _, want := range []string{"สวัสดีครับ", "Never open with เห็นว่า or เห็นถาม", "Never say you need to check first",
+		"ขอเช็กให้ชัวร์ก่อน", "even when nothing given answers it", "เดี๋ยวแอดมินส่งรายละเอียดให้ในแชทนี้นะครับ"} {
 		// Assert
 		if !strings.Contains(scoreRules, want) {
 			t.Errorf("rules lack %q", want)
