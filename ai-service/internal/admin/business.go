@@ -18,7 +18,7 @@ type businessData struct {
 	Updated string
 	Saved   bool
 	Error   string
-	Limits  struct{ Name, Field, Rules int }
+	Limits  struct{ Name, Field, Rules, Bank int }
 }
 
 func (h *Handler) showBusiness(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +57,7 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 	p := profile.Profile{
 		AccountID:    acct,
 		BusinessName: f.Get("business_name"), About: f.Get("about"), Tone: f.Get("tone"),
-		Contact: f.Get("contact"), Rules: f.Get("rules"),
+		Contact: f.Get("contact"), Rules: f.Get("rules"), BankTransfer: f.Get("bank_transfer"),
 		// An unticked checkbox is simply absent from the form: absent = off.
 		Features: profile.Features{
 			Voice: f.Get("feature_voice") == "on", Images: f.Get("feature_images") == "on", Stickers: f.Get("feature_stickers") == "on",
@@ -74,7 +74,7 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderBusiness(w http.ResponseWriter, r *http.Request, status int, data businessData) {
-	data.Limits.Name, data.Limits.Field, data.Limits.Rules = profile.MaxNameRunes, profile.MaxFieldRunes, profile.MaxRulesRunes
+	data.Limits.Name, data.Limits.Field, data.Limits.Rules, data.Limits.Bank = profile.MaxNameRunes, profile.MaxFieldRunes, profile.MaxRulesRunes, profile.MaxBankRunes
 	if !data.Profile.UpdatedAt.IsZero() {
 		data.Updated = h.whenIn(langOf(r), data.Profile.UpdatedAt)
 	}

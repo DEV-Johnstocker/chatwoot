@@ -49,6 +49,11 @@
             <p class="field-hint" id="contact-hint">{{T "Links, channels and hours the bot may give out."}}</p>
           </div>
           <div class="span2">
+            <label for="bank_transfer">{{T "Bank transfer"}}</label>
+            <textarea id="bank_transfer" name="bank_transfer" rows="2" maxlength="{{.Limits.Bank}}" aria-describedby="bank-hint" placeholder="ธนาคารไทยพาณิชย์ ชื่อบัญชี … เลขบัญชี …">{{.Profile.BankTransfer}}</textarea>
+            <p class="field-hint" id="bank-hint">{{T "Bank, account name and number. The bot sends them exactly as written; a reply with any other account number is stopped and passed to staff. Leave empty and the bot hands bank transfers to staff."}}</p>
+          </div>
+          <div class="span2">
             <label for="rules">{{T "Rules"}}</label>
             <textarea id="rules" name="rules" rows="3" maxlength="{{.Limits.Rules}}" aria-describedby="rules-hint" placeholder="ห้ามให้ส่วนลดเอง ถ้าถามเรื่องคืนเงินให้ส่งต่อแอดมิน">{{.Profile.Rules}}</textarea>
             <p class="field-hint" id="rules-hint">{{T "Things the bot must or must not do for this business."}}</p>

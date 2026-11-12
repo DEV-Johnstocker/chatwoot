@@ -58,6 +58,7 @@ const (
 	ReasonAttachment    = "ai-handoff:attachment"    // files only; the bot cannot read them
 	ReasonAIRequest     = "ai-handoff:ai-request"    // the model decided a person is needed
 	ReasonStaffReplied  = "ai-handoff:staff-replied" // someone else answered while the bot owned the chat
+	ReasonNumberHeld    = "ai-handoff:number-held"   // the reply had an account-like number found in no business data
 )
 
 // MaxInputRunes caps one customer message before it reaches the model, so a
@@ -322,7 +323,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 
 	history := b.opts.History.Get(acct, conv)
 	started := time.Now()
-	res, hits, err := b.answer(ctx, log, acct, inbox, history, tr, images)
+	res, hits, trusted, err := b.answer(ctx, log, acct, inbox, history, tr, images)
 	latency := time.Since(started)
 	log = log.With(sourceAttrs(hits)...)
 	if err == nil && len(hits) > 0 {
@@ -337,6 +338,14 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 
 	text, wantsHuman := SplitHandoff(res.Content)
 	tr.Output = text
+	if bad := unverifiedNumbers(text, trusted...); len(bad) > 0 {
+		// The number is not logged: it may be a customer's.
+		log.Warn("reply held: number not in the business profile or knowledge", "numbers", len(bad))
+		tr.Outcome, tr.Output = "handoff:"+ReasonNumberHeld, b.opts.HandoffMessage
+		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: b.opts.HandoffMessage})
+		b.handoff(ctx, log, acct, inbox, conv, b.opts.HandoffMessage, ReasonNumberHeld, images)
+		return
+	}
 	if wantsHuman {
 		if text == "" {
 			text = b.opts.HandoffMessage
@@ -367,13 +376,21 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 // Answer runs the reply pipeline without Chatwoot: business profile, knowledge
 // search (with rewritten queries) and the chat model. answer-eval uses it to
 // test exactly what customers get.
+// A reply the number guard would hold comes back as a bare handoff, as the
+// customer would get it.
 func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Turn) (llm.Result, []knowledge.Hit, error) {
-	return b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	res, hits, trusted, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	if text, _ := SplitHandoff(res.Content); err == nil && len(unverifiedNumbers(text, trusted...)) > 0 {
+		res.Content = "[[HANDOFF]]"
+	}
+	return res, hits, err
 }
 
 // answer fills tr's rewrite, search and generation steps as it goes.
 // images go with the latest customer message only; history stays text.
-func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, error) {
+// trusted is the business data the model was given (profile and knowledge),
+// against which the reply's long numbers are checked.
+func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, []string, error) {
 	messages := []llm.Message{{Role: "system", Content: b.systemPrompt(ctx, log, acct)}}
 	var hits []knowledge.Hit
 	if b.opts.Knowledge != nil {
@@ -404,7 +421,13 @@ func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, h
 	}
 	res.Content = plainChat(res.Content)
 	tr.Generation = gen
-	return res, hits, err
+	trusted := make([]string, 0, 2)
+	for _, m := range messages {
+		if m.Role == "system" {
+			trusted = append(trusted, m.Content)
+		}
+	}
+	return res, hits, trusted, err
 }
 
 // hitSummary lists retrieved titles and scores (business content, no chunk text).
@@ -642,17 +665,20 @@ func (b *Bot) Preview(parent context.Context, acct, inbox int64, history []memor
 	}
 	ctx, cancel := context.WithTimeout(parent, b.timeout())
 	defer cancel()
-	res, hits, err := b.Answer(ctx, acct, inbox, history)
-	return previewOf(b, res.Content, res.Model, hits, err)
+	res, hits, trusted, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	return previewOf(b, res.Content, res.Model, hits, trusted, err)
 }
 
 // previewOf turns the model's reply into a Preview: failure message on an
 // error, handoff when the model asks for staff.
-func previewOf(b *Bot, content, model string, hits []knowledge.Hit, err error) Preview {
+func previewOf(b *Bot, content, model string, hits []knowledge.Hit, trusted []string, err error) Preview {
 	if err != nil {
 		return Preview{Reply: b.opts.FailureMessage, Handoff: true, Reason: ReasonLLMError, Sources: hits, Err: err}
 	}
 	text, wantsHuman := SplitHandoff(content)
+	if len(unverifiedNumbers(text, trusted...)) > 0 {
+		return Preview{Reply: b.opts.HandoffMessage, Handoff: true, Reason: ReasonNumberHeld, Sources: hits, Model: model}
+	}
 	p := Preview{Reply: text, Sources: hits, Model: model}
 	if wantsHuman {
 		p.Handoff, p.Reason = true, ReasonAIRequest

@@ -246,3 +246,24 @@ func TestBusiness_RulesBoxAllowsTheRulesLimit(t *testing.T) {
 		t.Errorf("page lacks %q or %q", rules, about)
 	}
 }
+
+func TestBusiness_BankTransferSavesAndShows(t *testing.T) {
+	// Arrange
+	mux, mp := businessEnv(t, true)
+	form := url.Values{"account": {"1"}, "business_name": {"Shop"}, "bank_transfer": {" ไทยพาณิชย์ พรพิมล พวงใส 9952310945 "}}
+
+	// Act
+	saved := serve(mux, bpost(form))
+	get := httptest.NewRequest(http.MethodGet, "/admin/business?account=1", nil)
+	get.SetBasicAuth(Username, pw)
+	page := serve(mux, get).Body.String()
+
+	// Assert
+	if saved.Code != http.StatusSeeOther || mp.saved[1].BankTransfer != "ไทยพาณิชย์ พรพิมล พวงใส 9952310945" {
+		t.Fatalf("save = %d, bank = %q", saved.Code, mp.saved[1].BankTransfer)
+	}
+	want := fmt.Sprintf(`name="bank_transfer" rows="2" maxlength="%d"`, profile.MaxBankRunes)
+	if !strings.Contains(page, want) || !strings.Contains(page, "9952310945") {
+		t.Errorf("page lacks the bank box %q or its value", want)
+	}
+}

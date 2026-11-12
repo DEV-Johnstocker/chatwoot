@@ -38,6 +38,7 @@ var reasonLabels = map[string]string{
 	ReasonAttachment:    "ลูกค้าส่งไฟล์ที่บอทเปิดไม่ได้",
 	ReasonAIRequest:     "บอทตอบเองไม่ได้ หรือเรื่องนี้ต้องให้ทีมงานดูแล",
 	ReasonStaffReplied:  "แอดมินตอบลูกค้าโดยตรง บอทหยุดตอบแชทนี้แล้ว (ปิดแชทเมื่อเสร็จ บอทจะกลับมาตอบ)",
+	ReasonNumberHeld:    "คำตอบของบอทมีเลขบัญชีหรือเลขยาวที่ไม่ตรงกับโปรไฟล์หรือฐานความรู้ ระบบจึงไม่ส่งให้ลูกค้า",
 }
 
 // Card and Thai ID numbers never belong in a note, even if a model copies them.
