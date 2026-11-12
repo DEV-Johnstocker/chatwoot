@@ -303,7 +303,8 @@
   .bubble.typing .dots span:nth-child(3) { animation-delay: .4s; }
   @keyframes typing { 0%, 80%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
   @media (prefers-reduced-motion: reduce) { .bubble.typing .dots span { animation: none; opacity: .6; } }
-  .change-head h2 { margin: 0 0 4px; }
+  .change-head h2 { margin: 0 0 4px; overflow-wrap: anywhere; }
+  .change-head h2 .badge { white-space: nowrap; overflow-wrap: normal; }
   .diff { margin: 12px 0 0; }
   .diff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .diff-label { margin: 0 0 4px; font-size: .8rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
