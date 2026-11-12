@@ -20,7 +20,7 @@ type Memory struct {
 
 // Propose implements Store.
 func (m *Memory) Propose(_ context.Context, c Change) (int64, error) {
-	if c.Kind != KindProfile && c.Kind != KindDocument {
+	if !c.Kind.Valid() {
 		return 0, fmt.Errorf("unknown change kind %q", c.Kind)
 	}
 	m.mu.Lock()

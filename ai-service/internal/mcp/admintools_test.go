@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -10,7 +11,9 @@ import (
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/audit"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webfetch"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
 )
 
@@ -76,6 +79,9 @@ func (m *memSources) SetInterval(_ context.Context, acct, id int64, hours int) e
 
 type fakeChecker struct {
 	checked, later []int64
+	previewed      []string
+	previewErr     error
+	notes          []string
 }
 
 func (f *fakeChecker) Check(_ context.Context, s websync.Source) (websync.Outcome, error) {
@@ -592,4 +598,210 @@ func TestTools_SyncedDocumentsAreMarked(t *testing.T) {
 	if !strings.Contains(text(feed), `"synced": true`) || strings.Contains(text(own), "synced") {
 		t.Fatalf("feed=%s own=%s", text(feed), text(own))
 	}
+}
+
+// --- add_source ---
+
+func (m *memSources) Add(_ context.Context, acct int64, url, kind string) (websync.Source, error) {
+	for _, s := range m.srcs {
+		if s.AccountID == acct && s.URL == url {
+			return websync.Source{}, websync.ErrDuplicate
+		}
+	}
+	src := websync.Source{ID: int64(100 + len(m.srcs)), AccountID: acct, URL: url, Kind: kind, Status: "new", IntervalHours: 24}
+	m.srcs = append(m.srcs, src)
+	return src, nil
+}
+
+func (f *fakeChecker) Preview(_ context.Context, url, kind string) (websync.Preview, error) {
+	f.previewed = append(f.previewed, kind+" "+url)
+	if f.previewErr != nil {
+		return websync.Preview{}, f.previewErr
+	}
+	if kind == websync.KindFeed {
+		return websync.Preview{Rows: 9, Format: "CSV", Notes: f.notes}, nil
+	}
+	return websync.Preview{Title: "FAQ page"}, nil
+}
+
+func waitingSources(t *testing.T, e *adminEnv) []pending.Change {
+	t.Helper()
+	list, err := e.srv.Pending.List(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []pending.Change
+	for _, c := range list {
+		if c.Kind == pending.KindSource {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestAdminTools_AddSourceWaitsForApprovalAndAddsNothing(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	before := len(e.sources.srcs)
+	link := "https://docs.google.com/spreadsheets/d/NEWSHEET/edit?gid=42#gid=42"
+
+	// Act
+	res := e.call(rw, "add_source", map[string]any{"url": link})
+
+	// Assert
+	want := "https://docs.google.com/spreadsheets/d/NEWSHEET/export?format=csv&gid=42"
+	if isErr(res) || !strings.Contains(text(res), "waiting for approval") {
+		t.Fatalf("result: %s", text(res))
+	}
+	if len(e.sources.srcs) != before || len(e.checker.later)+len(e.checker.checked) != 0 || len(e.events.events) != 0 {
+		t.Fatalf("a proposal changed something: sources %d→%d checks=%v/%v events=%d",
+			before, len(e.sources.srcs), e.checker.later, e.checker.checked, len(e.events.events))
+	}
+	w := waitingSources(t, e)
+	if len(w) != 1 || w[0].Target != want || !strings.Contains(string(w[0].Proposed), `"rows":9`) || !strings.Contains(string(w[0].Proposed), `"kind":"feed"`) {
+		t.Fatalf("waiting = %+v", w)
+	}
+}
+
+func TestAdminTools_ApprovedSourceIsAddedAndLoaded(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	e.call(rw, "add_source", map[string]any{"url": "https://docs.google.com/spreadsheets/d/NEWSHEET/edit?gid=42"})
+	e.call(rw, "add_source", map[string]any{"url": "https://docs.google.com/document/d/DOC1/edit"})
+	w := waitingSources(t, e)
+
+	// Act
+	var errs []error
+	for _, c := range w {
+		errs = append(errs, e.srv.Approve(context.Background(), 1, c.ID, c.Version, "owner@example.com"))
+	}
+
+	// Assert
+	if len(w) != 2 || errs[0] != nil || errs[1] != nil {
+		t.Fatalf("waiting=%d errs=%v", len(w), errs)
+	}
+	n := len(e.sources.srcs)
+	sheet, doc := e.sources.srcs[n-2], e.sources.srcs[n-1]
+	if sheet.Kind != websync.KindFeed || doc.Kind != websync.KindPage || doc.URL != "https://docs.google.com/document/d/DOC1/export?format=txt" {
+		t.Fatalf("added sheet=%+v doc=%+v", sheet, doc)
+	}
+	if len(e.checker.later) != 1 || e.checker.later[0] != sheet.ID || len(e.checker.checked) != 1 || e.checker.checked[0] != doc.ID {
+		t.Fatalf("loads: later=%v checked=%v", e.checker.later, e.checker.checked)
+	}
+	if len(waitingSources(t, e)) != 0 {
+		t.Fatal("approved sources still waiting")
+	}
+	if len(e.events.events) != 2 || e.events.events[0].Actor != "owner@example.com" || e.events.events[0].Action != "data feed added" {
+		t.Fatalf("events = %+v", e.events.events)
+	}
+}
+
+func TestAdminTools_RejectedSourceIsNeverAdded(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	before := len(e.sources.srcs)
+	e.call(rw, "add_source", map[string]any{"url": "https://example.com/prices?token=SECRET123"})
+	c := waitingSources(t, e)[0]
+
+	// Act
+	err := e.srv.Reject(context.Background(), 1, c.ID, c.Version, "owner@example.com")
+	stale := e.srv.Approve(context.Background(), 1, c.ID, c.Version, "owner@example.com")
+
+	// Assert
+	if err != nil || stale == nil || len(e.sources.srcs) != before || len(e.checker.checked) != 0 {
+		t.Fatalf("reject=%v approve-after=%v sources %d→%d", err, stale, before, len(e.sources.srcs))
+	}
+	if strings.Contains(jsonText(t, e.events.events[len(e.events.events)-1].Before), "SECRET123") || !strings.Contains(jsonText(t, e.events.events[len(e.events.events)-1].Before), "example.com/prices") {
+		t.Fatal("the link's query reached the change history")
+	}
+	if len(e.events.events) != 1 || e.events.events[0].Action != "AI change rejected" || !strings.Contains(e.events.events[0].Summary, "new source example.com/prices") {
+		t.Fatalf("events = %+v", e.events.events)
+	}
+}
+
+func TestAdminTools_SourceApprovalNeedsTheVersionSeenAndStaysInAccount(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	e.call(rw, "add_source", map[string]any{"url": "https://example.com/a.csv", "kind": "data_file"})
+	c := waitingSources(t, e)[0]
+	e.call(rw, "add_source", map[string]any{"url": "https://example.com/a.csv", "kind": "data_file"}) // the app re-sends: version 2
+	before := len(e.sources.srcs)
+
+	// Act
+	oldVersion := e.srv.Approve(context.Background(), 1, c.ID, c.Version, "owner@example.com")
+	otherAccount := e.srv.Approve(context.Background(), 2, c.ID, c.Version+1, "owner@example.com")
+
+	// Assert
+	if !errors.Is(oldVersion, pending.ErrChanged) || otherAccount == nil || len(e.sources.srcs) != before {
+		t.Fatalf("old=%v other=%v sources %d→%d", oldVersion, otherAccount, before, len(e.sources.srcs))
+	}
+}
+
+func TestAdminTools_AddSourceRefusesAndProposesNothing(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	before := len(e.sources.srcs)
+
+	// Act
+	readOnly := e.call(ro, "add_source", map[string]any{"url": "https://example.com/a"})
+	badURL := e.call(rw, "add_source", map[string]any{"url": "http://localhost/admin"})
+	badKind := e.call(rw, "add_source", map[string]any{"url": "https://example.com/a", "kind": "folder"})
+	dup := e.call(rw, "add_source", map[string]any{"url": "https://example.com/faq"})
+	e.checker.previewErr = webfetch.ErrGoogleSignIn
+	private := e.call(rw, "add_source", map[string]any{"url": "https://docs.google.com/spreadsheets/d/PRIV/edit"})
+	e.checker.previewErr = errors.New("not a data file: use CSV with a header row or JSON Lines, with an id column")
+	noID := e.call(rw, "add_source", map[string]any{"url": "https://example.com/data.csv", "kind": "data_file"})
+
+	// Assert
+	for name, r := range map[string]map[string]any{"readOnly": readOnly, "badURL": badURL, "badKind": badKind, "dup": dup, "private": private, "noID": noID} {
+		if !isErr(r) {
+			t.Errorf("%s accepted: %s", name, text(r))
+		}
+	}
+	if !strings.Contains(text(private), "Anyone with the link") || !strings.Contains(text(noID), "id column") || !strings.Contains(text(dup), "already") {
+		t.Fatalf("messages: private=%s noID=%s dup=%s", text(private), text(noID), text(dup))
+	}
+	if len(e.sources.srcs) != before || len(waitingSources(t, e)) != 0 || len(e.events.events) != 0 {
+		t.Fatal("a refused add_source changed something")
+	}
+}
+
+func TestAdminTools_AddSourceKeepsRowLimitNote(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	e.checker.notes = []string{"only the first 500 rows are used"}
+
+	// Act
+	res := e.call(rw, "add_source", map[string]any{"url": "https://example.com/big.csv", "kind": "data_file"})
+
+	// Assert
+	w := waitingSources(t, e)
+	if isErr(res) || len(w) != 1 || !strings.Contains(string(w[0].Proposed), "first 500 rows") {
+		t.Fatalf("result: %s waiting=%+v", text(res), w)
+	}
+}
+
+func TestAdminTools_AddSourceLimitPerAccount(t *testing.T) {
+	// Arrange
+	e := newAdminEnv()
+	e.srv.SyncPerMinute = 1
+
+	// Act
+	first := e.call(rw, "add_source", map[string]any{"url": "https://example.com/b"})
+	second := e.call(rw, "add_source", map[string]any{"url": "https://example.com/c"})
+
+	// Assert
+	if isErr(first) || !isErr(second) || !strings.Contains(text(second), "limit") {
+		t.Fatalf("first=%s second=%s", text(first), text(second))
+	}
+}
+
+// jsonText is v as JSON text, whatever Go type holds it.
+func jsonText(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

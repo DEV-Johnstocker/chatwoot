@@ -886,3 +886,59 @@ func TestMigrate_V14KeepsWhenRepliesWereSent(t *testing.T) {
 		t.Fatalf("version=%d sent=%v dismissed=%v", version, sent, dismissed)
 	}
 }
+
+func TestMigrate_V15AcceptsSourceProposalsAndKeepsRows(t *testing.T) {
+	// Arrange: a v14 database with the old kind rule and a waiting change.
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `
+		ALTER TABLE ai_pending_changes DROP CONSTRAINT ai_pending_changes_kind_check;
+		ALTER TABLE ai_pending_changes ADD CONSTRAINT ai_pending_changes_kind_check CHECK (kind IN ('profile', 'document'));
+		INSERT INTO ai_pending_changes (account_id, kind, target, proposed, actor) VALUES (1, 'document', 'hours', '{}', 'claude');
+		UPDATE kb_schema_version SET version = 14;`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	err := db.Migrate(ctx)
+	again := db.Migrate(ctx)
+	_, sourceErr := db.Pool.Exec(ctx, `INSERT INTO ai_pending_changes (account_id, kind, target, proposed, actor)
+		VALUES (1, 'source', 'https://example.com/data.csv', '{}', 'claude')`)
+	_, badErr := db.Pool.Exec(ctx, `INSERT INTO ai_pending_changes (account_id, kind, target, proposed, actor)
+		VALUES (1, 'settings', 'x', '{}', 'claude')`)
+
+	// Assert
+	var version, kept int
+	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
+		(SELECT count(*) FROM ai_pending_changes WHERE kind = 'document' AND target = 'hours')`).Scan(&version, &kept); err != nil {
+		t.Fatal(err)
+	}
+	if err != nil || again != nil || version != SchemaVersion || kept != 1 {
+		t.Fatalf("migrate=%v again=%v version=%d kept=%d", err, again, version, kept)
+	}
+	if sourceErr != nil || badErr == nil {
+		t.Fatalf("source insert=%v, unknown kind insert=%v (want accepted, refused)", sourceErr, badErr)
+	}
+}
+
+func TestMigrate_V15KeepsTheOneProfileRowRule(t *testing.T) {
+	// Arrange: a fresh database, migrated from v1 with Postgres's own constraint names.
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	// Act
+	_, profileErr := db.Pool.Exec(ctx, `INSERT INTO ai_pending_changes (account_id, kind, target, proposed, actor)
+		VALUES (1, 'profile', 'not-profile', '{}', 'claude')`)
+	var kindChecks int
+	err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM pg_constraint
+		WHERE conrelid = 'ai_pending_changes'::regclass AND contype = 'c'
+		AND pg_get_constraintdef(oid) LIKE '%''source''%'`).Scan(&kindChecks)
+
+	// Assert
+	if profileErr == nil {
+		t.Fatal("the one-profile-row rule was dropped: a profile change with another target was accepted")
+	}
+	if err != nil || kindChecks != 1 {
+		t.Fatalf("kind checks allowing source = %d, %v; want exactly 1", kindChecks, err)
+	}
+}

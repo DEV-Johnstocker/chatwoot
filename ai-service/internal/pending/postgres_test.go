@@ -187,3 +187,28 @@ func TestStore_EveryProposerIsNamed(t *testing.T) {
 		}
 	})
 }
+
+func TestStore_SourceProposalWaitsAndReplaces(t *testing.T) {
+	each(t, func(t *testing.T, db Store) {
+		// Arrange
+		ctx := context.Background()
+		addr := "https://docs.google.com/spreadsheets/d/abc/export?format=csv&gid=1"
+		src := func(rows int) Change {
+			b, _ := json.Marshal(map[string]any{"url": addr, "kind": "feed", "rows": rows})
+			return Change{AccountID: 1, Kind: KindSource, Target: addr, Proposed: b, Actor: "claude", TokenID: 3}
+		}
+
+		// Act
+		id, err := db.Propose(ctx, src(9))
+		again, err2 := db.Propose(ctx, src(12))
+		got, _ := db.Get(ctx, 1, id)
+		list, _ := db.List(ctx, 1)
+
+		// Assert
+		var fields map[string]any
+		_ = json.Unmarshal(got.Proposed, &fields)
+		if err != nil || err2 != nil || again != id || got.Kind != KindSource || got.Target != addr || fields["rows"] != float64(12) || got.Version != 2 || len(list) != 1 {
+			t.Fatalf("err=%v err2=%v id=%d again=%d change=%+v list=%d", err, err2, id, again, got, len(list))
+		}
+	})
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/audit"
@@ -67,6 +68,12 @@ func (s *Server) Approve(ctx context.Context, accountID, id int64, version int, 
 		err = s.applyProfile(ctx, tok, c.Proposed, approver)
 	case pending.KindDocument:
 		err = s.applyDocument(ctx, tok, c.Proposed)
+	case pending.KindSource:
+		if s.Sources == nil || s.Checker == nil {
+			err = errors.New("sources are not available on this server")
+		} else {
+			err = s.applySource(ctx, tok, c.Proposed, approver)
+		}
 	default:
 		err = fmt.Errorf("unknown change kind %q", c.Kind)
 	}
@@ -93,11 +100,18 @@ func (s *Server) Reject(ctx context.Context, accountID, id int64, version int, a
 		return err
 	}
 	what := "business profile"
-	if c.Kind == pending.KindDocument {
+	switch c.Kind {
+	case pending.KindDocument:
 		what = "knowledge " + c.Target
+	case pending.KindSource:
+		what = "new source " + hostPath(c.Target)
+	}
+	before := c.Proposed
+	if c.Kind == pending.KindSource {
+		before = withoutQuery(c.Proposed) // a signed link's token stays out of the history
 	}
 	s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: "AI change rejected",
-		Summary: c.Actor + ": " + what, Before: c.Proposed})
+		Summary: c.Actor + ": " + what, Before: before})
 	return nil
 }
 
@@ -110,4 +124,21 @@ func (s *Server) record(ctx context.Context, e audit.Event) {
 	if err := s.Events.Record(ctx, e); err != nil {
 		s.Logger.Error("approval not recorded", "account_id", e.AccountID, "error", err)
 	}
+}
+
+// withoutQuery is a source proposal with the address's query and fragment
+// removed; nil when it cannot be read.
+func withoutQuery(raw json.RawMessage) json.RawMessage {
+	var p sourceProposal
+	if json.Unmarshal(raw, &p) != nil {
+		return nil
+	}
+	if u, err := url.Parse(p.URL); err == nil {
+		u.RawQuery, u.Fragment = "", ""
+		p.URL = u.String()
+	} else {
+		p.URL = ""
+	}
+	out, _ := json.Marshal(p)
+	return out
 }

@@ -16,7 +16,7 @@ type Postgres struct {
 
 // Propose implements Store.
 func (p *Postgres) Propose(ctx context.Context, c Change) (int64, error) {
-	if c.Kind != KindProfile && c.Kind != KindDocument {
+	if !c.Kind.Valid() {
 		return 0, fmt.Errorf("unknown change kind %q", c.Kind)
 	}
 	tx, err := p.Pool.Begin(ctx)
