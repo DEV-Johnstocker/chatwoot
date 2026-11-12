@@ -283,3 +283,30 @@ func TestFailureMessageDoesNotMentionTheSystem(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_CommentPublicReply(t *testing.T) {
+	cases := map[string]struct {
+		value   string
+		want    string
+		wantErr bool
+	}{
+		"off by default": {"", "", false},
+		"trimmed":        {"  สวัสดีครับ ส่งรายละเอียดทางข้อความแล้วนะครับ 🙏  ", "สวัสดีครับ ส่งรายละเอียดทางข้อความแล้วนะครับ 🙏", false},
+		"too long":       {strings.Repeat("ก", 301), "", true},
+	}
+	for name, c := range cases {
+		// Arrange
+		env := requiredEnv()
+		if c.value != "" {
+			env["COMMENT_PUBLIC_REPLY"] = c.value
+		}
+
+		// Act
+		cfg, err := Load(lookupFrom(env))
+
+		// Assert
+		if (err != nil) != c.wantErr || (!c.wantErr && cfg.CommentPublicReply != c.want) {
+			t.Errorf("%s: got %q err %v", name, cfg.CommentPublicReply, err)
+		}
+	}
+}

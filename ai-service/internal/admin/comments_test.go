@@ -28,6 +28,7 @@ type commentsEnv struct {
 	mux    *http.ServeMux
 	store  *comments.Memory
 	sender *recordingSender
+	queue  *comments.Queue
 }
 
 func newCommentsEnv(t *testing.T, enabled, canSend bool) *commentsEnv {
@@ -44,7 +45,7 @@ func newCommentsEnv(t *testing.T, enabled, canSend bool) *commentsEnv {
 		if canSend {
 			q.Sender = e.sender
 		}
-		h.Comments = q
+		h.Comments, e.queue = q, q
 	}
 	e.mux = http.NewServeMux()
 	h.Routes(e.mux)

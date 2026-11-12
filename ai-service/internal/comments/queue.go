@@ -36,6 +36,44 @@ type Queue struct {
 	// PostBudget bounds all post reads of one page load (default 5 s), so a
 	// slow Graph cannot hang the page; posts not read in time are not shown.
 	PostBudget time.Duration
+	// Public posts PublicText under a comment after its private reply was
+	// sent, when the owner ticks it. Off when either is empty.
+	Public     PublicReplier
+	PublicText string
+}
+
+// PublicReplier answers a comment in public (Graph).
+type PublicReplier interface {
+	PostPublicReply(ctx context.Context, commentID, text string) error
+}
+
+// ErrNotSent means a public reply was asked for a comment whose private
+// reply was not sent: the public line says "we messaged you".
+var ErrNotSent = errors.New("the private reply was not sent")
+
+// PublicReply is the line posted under answered comments, or "" when off.
+func (q *Queue) PublicReply() string {
+	if q.Public == nil || q.Sender == nil {
+		return ""
+	}
+	return strings.TrimSpace(q.PublicText)
+}
+
+// ReplyPublicly posts the public line under a comment of the account whose
+// private reply was sent.
+func (q *Queue) ReplyPublicly(ctx context.Context, accountID, id int64) error {
+	text := q.PublicReply()
+	if text == "" {
+		return ErrSendingOff
+	}
+	c, err := q.Store.Get(ctx, accountID, id)
+	if err != nil {
+		return err
+	}
+	if c.Status != StatusSent {
+		return ErrNotSent
+	}
+	return q.Public.PostPublicReply(ctx, c.CommentID, text)
 }
 
 func (q *Queue) now() time.Time {

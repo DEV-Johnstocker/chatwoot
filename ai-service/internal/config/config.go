@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Config holds every runtime setting. Secrets are never logged.
@@ -105,6 +106,9 @@ type Config struct {
 	CommentReviewModel string
 	TypeSafeAPIKey     string // for COMMENT_REVIEWER=jev (secret)
 	TypeSafeModel      string
+	// CommentPublicReply is posted under a comment, as the Page, after its
+	// private reply was sent and the owner ticked it; empty: off.
+	CommentPublicReply string
 
 	HistoryLimit int
 	Workers      int
@@ -324,6 +328,10 @@ func loadMeta(cfg *Config, get func(key, def string) string, errs []error) []err
 	cfg.CommentReviewModel = get("COMMENT_REVIEW_MODEL", "")
 	cfg.TypeSafeAPIKey = get("TYPESAFE_API_KEY", "")
 	cfg.TypeSafeModel = get("TYPESAFE_MODEL", "jev-latest")
+	cfg.CommentPublicReply = strings.TrimSpace(get("COMMENT_PUBLIC_REPLY", ""))
+	if utf8.RuneCountInString(cfg.CommentPublicReply) > 300 {
+		errs = append(errs, errors.New("COMMENT_PUBLIC_REPLY must be at most 300 characters"))
+	}
 	switch cfg.CommentReviewer {
 	case "off", "llm":
 	case "jev":

@@ -44,15 +44,26 @@ var permanentCodes = map[int]bool{10900: true, 10903: true, 551: true}
 
 // SendPrivateReply sends text to the person who wrote commentID.
 func (g *Graph) SendPrivateReply(ctx context.Context, commentID, text string) error {
-	body, err := json.Marshal(map[string]any{
+	return g.post(ctx, "/"+url.PathEscape(g.PageID)+"/messages", map[string]any{
 		"recipient": map[string]string{"comment_id": commentID},
 		"message":   map[string]string{"text": text},
-	})
+	}, "send private reply")
+}
+
+// PostPublicReply answers the comment in public, as the Page, under the
+// comment itself. It needs the pages_manage_engagement permission.
+func (g *Graph) PostPublicReply(ctx context.Context, commentID, text string) error {
+	return g.post(ctx, "/"+url.PathEscape(commentID)+"/comments", map[string]string{"message": text}, "post public reply")
+}
+
+// post sends one JSON request to the Graph API and turns Meta's refusals
+// into a SendError.
+func (g *Graph) post(ctx context.Context, path string, payload any, what string) error {
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	endpoint := g.BaseURL + "/" + url.PathEscape(g.PageID) + "/messages"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -70,7 +81,7 @@ func (g *Graph) SendPrivateReply(ctx context.Context, commentID, text string) er
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return fmt.Errorf("send private reply via %s: %w", req.URL.Host, err)
+		return fmt.Errorf("%s via %s: %w", what, req.URL.Host, err)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
