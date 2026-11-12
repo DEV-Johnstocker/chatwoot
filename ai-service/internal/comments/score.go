@@ -231,7 +231,7 @@ type Worker struct {
 	// A failed sort pauses sorting for sortPause, so a slow or down Sorter
 	// costs one timeout, not one per comment; the drafter sorts meanwhile.
 	sortPauseUntil time.Time
-	backoff    time.Duration
+	backoff        time.Duration
 }
 
 // Rate-limit pauses.
