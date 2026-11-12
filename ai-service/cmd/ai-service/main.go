@@ -169,7 +169,11 @@ func run() error {
 		h.Places = &places.Recorder{Store: placeStore}
 	}
 	mux := h.Routes()
-	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentReviewer(cfg, current, completer, logger), mux, logger)
+	var commentKnowledge comments.Retriever // nil interface without a knowledge base
+	if kb != nil {
+		commentKnowledge = kb
+	}
+	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentKnowledge, commentReviewer(cfg, current, completer, logger), mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -339,7 +343,7 @@ func openKnowledge(cfg config.Config, embedder embed.Embedder, logger *slog.Logg
 // comments in the background, when the Meta settings and a database are set.
 // It returns the admin queue, or nil (a nil interface) when off.
 func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Store, completer llm.Completer,
-	reviewer comments.Reviewer, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
+	kb comments.Retriever, reviewer comments.Reviewer, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
 	if !cfg.CommentsEnabled() {
 		logger.Info("page comments off: set META_APP_SECRET, META_VERIFY_TOKEN and META_PAGE_ID to collect Facebook comments")
 		return nil
@@ -361,7 +365,7 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 	} else {
 		log.Warn("page comment replies off: set META_PAGE_TOKEN to send them; drafts are written without the post")
 	}
-	worker := &comments.Worker{Store: store, Scorer: &comments.Scorer{LLM: completer, Profiles: profiles},
+	worker := &comments.Worker{Store: store, Scorer: &comments.Scorer{LLM: completer, Profiles: profiles, Knowledge: kb, Logger: log},
 		Logger: log, Timeout: cfg.LLMTimeout, Reviewer: reviewer, Profiles: profiles, Posts: posts}
 	go worker.Run(context.Background(), 20*time.Second)
 	q := &comments.Queue{Store: store, Posts: posts}
