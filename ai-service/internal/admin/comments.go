@@ -20,6 +20,9 @@ type CommentQueue interface {
 	Dismiss(ctx context.Context, accountID, id int64, version int, by string) error
 	ReviewStats(ctx context.Context, accountID int64) (comments.ReviewStats, error)
 	CanSend() bool
+	// PublicReply is the line posted under answered comments ("" = off).
+	PublicReply() string
+	ReplyPublicly(ctx context.Context, accountID, id int64) error
 }
 
 type commentsData struct {
@@ -29,8 +32,10 @@ type commentsData struct {
 	Items   []commentItem
 	Recent  []commentRow
 	Stats   comments.ReviewStats
-	Done    string // "sent" or "dismissed" after a decision
-	Error   string
+	Done    string // "sent", "sent-public", "sent-public-failed" or "dismissed" after a decision
+	// PublicReply is the line the "also reply under the comment" box posts.
+	PublicReply string
+	Error       string
 }
 
 type commentItem struct {
@@ -100,7 +105,7 @@ var statusLabels = map[comments.Status]string{
 
 func (h *Handler) showComments(w http.ResponseWriter, r *http.Request) {
 	data := commentsData{Account: accountParam(r.URL.Query().Get("account"))}
-	if d := r.URL.Query().Get("done"); d == "sent" || d == "dismissed" {
+	if d := r.URL.Query().Get("done"); d == "sent" || d == "sent-public" || d == "sent-public-failed" || d == "dismissed" {
 		data.Done = d
 	}
 	h.renderComments(w, r, http.StatusOK, data)
@@ -135,6 +140,9 @@ func (h *Handler) submitComments(w http.ResponseWriter, r *http.Request) {
 	} else {
 		err = h.Comments.Dismiss(ctx, acct, id, version, actor(r))
 	}
+	if err == nil && done == "sent" && f.Get("public") == "on" && h.Comments.PublicReply() != "" {
+		done = h.replyPublicly(ctx, acct, id)
+	}
 	if err == nil {
 		h.Logger.Info("page comment "+done, "account_id", acct, "comment_row", id)
 		http.Redirect(w, r, "/admin/comments?account="+strconv.FormatInt(acct, 10)+"&done="+done, http.StatusSeeOther)
@@ -147,6 +155,17 @@ func (h *Handler) submitComments(w http.ResponseWriter, r *http.Request) {
 		h.Logger.Warn("page comment "+decision+" refused", "account_id", acct, "comment_row", id, "error", err)
 	}
 	h.renderComments(w, r, status, commentsData{Account: acct, Error: msg.in(langOf(r))})
+}
+
+// replyPublicly posts the public line under a comment whose private reply
+// was just sent. A failure never undoes the private reply; the owner is told
+// to reply under the comment by hand.
+func (h *Handler) replyPublicly(ctx context.Context, acct, id int64) string {
+	if err := h.Comments.ReplyPublicly(ctx, acct, id); err != nil {
+		h.Logger.Warn("page comment public reply failed", "account_id", acct, "comment_row", id, "error", err)
+		return "sent-public-failed"
+	}
+	return "sent-public"
 }
 
 // commentError turns a queue error into a status and a message for the owner.
@@ -187,6 +206,7 @@ func (h *Handler) renderComments(w http.ResponseWriter, r *http.Request, status 
 	lang := langOf(r)
 	if data.Enabled {
 		data.CanSend = h.Comments.CanSend()
+		data.PublicReply = h.Comments.PublicReply()
 		if err := h.loadComments(r.Context(), &data, lang); err != nil {
 			h.Logger.Error("load page comments", "account_id", data.Account, "error", err)
 			data.Error = tr(lang, "Could not load the comments. Check the database connection.")

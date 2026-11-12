@@ -368,11 +368,12 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 	worker := &comments.Worker{Store: store, Scorer: &comments.Scorer{LLM: completer, Profiles: profiles, Knowledge: kb, Logger: log},
 		Logger: log, Timeout: cfg.LLMTimeout, Reviewer: reviewer, Profiles: profiles, Posts: posts}
 	go worker.Run(context.Background(), 20*time.Second)
-	q := &comments.Queue{Store: store, Posts: posts}
+	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply}
 	if graph != nil {
-		q.Sender = graph
+		q.Sender, q.Public = graph, graph
 	}
-	log.Info("page comments on", "path", comments.WebhookPath, "account_id", cfg.MetaAccountID, "sending", q.CanSend())
+	log.Info("page comments on", "path", comments.WebhookPath, "account_id", cfg.MetaAccountID, "sending", q.CanSend(),
+		"public_reply", q.PublicReply() != "")
 	return q
 }
 
