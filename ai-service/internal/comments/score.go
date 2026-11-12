@@ -79,7 +79,7 @@ func (s *Scorer) Score(ctx context.Context, c Comment) (Intent, string, string, 
 	}
 	msgs := []llm.Message{
 		{Role: "system", Content: profile.Prompt(scoreRules, p)},
-		{Role: "user", Content: postBlock(c) + s.knowledgeBlock(ctx, c) + "<comment>\nName: " + untag(oneLine(c.FromName)) + "\n\n" + untag(c.Message) + "\n</comment>"},
+		{Role: "user", Content: postBlock(c) + knowledgeBlock(s.Lookup(ctx, c)) + "<comment>\nName: " + untag(oneLine(c.FromName)) + "\n\n" + untag(c.Message) + "\n</comment>"},
 	}
 	res, err := s.LLM.Complete(ctx, msgs)
 	if err != nil {
@@ -107,27 +107,38 @@ func parseScore(content string) (Intent, string, string, error) {
 
 var commentTag = regexp.MustCompile(`(?i)<\s*/?\s*(comment|post|knowledge)\s*>`)
 
-// knowledgeBlock is what the knowledge base knows about the comment's
-// words, or "" when there is no knowledge base, no match, or the search
-// failed: a draft without knowledge beats no draft.
-func (s *Scorer) knowledgeBlock(ctx context.Context, c Comment) string {
-	if s.Knowledge == nil || strings.TrimSpace(c.Message) == "" {
-		return ""
+// Lookup adds what the knowledge base knows about the comment's words,
+// unless an earlier Lookup already did. No knowledge base, no match or a
+// failed search leaves the list empty: a draft without knowledge beats no
+// draft, and the reviewer then judges it against the profile alone.
+func (s *Scorer) Lookup(ctx context.Context, c Comment) Comment {
+	if c.KnowledgeKnown || s.Knowledge == nil || strings.TrimSpace(c.Message) == "" {
+		return c
 	}
+	c.KnowledgeKnown = true
 	hits, err := s.Knowledge.Retrieve(ctx, c.AccountID, 0, c.Message)
 	if err != nil {
 		if s.Logger != nil {
 			s.Logger.Warn("comment draft without knowledge: search failed", "account_id", c.AccountID, "comment_row", c.ID, "error", err)
 		}
-		return ""
+		return c
 	}
-	if len(hits) == 0 {
+	for _, h := range hits {
+		c.Knowledge = append(c.Knowledge, Fact{Title: oneLine(h.Title), Text: oneLine(clip(h.Content, maxKnowledgeRunes))})
+	}
+	return c
+}
+
+// knowledgeBlock is the knowledge entries for the drafter, or "" when
+// there are none.
+func knowledgeBlock(c Comment) string {
+	if len(c.Knowledge) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("<knowledge>\n")
-	for _, h := range hits {
-		b.WriteString("- " + untag(oneLine(h.Title)) + ": " + untag(oneLine(clip(h.Content, maxKnowledgeRunes))) + "\n")
+	for _, f := range c.Knowledge {
+		b.WriteString("- " + untag(f.Title) + ": " + untag(f.Text) + "\n")
 	}
 	b.WriteString("</knowledge>\n\n")
 	return b.String()
@@ -158,6 +169,12 @@ func untag(s string) string {
 }
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// knowledgeLookup is implemented by Scorer: it finds the knowledge once,
+// before drafting, so the reviewer sees what the drafter saw.
+type knowledgeLookup interface {
+	Lookup(ctx context.Context, c Comment) Comment
+}
 
 // Worker scores new comments in the background and deletes old ones.
 type Worker struct {
@@ -227,6 +244,9 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 	done := 0
 	for _, c := range list {
 		c = w.withPost(ctx, c)
+		if l, ok := w.Scorer.(knowledgeLookup); ok {
+			c = l.Lookup(ctx, c) // the reviewer checks the draft against the same entries
+		}
 		cctx, cancel := context.WithTimeout(ctx, w.Timeout)
 		intent, reason, draft, err := w.Scorer.Score(cctx, c)
 		cancel()

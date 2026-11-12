@@ -189,9 +189,9 @@ var checkCriteria = map[string]map[string]string{
 		"false": "The draft ignores the comment, answers a different question, or talks about something else.",
 	},
 	CheckNoUnbackedOffer: {
-		"true": "The draft makes no specific offer, or only offers what `business` states. Saying an admin will send details, prices or the sign-up steps in chat " +
-			"is not an offer, and plain facts that `business.about` states (devices, lifetime access, the group, what is taught) are supported.",
-		"false": "The draft states a price, discount, coupon, free gift, bonus, refund, guarantee, deadline, class schedule or feature that `business` does not state.",
+		"true": "The draft makes no specific offer, or only offers what `business` or `knowledge` states. Saying an admin will send details, prices or the sign-up steps in chat " +
+			"is not an offer, and plain facts that `business.about` or a `knowledge` entry states (devices, lifetime access, the group, what is taught, a free plan and its limits) are supported.",
+		"false": "The draft states a price, discount, coupon, free gift, bonus, refund, guarantee, deadline, class schedule or feature that neither `business` nor `knowledge` states.",
 	},
 	CheckToneFits: {
 		"true":  "Polite and friendly, a few sentences, in the commenter's language, matching `business.tone`.",

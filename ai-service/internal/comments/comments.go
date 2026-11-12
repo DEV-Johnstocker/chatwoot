@@ -106,6 +106,12 @@ type Comment struct {
 	PostText  string
 	PostKnown bool
 
+	// Knowledge is what the knowledge base says about the comment, found
+	// once before drafting so the drafter and the reviewer see the same
+	// entries; it is not stored. KnowledgeKnown says the search ran.
+	Knowledge      []Fact
+	KnowledgeKnown bool
+
 	// Filled by Queue.Waiting for the page, not stored: other waiting
 	// comments from the same person on the same post, and when this person
 	// was last sent a private reply on any comment (zero: never).
@@ -129,6 +135,12 @@ type Comment struct {
 
 // Expired reports whether Meta's reply window has passed at now.
 func (c Comment) Expired(now time.Time) bool { return now.Sub(c.CreatedAt) > ReplyWindow }
+
+// Fact is one knowledge-base entry given to the drafter and the reviewer.
+type Fact struct {
+	Title string `json:"title"`
+	Text  string `json:"text"`
+}
 
 // Store keeps comments. Methods that take an account are scoped to it.
 type Store interface {
