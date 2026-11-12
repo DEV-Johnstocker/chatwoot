@@ -147,3 +147,16 @@ func TestPolicy_OwnerRatingsRound6(t *testing.T) {
 		t.Error("'are you a bot' must not offer a staff member any more")
 	}
 }
+
+func TestPolicy_TestQuestionGetsANextStep(t *testing.T) {
+	// Arrange: owner, 2026-11-13: "1+1" should be followed by the next step or a question back.
+	p := policyPrompt(time.Now())
+
+	// Act + Assert
+	if !strings.Contains(p, "A tiny aside or test (1+1) gets a short answer, then the one next step from the selling rule") {
+		t.Error("a test question must be answered and followed by one next step")
+	}
+	if strings.Contains(p, "a test question or a") || strings.Contains(p, "gets a few friendly words only") {
+		t.Error("the old 'test question gets no step' wording must be gone")
+	}
+}
