@@ -117,3 +117,13 @@ func TestUntag_NestedTagsCannotReassemble(t *testing.T) {
 		}
 	}
 }
+
+// The owner found "เห็นว่า…" openings awkward and "ขอเช็กก่อน" too AI-like.
+func TestScoreRules_PoliteOpeningAndNoNeedlessChecking(t *testing.T) {
+	for _, want := range []string{"สวัสดีครับ", "Never open with เห็นว่า or เห็นถาม", "do not say you need to check first"} {
+		// Assert
+		if !strings.Contains(scoreRules, want) {
+			t.Errorf("rules lack %q", want)
+		}
+	}
+}
