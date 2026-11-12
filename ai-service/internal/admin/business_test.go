@@ -267,3 +267,33 @@ func TestBusiness_BankTransferSavesAndShows(t *testing.T) {
 		t.Errorf("page lacks the bank box %q or its value", want)
 	}
 }
+
+func TestBusiness_BankChangeIsRecordedMasked(t *testing.T) {
+	// Arrange
+	_, mp := businessEnv(t, true)
+	mp.saved[1] = profile.Profile{AccountID: 1, BusinessName: "Shop", BankTransfer: "ไทยพาณิชย์ 9952310945"}
+	ev := &memEvents{}
+	h := &Handler{Password: pw, Profiles: mp, Events: ev, Logger: slog.New(slog.NewJSONHandler(io.Discard, nil))}
+	m := http.NewServeMux()
+	store, _ := settings.Open(t.TempDir()+"/s.json", settings.LLM{})
+	h.Store, h.Switch, h.Timeout = store, &llm.Switch{}, time.Second
+	h.Routes(m)
+
+	// Act
+	serve(m, bpost(url.Values{"account": {"1"}, "business_name": {"Shop"}, "bank_transfer": {"ไทยพาณิชย์ 1234567890"}}))
+	serve(m, bpost(url.Values{"account": {"1"}, "business_name": {"Shop"}, "bank_transfer": {"ไทยพาณิชย์ 1234567890"}}))
+
+	// Assert
+	var changes []string
+	for _, e := range ev.events {
+		if e.Action == "bank account changed" {
+			changes = append(changes, e.Summary)
+		}
+		if strings.Contains(e.Summary, "9952310945") || strings.Contains(e.Summary, "1234567890") {
+			t.Errorf("history holds a full account number: %q", e.Summary)
+		}
+	}
+	if len(changes) != 1 || changes[0] != "…0945 → …7890" {
+		t.Errorf("bank changes recorded = %q, want one masked change", changes)
+	}
+}

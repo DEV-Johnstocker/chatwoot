@@ -78,7 +78,7 @@ func (s *Scorer) Score(ctx context.Context, c Comment) (Intent, string, string, 
 		}
 	}
 	msgs := []llm.Message{
-		{Role: "system", Content: profile.Prompt(scoreRules+sortedRule(c), p)},
+		{Role: "system", Content: profile.Prompt(scoreRules+sortedRule(c), withoutBank(p))},
 		{Role: "user", Content: postBlock(c) + knowledgeBlock(s.Lookup(ctx, c)) + "<comment>\nName: " + untag(oneLine(c.FromName)) + "\n\n" + untag(c.Message) + "\n</comment>"},
 	}
 	res, err := s.LLM.Complete(ctx, msgs)
@@ -372,7 +372,7 @@ func (w *Worker) review(ctx context.Context, c Comment, intent Intent, draft str
 		return
 	}
 	rctx, cancel := context.WithTimeout(ctx, w.Timeout)
-	r, err := w.Reviewer.Review(rctx, c, draft, p)
+	r, err := w.Reviewer.Review(rctx, c, draft, withoutBank(p))
 	cancel()
 	if err != nil {
 		w.Logger.Warn("review page comment", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
@@ -385,4 +385,11 @@ func (w *Worker) review(ctx context.Context, c Comment, intent Intent, draft str
 	}
 	w.Logger.Info("page comment reviewed (shadow)", "account_id", c.AccountID, "comment_id", c.CommentID,
 		"would_send", r.Pass, "intent", string(intent), "reviewer_intent", string(r.Intent), "model", r.Model, "latency_ms", r.Latency.Milliseconds())
+}
+
+// withoutBank keeps the bank account out of comment drafts and the reviewer:
+// a public comment never needs it, and it would reach a new processor.
+func withoutBank(p profile.Profile) profile.Profile {
+	p.BankTransfer = ""
+	return p
 }

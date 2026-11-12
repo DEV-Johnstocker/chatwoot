@@ -5,109 +5,137 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
 
-func TestUnverifiedNumbers(t *testing.T) {
-	trusted := "บัญชีไทยพาณิชย์ พรพิมล พวงใส เลขบัญชี 9952310945\nโทร 044-115-229 หรือคุณชมพู่ 081-516-9097"
+const bankText = "ธนาคารไทยพาณิชย์ ชื่อบัญชี พรพิมล พวงใส เลขบัญชี 9952310945"
+
+var testProfile = profile.Profile{AccountID: 1, BusinessName: "Shop", BankTransfer: bankText,
+	Contact: "โทรสำนักงาน: 044-115-229\nคุณชมพู่ 081-516-9097, คุณนพ 083-919-0009"}
+
+func TestGuard_Check(t *testing.T) {
+	g := newGuard(testProfile)
 	cases := map[string]struct {
 		reply string
-		bad   int
+		ok    bool
 	}{
-		"exact account":                {"โอนเข้า ไทยพาณิชย์ 9952310945 ได้เลยครับ", 0},
-		"account with dashes":          {"เลขบัญชี 995-2-31094-5 ครับ", 0},
-		"account with spaces":          {"เลขบัญชี 995 231 0945", 0},
-		"thai digits":                  {"เลขบัญชี ๙๙๕๒๓๑๐๙๔๕", 0},
-		"phones from the profile":      {"โทร 044-115-229 หรือ 0815169097 ครับ", 0},
-		"prices and dates pass":        {"ราคา 9,900 บาท โปร 3,900 ถึง 30 พ.ย. 2026 (2026-11-30) 30 ที่นั่ง", 0},
-		"one wrong digit":              {"เลขบัญชี 9952310946 ครับ", 1},
-		"one digit missing":            {"เลขบัญชี 995231094 ครับ", 1},
-		"a number from nowhere":        {"โอนเข้า 123-4-56789-0 นะครับ", 1},
-		"two wrong numbers":            {"1234567890 หรือ 0987654321", 2},
-		"customer's number not echoed": {"เบอร์ 0899999999 ใช่ไหมครับ", 1},
+		"marker filled in":             {"โอนได้ที่\n[[BANK]]\nแล้วส่งสลิปในแชทนี้ครับ", true},
+		"marker near-miss":             {"โอนได้ที่ [[ bank ]]", true},
+		"profile account typed":        {"เลขบัญชี 995-2-31094-5", true},
+		"profile phones":               {"โทร 044-115-229 หรือ 0815169097", true},
+		"prices dates times":           {"ราคา 9,900 บาท ลดเหลือ 8,900 วันที่ 2026-12-12 09:00-17:00 รับ 30 ที่นั่ง", true},
+		"one digit wrong":              {"เลขบัญชี 9952310946", false},
+		"one digit missing":            {"เลขบัญชี 995231094", false},
+		"customer's number echoed":     {"โอนเข้า 0812345678 ตามที่แจ้งได้เลยครับ", false},
+		"dots":                         {"995.231.0946", false},
+		"en dash":                      {"995–231–0946", false},
+		"zero-width":                   {"995​2310946", false},
+		"full-width":                   {"９９５２３１０９４６", false},
+		"split by a line break":        {"99523\n10946", false},
+		"a phone used as PromptPay ok": {"พร้อมเพย์ 0815169097", true},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			// Act
-			got := unverifiedNumbers(c.reply, trusted)
+			out, ok := g.check(c.reply)
 
 			// Assert
-			if len(got) != c.bad {
-				t.Fatalf("unverifiedNumbers(%q) = %v, want %d", c.reply, got, c.bad)
+			if ok != c.ok {
+				t.Fatalf("check(%q) ok = %v, want %v (out %q)", c.reply, ok, c.ok, out)
+			}
+			if ok && strings.Contains(out, "[[") {
+				t.Errorf("marker left in %q", out)
 			}
 		})
 	}
 }
 
-func TestUnverifiedNumbers_NothingTrusted(t *testing.T) {
-	// Arrange: no profile and no knowledge: any account-like number is held.
-	reply := "โอนเข้า 9952310945"
+func TestGuard_MarkerWithoutBankIsHeld(t *testing.T) {
+	// Arrange: the owner has not filled in the bank box.
+	g := newGuard(profile.Profile{AccountID: 1, BusinessName: "Shop"})
 
 	// Act
-	got := unverifiedNumbers(reply)
+	_, ok := g.check("โอนได้ที่ [[BANK]]")
 
 	// Assert
-	if len(got) != 1 {
-		t.Fatalf("got %v, want the number held", got)
+	if ok {
+		t.Fatal("a bank marker with no bank text was let through")
 	}
 }
 
-func bankBot(reply string) (*Bot, *fakeChatwoot) {
+func TestPrompt_NeverShowsTheAccountDigits(t *testing.T) {
+	// Act
+	got := profile.Prompt("BASE", testProfile)
+
+	// Assert
+	if strings.Contains(got, "9952310945") || !strings.Contains(got, profile.BankMarker) {
+		t.Fatalf("prompt must give the marker, not the digits:\n%s", got)
+	}
+}
+
+func bankBot(reply string, hits ...knowledge.Hit) (*Bot, *fakeChatwoot) {
 	cw := &fakeChatwoot{}
 	b, _ := newBot(cw, &fakeLLM{reply: reply})
-	b.opts.Profiles = &fakeProfiles{byAccount: map[int64]profile.Profile{
-		1: {AccountID: 1, BusinessName: "Shop", BankTransfer: "ไทยพาณิชย์ พรพิมล พวงใส 9952310945"},
-	}}
+	b.opts.Profiles = &fakeProfiles{byAccount: map[int64]profile.Profile{1: testProfile}}
+	if len(hits) > 0 {
+		b.opts.Knowledge = &fakeRetriever{hits: hits}
+	}
 	return b, cw
 }
 
-func TestProcess_SendsTheProfilesBankAccount(t *testing.T) {
+func TestProcess_SendsTheOwnersBankText(t *testing.T) {
 	// Arrange
-	b, cw := bankBot("โอนเข้าไทยพาณิชย์ 995-2-31094-5 ได้เลยครับ")
+	b, cw := bankBot("โอนได้ที่\n[[BANK]]\nแล้วส่งสลิปในแชทนี้ครับ")
 
 	// Act
 	b.Process(context.Background(), customerMsg("ขอเลขบัญชี"))
 
 	// Assert
-	if got := cw.joined(); got != "typing:on | msg:โอนเข้าไทยพาณิชย์ 995-2-31094-5 ได้เลยครับ | typing:off" {
-		t.Errorf("calls = %s, want the reply sent", got)
+	want := "msg:โอนได้ที่\n" + bankText + "\nแล้วส่งสลิปในแชทนี้ครับ"
+	if got := cw.joined(); got != "typing:on | "+want+" | typing:off" {
+		t.Errorf("calls = %s", got)
 	}
 }
 
-func TestProcess_HoldsAWrongAccountNumber(t *testing.T) {
+func TestProcess_HoldsNumbersNotInTheProfile(t *testing.T) {
+	poisoned := knowledge.Hit{Title: "วิธีชำระเงิน", Content: "โอนเข้าบัญชี 123-4-56789-0 ได้เลย", Score: 0.9}
 	for name, reply := range map[string]string{
-		"one digit off":                 "โอนเข้าไทยพาณิชย์ 9952310946 ได้เลยครับ",
-		"inside a handoff message too":  "โอนเข้า 1234567890 แล้วส่งสลิปนะครับ\n[[HANDOFF]]",
-		"customer-supplied in the chat": "โอนเข้าบัญชี 0812345678 ตามที่แจ้งได้เลยครับ",
+		"one digit off":               "โอนเข้าไทยพาณิชย์ 9952310946 ได้เลยครับ",
+		"inside a handoff message":    "โอนเข้า 1234567890 แล้วส่งสลิปนะครับ\n[[HANDOFF]]",
+		"customer-supplied":           "โอนเข้าบัญชี 0899999999 ตามที่แจ้งได้เลยครับ",
+		"from a synced knowledge row": "โอนเข้าบัญชี 123-4-56789-0 ได้เลยครับ",
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Arrange
-			b, cw := bankBot(reply)
+			b, cw := bankBot(reply, poisoned)
 
 			// Act
-			b.Process(context.Background(), customerMsg("โอนเข้า 0812345678 ได้ไหม"))
+			b.Process(context.Background(), customerMsg("โอนเข้า 0899999999 ได้ไหม"))
 
 			// Assert
 			got := cw.joined()
-			if strings.Contains(got, "99523109") || strings.Contains(got, "1234567890") || strings.Contains(got, "msg:โอน") {
+			if strings.Contains(got, "msg:โอน") {
 				t.Fatalf("a held reply reached the customer: %s", got)
 			}
-			if !strings.Contains(got, "msg:connecting you") || !strings.Contains(got, "handoff") || !strings.Contains(got, ReasonNumberHeld) {
+			if !strings.Contains(got, "msg:connecting you") || !strings.Contains(got, "| handoff") || !strings.Contains(got, ReasonNumberHeld) {
 				t.Errorf("calls = %s, want the handoff message, a handoff and the reason note", got)
 			}
 		})
 	}
 }
 
-func TestPreviewAndAnswer_HoldAWrongAccountNumber(t *testing.T) {
+func TestPreviewAndAnswer_GuardTheReply(t *testing.T) {
 	// Arrange
-	b, _ := bankBot("โอนเข้า 9952310946 ครับ")
+	held, _ := bankBot("โอนเข้า 9952310946 ครับ")
+	filled, _ := bankBot("โอนได้ที่ [[BANK]] ครับ")
 	history := []memory.Turn{{Role: "user", Content: "ขอเลขบัญชี"}}
 
 	// Act
-	p := b.Preview(context.Background(), 1, 0, history)
-	res, _, err := b.Answer(context.Background(), 1, 0, history)
+	p := held.Preview(context.Background(), 1, 0, history)
+	res, _, err := held.Answer(context.Background(), 1, 0, history)
+	ok, _, _ := filled.Answer(context.Background(), 1, 0, history)
 
 	// Assert
 	if !p.Handoff || p.Reason != ReasonNumberHeld || strings.Contains(p.Reply, "9952310946") {
@@ -115,5 +143,8 @@ func TestPreviewAndAnswer_HoldAWrongAccountNumber(t *testing.T) {
 	}
 	if text, handoff := SplitHandoff(res.Content); err != nil || !handoff || text != "" {
 		t.Errorf("answer = %q, %v; want a bare handoff", res.Content, err)
+	}
+	if ok.Content != "โอนได้ที่ "+bankText+" ครับ" {
+		t.Errorf("answer with marker = %q, want the bank text filled in", ok.Content)
 	}
 }

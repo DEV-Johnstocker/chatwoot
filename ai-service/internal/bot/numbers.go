@@ -3,45 +3,53 @@ package bot
 import (
 	"regexp"
 	"strings"
+
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/numtext"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
 
-// numberRun is a run of nine or more digits (ASCII or Thai), allowing one
-// space or dash between digits: bank account, phone and ID numbers. Prices
-// ("9,900"), dates ("2026-11-30") and counts are shorter or broken by other
-// characters, so they never match.
-var numberRun = regexp.MustCompile(`[0-9๐-๙](?:[ \-]?[0-9๐-๙]){8,}`)
+// bankMarker matches profile.BankMarker and near-misses ("[[ bank ]]").
+var bankMarker = regexp.MustCompile(`(?i)\[\[\s*bank\s*\]\]`)
 
-// unverifiedNumbers lists the long numbers in reply that appear in none of the
-// trusted texts (the business profile and the knowledge rows the bot was
-// given). A bank account the model mistyped, or one a customer or a web page
-// slipped into the chat, is never in them, so the reply is held. Matching is
-// on the digits alone, so "995-2-31094-5" equals "9952310945".
-func unverifiedNumbers(reply string, trusted ...string) []string {
-	known := map[string]bool{}
-	for _, t := range trusted {
-		for _, m := range numberRun.FindAllString(t, -1) {
-			known[digitsOnly(m)] = true
-		}
-	}
-	var bad []string
-	for _, m := range numberRun.FindAllString(reply, -1) {
-		if !known[digitsOnly(m)] {
-			bad = append(bad, m)
-		}
-	}
-	return bad
+// guard is what a reply is checked against before it reaches a customer:
+// only the business profile, which only the owner can change. Knowledge rows
+// are not trusted for numbers: synced pages and sheets can change after the
+// owner approved them.
+type guard struct {
+	bank    string          // the owner's bank-transfer text, put in for the marker
+	numbers map[string]bool // every long number in the profile, as digits
 }
 
-// digitsOnly keeps the digits of s, with Thai digits turned into ASCII.
-func digitsOnly(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r >= '๐' && r <= '๙':
-			b.WriteRune('0' + (r - '๐'))
+func newGuard(p profile.Profile) guard {
+	g := guard{bank: p.BankTransfer, numbers: map[string]bool{}}
+	for _, field := range []string{p.BusinessName, p.About, p.Tone, p.Contact, p.Rules, p.BankTransfer} {
+		// Line by line and space by space too, so two numbers the owner wrote
+		// side by side ("044-115-229 081-516-9097") are each known alone.
+		for _, line := range strings.Split(field, "\n") {
+			for _, part := range append([]string{line}, strings.Fields(line)...) {
+				for _, n := range numtext.Long(part) {
+					g.numbers[n] = true
+				}
+			}
 		}
 	}
-	return b.String()
+	return g
+}
+
+// check fills in the bank marker and reports whether the reply may be sent:
+// a marker with no bank text set, or any long number (phone, account, card,
+// however written) that is not in the business profile, holds the reply.
+func (g guard) check(reply string) (string, bool) {
+	if bankMarker.MatchString(reply) {
+		if g.bank == "" {
+			return reply, false
+		}
+		reply = bankMarker.ReplaceAllLiteralString(reply, g.bank)
+	}
+	for _, n := range numtext.Long(reply) {
+		if !g.numbers[n] {
+			return reply, false
+		}
+	}
+	return reply, true
 }

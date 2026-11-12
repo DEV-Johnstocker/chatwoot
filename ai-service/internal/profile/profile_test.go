@@ -179,7 +179,7 @@ func TestBankTransfer_ValidatedAndInPrompt(t *testing.T) {
 	if okErr != nil || longErr == nil {
 		t.Fatalf("Validate: ok=%v long=%v", okErr, longErr)
 	}
-	if ok.Empty() || !strings.Contains(got, "## Bank transfer") || !strings.Contains(got, "ไทยพาณิชย์ 9952310945") {
+	if ok.Empty() || !strings.Contains(got, BankMarker) || strings.Contains(got, "9952310945") {
 		t.Errorf("prompt lacks the bank section:\n%s", got)
 	}
 }

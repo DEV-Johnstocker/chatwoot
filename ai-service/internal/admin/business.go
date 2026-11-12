@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/numtext"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
 
@@ -63,12 +64,18 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 			Voice: f.Get("feature_voice") == "on", Images: f.Get("feature_images") == "on", Stickers: f.Get("feature_stickers") == "on",
 		},
 	}.Normalize()
+	old, oldErr := h.Profiles.Get(r.Context(), p.AccountID)
 	if err := h.Profiles.Save(r.Context(), p); err != nil {
 		h.Logger.Warn("save business profile failed", "account_id", p.AccountID, "error", err)
 		h.renderBusiness(w, r, http.StatusUnprocessableEntity, businessData{Enabled: true, Profile: p, Error: err.Error()})
 		return
 	}
 	h.record(r, p.AccountID, "business profile saved", p.BusinessName, nil)
+	if oldErr == nil && old.BankTransfer != p.BankTransfer {
+		// Masked both ways: the history shows that the account changed and to
+		// which ending, without keeping a full account number in it.
+		h.record(r, p.AccountID, "bank account changed", maskBank(old.BankTransfer)+" → "+maskBank(p.BankTransfer), nil)
+	}
 	h.Logger.Info("business profile saved", "account_id", p.AccountID, "remote_addr", r.RemoteAddr)
 	http.Redirect(w, r, "/admin/business?account="+strconv.FormatInt(p.AccountID, 10)+"&done=saved", http.StatusSeeOther)
 }
@@ -79,4 +86,21 @@ func (h *Handler) renderBusiness(w http.ResponseWriter, r *http.Request, status 
 		data.Updated = h.whenIn(langOf(r), data.Profile.UpdatedAt)
 	}
 	h.renderPage(w, r, status, "business.html", data)
+}
+
+// maskBank is a bank-transfer text reduced to the last four digits of its
+// numbers ("…0945"), or "(none)".
+func maskBank(s string) string {
+	nums := numtext.Long(s)
+	if len(nums) == 0 {
+		if s == "" {
+			return "(none)"
+		}
+		return "(no account number)"
+	}
+	parts := make([]string, len(nums))
+	for i, n := range nums {
+		parts[i] = "…" + n[len(n)-4:]
+	}
+	return strings.Join(parts, ", ")
 }

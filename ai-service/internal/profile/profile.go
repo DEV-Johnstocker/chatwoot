@@ -25,6 +25,10 @@ const (
 	MaxBankRunes  = 300
 )
 
+// BankMarker is what the model writes where the bank account goes; the bot
+// replaces it with BankTransfer, so the model never types the digits.
+const BankMarker = "[[BANK]]"
+
 // Profile is one account's business profile. Empty fields are left out of the prompt.
 type Profile struct {
 	AccountID    int64
@@ -112,8 +116,11 @@ func Prompt(base string, p Profile) string {
 	section("Tone and style", p.Tone)
 	section("How customers buy or reach staff", p.Contact)
 	section("Rules", p.Rules)
-	section("Bank transfer (send exactly as written; never change a digit)", p.BankTransfer)
 	b.WriteString("</business_profile>")
+	if p.BankTransfer != "" {
+		b.WriteString("\n\n# Bank transfer\nThe business takes bank transfers. Where the bank account belongs in a reply, write " + BankMarker +
+			" on its own line: the system puts in the bank, account name and number exactly as the owner wrote them. Never write a bank account number yourself.")
+	}
 	return b.String()
 }
 

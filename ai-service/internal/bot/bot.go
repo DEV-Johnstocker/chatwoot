@@ -323,7 +323,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 
 	history := b.opts.History.Get(acct, conv)
 	started := time.Now()
-	res, hits, trusted, err := b.answer(ctx, log, acct, inbox, history, tr, images)
+	res, hits, g, err := b.answer(ctx, log, acct, inbox, history, tr, images)
 	latency := time.Since(started)
 	log = log.With(sourceAttrs(hits)...)
 	if err == nil && len(hits) > 0 {
@@ -337,10 +337,11 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	}
 
 	text, wantsHuman := SplitHandoff(res.Content)
+	text, ok := g.check(text)
 	tr.Output = text
-	if bad := unverifiedNumbers(text, trusted...); len(bad) > 0 {
-		// The number is not logged: it may be a customer's.
-		log.Warn("reply held: number not in the business profile or knowledge", "numbers", len(bad))
+	if !ok {
+		// The reply is not logged: it may hold a customer's number.
+		log.Warn("reply held: a long number not in the business profile, or a bank marker with no bank set")
 		tr.Outcome, tr.Output = "handoff:"+ReasonNumberHeld, b.opts.HandoffMessage
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: b.opts.HandoffMessage})
 		b.handoff(ctx, log, acct, inbox, conv, b.opts.HandoffMessage, ReasonNumberHeld, images)
@@ -379,19 +380,26 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 // A reply the number guard would hold comes back as a bare handoff, as the
 // customer would get it.
 func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Turn) (llm.Result, []knowledge.Hit, error) {
-	res, hits, trusted, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
-	if text, _ := SplitHandoff(res.Content); err == nil && len(unverifiedNumbers(text, trusted...)) > 0 {
-		res.Content = "[[HANDOFF]]"
+	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	if err == nil {
+		text, wantsHuman := SplitHandoff(res.Content)
+		if text, ok := g.check(text); !ok {
+			res.Content = "[[HANDOFF]]"
+		} else if wantsHuman {
+			res.Content = text + "\n[[HANDOFF]]"
+		} else {
+			res.Content = text
+		}
 	}
 	return res, hits, err
 }
 
 // answer fills tr's rewrite, search and generation steps as it goes.
 // images go with the latest customer message only; history stays text.
-// trusted is the business data the model was given (profile and knowledge),
-// against which the reply's long numbers are checked.
-func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, []string, error) {
-	messages := []llm.Message{{Role: "system", Content: b.systemPrompt(ctx, log, acct)}}
+// The guard it returns checks the reply against the account's business profile.
+func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, guard, error) {
+	system, p := b.systemPrompt(ctx, log, acct)
+	messages := []llm.Message{{Role: "system", Content: system}}
 	var hits []knowledge.Hit
 	if b.opts.Knowledge != nil {
 		queries := b.searchQueries(ctx, log, history, tr)
@@ -421,13 +429,7 @@ func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, h
 	}
 	res.Content = plainChat(res.Content)
 	tr.Generation = gen
-	trusted := make([]string, 0, 2)
-	for _, m := range messages {
-		if m.Role == "system" {
-			trusted = append(trusted, m.Content)
-		}
-	}
-	return res, hits, trusted, err
+	return res, hits, newGuard(p), err
 }
 
 // hitSummary lists retrieved titles and scores (business content, no chunk text).
@@ -460,17 +462,18 @@ func (b *Bot) searchQueries(ctx context.Context, log *slog.Logger, history []mem
 
 // systemPrompt is the shared prompt plus the account's business profile. If
 // the profile cannot be loaded the bot still answers with the shared prompt.
-func (b *Bot) systemPrompt(ctx context.Context, log *slog.Logger, acct int64) string {
-	prompt := b.opts.SystemPrompt
+// It also returns the profile it used (empty when there is none).
+func (b *Bot) systemPrompt(ctx context.Context, log *slog.Logger, acct int64) (string, profile.Profile) {
+	prompt, used := b.opts.SystemPrompt, profile.Profile{AccountID: acct}
 	if b.opts.Profiles != nil {
 		p, err := b.opts.Profiles.Get(ctx, acct)
 		if err != nil {
 			log.Error("business profile lookup failed", "error", err)
 		} else {
-			prompt = profile.Prompt(prompt, p)
+			prompt, used = profile.Prompt(prompt, p), p
 		}
 	}
-	return prompt + "\n\n" + policyPrompt(b.now())
+	return prompt + "\n\n" + policyPrompt(b.now()), used
 }
 
 func (b *Bot) now() time.Time {
@@ -665,18 +668,19 @@ func (b *Bot) Preview(parent context.Context, acct, inbox int64, history []memor
 	}
 	ctx, cancel := context.WithTimeout(parent, b.timeout())
 	defer cancel()
-	res, hits, trusted, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
-	return previewOf(b, res.Content, res.Model, hits, trusted, err)
+	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	return previewOf(b, res.Content, res.Model, hits, g, err)
 }
 
 // previewOf turns the model's reply into a Preview: failure message on an
 // error, handoff when the model asks for staff.
-func previewOf(b *Bot, content, model string, hits []knowledge.Hit, trusted []string, err error) Preview {
+func previewOf(b *Bot, content, model string, hits []knowledge.Hit, g guard, err error) Preview {
 	if err != nil {
 		return Preview{Reply: b.opts.FailureMessage, Handoff: true, Reason: ReasonLLMError, Sources: hits, Err: err}
 	}
 	text, wantsHuman := SplitHandoff(content)
-	if len(unverifiedNumbers(text, trusted...)) > 0 {
+	text, ok := g.check(text)
+	if !ok {
 		return Preview{Reply: b.opts.HandoffMessage, Handoff: true, Reason: ReasonNumberHeld, Sources: hits, Model: model}
 	}
 	p := Preview{Reply: text, Sources: hits, Model: model}
