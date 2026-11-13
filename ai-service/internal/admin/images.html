@@ -30,23 +30,27 @@
   <div class="img-grid">
     {{range .Items}}
     <section class="card img-card" aria-labelledby="img-title-{{.ID}}">
-      {{if .Preview}}<img class="thumb" src="{{.Preview}}" alt="{{.Name}}" width="240" height="240">{{end}}
-      <h2 id="img-title-{{.ID}}">{{.Name}}</h2>
-      <p class="when">{{if .When}}{{.When}}{{else}}{{T "No \"when to send\" line yet: the bot cannot tell when to use it."}}{{end}}</p>
       <details>
-        <summary>{{T "Edit"}}</summary>
-        <form method="post" action="/admin/images" enctype="multipart/form-data" autocomplete="off">
+        <summary>
+          {{if .Preview}}<img class="thumb" src="{{.Preview}}" alt="" width="240" height="240">{{end}}
+          <span class="img-head">
+            <span class="img-name" id="img-title-{{.ID}}">{{.Name}}</span>
+            <span class="when">{{if .When}}{{.When}}{{else}}{{T "No \"when to send\" line yet: the bot cannot tell when to use it."}}{{end}}</span>
+            <span class="img-edit">{{T "Edit"}}</span>
+          </span>
+        </summary>
+        <form method="post" action="/admin/images" enctype="multipart/form-data" autocomplete="off" class="img-form">
           <input type="hidden" name="account" value="{{$.Account}}">
           <input type="hidden" name="id" value="{{.ID}}">
-          <label for="img-name-{{.ID}}">{{T "Name (what the bot uses)"}}</label>
-          <input id="img-name-{{.ID}}" name="name" type="text" required maxlength="{{$lim.Name}}" value="{{.Name}}">
-          <label for="img-when-{{.ID}}">{{T "When to send it"}}</label>
-          <textarea id="img-when-{{.ID}}" name="when" rows="3" maxlength="{{$lim.When}}">{{.When}}</textarea>
-          <label for="img-cap-{{.ID}}">{{T "Caption sent with the image"}}</label>
-          <input id="img-cap-{{.ID}}" name="caption" type="text" maxlength="{{$lim.Caption}}" value="{{.Caption}}">
-          <label for="img-file-{{.ID}}">{{T "Replace the picture (optional)"}}</label>
-          <input id="img-file-{{.ID}}" name="image" type="file" accept="image/jpeg,image/png">
-          <p class="field-hint">{{.Size}}</p>
+          <div><label for="img-name-{{.ID}}">{{T "Name (what the bot uses)"}}</label>
+            <input id="img-name-{{.ID}}" name="name" type="text" required maxlength="{{$lim.Name}}" value="{{.Name}}"></div>
+          <div><label for="img-cap-{{.ID}}">{{T "Caption sent with the image"}}</label>
+            <input id="img-cap-{{.ID}}" name="caption" type="text" maxlength="{{$lim.Caption}}" value="{{.Caption}}"></div>
+          <div class="full"><label for="img-when-{{.ID}}">{{T "When to send it"}}</label>
+            <textarea id="img-when-{{.ID}}" name="when" rows="2" maxlength="{{$lim.When}}">{{.When}}</textarea></div>
+          <div class="full"><label for="img-file-{{.ID}}">{{T "Replace the picture (optional)"}}</label>
+            <input id="img-file-{{.ID}}" name="image" type="file" accept="image/jpeg,image/png">
+            <p class="field-hint">{{.Size}}</p></div>
           <div class="card-foot">
             <button type="submit" name="action" value="remove" class="danger small">{{T "Remove"}}</button>
             <button type="submit" name="action" value="save" class="primary small">{{T "Save"}}</button>
@@ -60,7 +64,7 @@
       <h2 id="img-add-title">＋ {{T "Add an image"}}</h2>
       <details{{if not .Items}} open{{end}}>
         <summary>{{T "Choose a picture"}}</summary>
-        <form method="post" action="/admin/images" enctype="multipart/form-data" autocomplete="off">
+        <form method="post" action="/admin/images" enctype="multipart/form-data" autocomplete="off" class="img-new">
           <input type="hidden" name="account" value="{{$.Account}}">
           <label for="img-new-file">{{T "Picture (JPG or PNG, up to %d MB)" $lim.MB}}</label>
           <input id="img-new-file" name="image" type="file" accept="image/jpeg,image/png" required>
