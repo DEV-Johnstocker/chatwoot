@@ -157,7 +157,9 @@ schema change (§5).
 A change a person sees (the `/admin` pages, bot replies) needs the owner's
 approval before pushing: a before/after page at 1280 px and 390 px published
 as a private artifact, plus a running local URL and login. Backend, scripts
-and docs skip this; their tests are the check.
+and docs skip this; their tests are the check. In Claude Code, build it with
+the user-level `ui-change-review` skill: numbered marks on what changed,
+close-ups of small changes. Other tools follow the same page layout by hand.
 
 ## 10. Finishing and responding
 
