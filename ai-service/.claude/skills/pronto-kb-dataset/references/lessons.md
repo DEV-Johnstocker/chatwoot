@@ -131,3 +131,31 @@ Rules implied:
   rerun it on the shipped build before applying it.
 - Owner decision, same day: a test question ("1+1") is answered, then gets one
   next step (usually a short question about their work), never a pitch.
+
+## 2026-11-14: images the bot can send (library), LOCAL
+
+Owner asked for the customer-review picture to go into replies, then for a
+library of named pictures, each with a "when to send" line. Test on LOCAL
+copies of the current PRODUCTION profile (account 1), identical except for
+three pictures (AutoCut reviews = the owner's real collage; Workshop reviews
+and examples = stand-in pictures). Seven cases × 3 runs; binary built from
+branch feat/review-images at 3761c4a (local commit, pushed with the PR).
+
+| | no pictures | library |
+|---|---|---|
+| all 7 cases | 10/21 | 12/21 |
+| E54 "ขอดูรีวิวหน่อย" | 0/3 | 2/3 |
+| E54 replies naming reviewers the facts do not support | 3/3 | 0/3 |
+| right picture picked (E54, W01 Workshop, examples) | — | every time |
+| pictures on price or free-file questions | — | 0 |
+
+Rules implied:
+- A review picture beats naming reviewers in text: with it the bot stops
+  inventing "who reviewed".
+- The prompt must say a picture adds to the examples link, never replaces it,
+  and that a mere doubt may (not must) get a picture; the stricter first
+  wording dropped the link once and made the judge demand the picture.
+- Give every picture a precise "when to send" line naming the product; the
+  bot picked the right one in all 9 picture runs.
+- W01 (Workshop reviews) fails in both columns because the current profile
+  hands Workshop questions to staff; that is round 16's profile change.
