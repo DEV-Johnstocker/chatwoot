@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -34,7 +35,8 @@ type approvalItem struct {
 	Heading string
 	From    string
 	When    string
-	New     bool // a document that does not exist yet
+	New     bool   // nothing exists yet: show only the proposed values
+	Badge   string // "New document" or "New source"
 	Fields  []fieldDiff
 }
 
@@ -130,6 +132,12 @@ func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([
 			it.Fields, err = h.profileDiff(ctx, lang, acct, c.Proposed)
 		case pending.KindDocument:
 			it.Heading, it.New, it.Fields, err = h.documentDiff(ctx, lang, acct, c.Target, c.Proposed)
+			if it.New {
+				it.Badge = tr(lang, "New document")
+			}
+		case pending.KindSource:
+			it.Heading, it.Fields, err = sourceDiff(lang, c.Proposed)
+			it.New, it.Badge = true, tr(lang, "New source")
 		}
 		if err != nil {
 			return nil, err
@@ -140,6 +148,42 @@ func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([
 		items = append(items, it)
 	}
 	return items, nil
+}
+
+// sourceDiff shows a proposed web page or data file: the full address (the
+// owner checks it is the right tab), what it is, and what approving does.
+func sourceDiff(lang string, raw []byte) (string, []fieldDiff, error) {
+	var s struct {
+		URL   string   `json:"url"`
+		Kind  string   `json:"kind"`
+		Rows  int      `json:"rows"`
+		Title string   `json:"title"`
+		Notes []string `json:"notes"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", nil, err
+	}
+	where := s.URL
+	if u, err := url.Parse(s.URL); err == nil {
+		where = u.Host + u.Path
+	}
+	kind := tr(lang, "Web page")
+	if s.Kind == "feed" {
+		kind = tr(lang, "Data file (CSV or JSON Lines)")
+	}
+	fields := []fieldDiff{{Label: tr(lang, "Address"), Proposed: s.URL}, {Label: tr(lang, "Kind"), Proposed: kind}}
+	if s.Title != "" {
+		fields = append(fields, fieldDiff{Label: tr(lang, "Title"), Proposed: s.Title})
+	}
+	if s.Rows > 0 {
+		fields = append(fields, fieldDiff{Label: tr(lang, "Rows"), Proposed: tr(lang, "%d rows", s.Rows)})
+	}
+	if len(s.Notes) > 0 {
+		fields = append(fields, fieldDiff{Label: tr(lang, "Checks"), Proposed: strings.Join(s.Notes, "\n")})
+	}
+	fields = append(fields, fieldDiff{Label: tr(lang, "After approval"),
+		Proposed: tr(lang, "It is loaded at once and the bot answers from it. It is checked for changes on a schedule, and you can remove it on the Knowledge base page.")})
+	return tr(lang, "New source: %s", where), fields, nil
 }
 
 func (h *Handler) profileDiff(ctx context.Context, lang string, acct int64, raw []byte) ([]fieldDiff, error) {

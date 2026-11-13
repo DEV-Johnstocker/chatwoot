@@ -30,7 +30,7 @@
   {{range .Items}}
   <section class="card change" aria-labelledby="change-{{.ID}}">
     <div class="change-head">
-      <h2 id="change-{{.ID}}">{{.Heading}}{{if .New}} <span class="badge scheduled">{{T "New document"}}</span>{{end}}</h2>
+      <h2 id="change-{{.ID}}">{{.Heading}}{{with .Badge}} <span class="badge scheduled">{{.}}</span>{{end}}</h2>
       <p class="hint">{{T "From"}} <strong>{{.From}}</strong> {{T "(AI app)"}} · {{.When}}</p>
     </div>
     {{$new := .New}}

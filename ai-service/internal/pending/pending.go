@@ -1,7 +1,7 @@
 // Package pending keeps AI-app edits that wait for the owner's approval.
 //
 // An AI app connected over MCP may propose a change to the business profile
-// or a knowledge document. The change reaches customers only after the owner
+// or a knowledge document, or add a source (a web page or data file). The change reaches customers only after the owner
 // approves it on /admin, so a prompt-injected app cannot change what
 // customers are told on its own. Issue: DEV-Johnstocker/chatwoot#60 (refs #1)
 package pending
@@ -20,7 +20,11 @@ type Kind string
 const (
 	KindProfile  Kind = "profile"  // business profile fields
 	KindDocument Kind = "document" // one knowledge document, by key
+	KindSource   Kind = "source"   // a new web page or data file to keep in sync, by address
 )
+
+// Valid reports whether k is a kind the store accepts.
+func (k Kind) Valid() bool { return k == KindProfile || k == KindDocument || k == KindSource }
 
 // ProfileTarget is the Target of every profile change: one per account.
 const ProfileTarget = "profile"

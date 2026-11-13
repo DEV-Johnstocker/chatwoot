@@ -273,3 +273,44 @@ func TestApprovals_UnchangedFieldsAndNewDocumentsStayShort(t *testing.T) {
 		t.Error("a new document shows empty current values")
 	}
 }
+
+func TestApprovals_SourceProposalShowsWhatWillBeAdded(t *testing.T) {
+	// Arrange: an AI app proposes a sheet tab and a web page.
+	e := newApprovalsEnv(t, true)
+	sheet := "https://docs.google.com/spreadsheets/d/abc/export?format=csv&gid=166"
+	e.propose(t, 2, pending.KindSource, sheet, map[string]any{"url": sheet, "kind": "feed", "rows": 103, "format": "csv", "notes": []string{"first 500 rows used"}})
+	e.propose(t, 2, pending.KindSource, "https://shop.example/faq", map[string]any{"url": "https://shop.example/faq", "kind": "page", "title": "FAQ <script>"})
+
+	// Act
+	body := serve(e.mux, approvalsGet("account=2")).Body.String()
+
+	// Assert
+	for _, want := range []string{"New source: docs.google.com/spreadsheets/d/abc/export", "format=csv&amp;gid=166",
+		"Data file (CSV or JSON Lines)", "103 rows", "first 500 rows used", "New source: shop.example/faq", "Web page",
+		"FAQ &lt;script&gt;", "After approval"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "New document") || strings.Contains(body, "(empty)") || strings.Contains(body, "FAQ <script>") {
+		t.Error("a source shows as a document, shows empty values, or is not escaped")
+	}
+}
+
+func TestApprovals_SourceProposalInThai(t *testing.T) {
+	// Arrange
+	e := newApprovalsEnv(t, true)
+	e.propose(t, 2, pending.KindSource, "https://shop.example/faq", map[string]any{"url": "https://shop.example/faq", "kind": "page"})
+	r := approvalsGet("account=2")
+	r.AddCookie(&http.Cookie{Name: langCookie, Value: langTH})
+
+	// Act
+	body := serve(e.mux, r).Body.String()
+
+	// Assert
+	for _, want := range []string{"แหล่งข้อมูลใหม่: shop.example/faq", "หน้าเว็บ"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Thai page lacks %q", want)
+		}
+	}
+}
