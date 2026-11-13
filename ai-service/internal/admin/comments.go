@@ -22,6 +22,8 @@ type CommentQueue interface {
 	CanSend() bool
 	// AutoSending reports whether Jev sends some replies on its own.
 	AutoSending() bool
+	// AutoSendHold is why auto-send left a comment for the owner ("" = off).
+	AutoSendHold(ctx context.Context, c comments.Comment) string
 	// PublicReply is the line posted under answered comments ("" = off).
 	PublicReply() string
 	ReplyPublicly(ctx context.Context, accountID, id int64) error
@@ -250,6 +252,8 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData, lang str
 			it.Shadow = tr(lang, "would send this reply as written.")
 			if it.Hold {
 				it.Shadow = tr(lang, "would wait for you, because %s.", holdReason(lang, c.Review.Reason))
+			} else if why := h.Comments.AutoSendHold(ctx, c); data.AutoSend && why != "" {
+				it.Shadow = tr(lang, "passed every check, but waits for you: %s.", tr(lang, why))
 			}
 		}
 		data.Items = append(data.Items, it)

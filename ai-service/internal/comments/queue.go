@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/commentecho"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -55,6 +56,9 @@ type Queue struct {
 	// auto-send stays off without it.
 	AutoSend bool
 	Chats    ChatChecker
+
+	autoMu   sync.Mutex
+	autoSent map[int64][]time.Time // automatic replies of the last hour, per account
 }
 
 // PublicReplier answers a comment in public (Graph).

@@ -29,7 +29,14 @@ const (
 	HoldEmptyDraft  = "no draft"
 	HoldMaybeChats  = "may be chatting already"
 	HoldRepeatReply = "this person already got a private reply"
+	HoldIntentSplit = "the sorter and the reviewer read the comment differently"
+	HoldRateLimit   = "hourly auto-send limit reached"
 )
+
+// MaxAutoSendsPerHour caps automatic replies per account. A flood of
+// crafted comments then costs at most this many unreviewed messages an hour;
+// the rest wait for the owner.
+const MaxAutoSendsPerHour = 20
 
 // holdReason is "" when the comment may be sent automatically, or the
 // first rule that keeps it for the owner.
@@ -46,6 +53,10 @@ func (q *Queue) holdReason(ctx context.Context, c Comment) string {
 		return HoldNoReview
 	case !c.Review.Pass:
 		return HoldReviewer
+	case c.Review.Intent != "" && c.Review.Intent != c.Intent:
+		// Two independent reads must agree; a comment written to steer one
+		// model rarely moves both the same way.
+		return HoldIntentSplit
 	case c.Expired(now):
 		return HoldExpired
 	case c.Draft == "":
@@ -59,7 +70,42 @@ func (q *Queue) holdReason(ctx context.Context, c Comment) string {
 	if err != nil || !last[c.FromID].IsZero() {
 		return HoldRepeatReply
 	}
+	// The owner may be sending to the same person this second.
+	if busy, err := q.Store.SendingTo(ctx, c.AccountID, c.FromID); err != nil || busy {
+		return HoldRepeatReply
+	}
+	if !q.underHourlyLimit(c.AccountID, now) {
+		return HoldRateLimit
+	}
 	return ""
+}
+
+// underHourlyLimit reports whether the account sent fewer than
+// MaxAutoSendsPerHour automatic replies in the hour before now.
+func (q *Queue) underHourlyLimit(accountID int64, now time.Time) bool {
+	q.autoMu.Lock()
+	defer q.autoMu.Unlock()
+	kept := q.autoSent[accountID][:0]
+	for _, t := range q.autoSent[accountID] {
+		if now.Sub(t) < time.Hour {
+			kept = append(kept, t)
+		}
+	}
+	if q.autoSent == nil {
+		q.autoSent = map[int64][]time.Time{}
+	}
+	q.autoSent[accountID] = kept
+	return len(kept) < MaxAutoSendsPerHour
+}
+
+// countAutoSend records one automatic reply for the hourly limit.
+func (q *Queue) countAutoSend(accountID int64, at time.Time) {
+	q.autoMu.Lock()
+	defer q.autoMu.Unlock()
+	if q.autoSent == nil {
+		q.autoSent = map[int64][]time.Time{}
+	}
+	q.autoSent[accountID] = append(q.autoSent[accountID], at)
 }
 
 // TryAutoSend sends the stored draft of a just-reviewed comment when every
@@ -72,6 +118,7 @@ func (q *Queue) TryAutoSend(ctx context.Context, accountID, id int64) (bool, str
 	if why := q.holdReason(ctx, c); why != "" {
 		return false, why, nil
 	}
+	q.countAutoSend(accountID, q.now()) // counted before the send, so a failed one still uses a slot
 	if err := q.Send(ctx, accountID, id, c.Version, c.Draft, AutoSentBy); err != nil {
 		return false, "", err
 	}
@@ -80,3 +127,12 @@ func (q *Queue) TryAutoSend(ctx context.Context, accountID, id int64) (bool, str
 
 // AutoSending reports whether auto-send is on and able to send.
 func (q *Queue) AutoSending() bool { return q.AutoSend && q.Sender != nil && q.Chats != nil }
+
+// AutoSendHold is why auto-send left a waiting comment for the owner, or ""
+// when auto-send is off. Shown on /admin/comments.
+func (q *Queue) AutoSendHold(ctx context.Context, c Comment) string {
+	if !q.AutoSending() {
+		return ""
+	}
+	return q.holdReason(ctx, c)
+}

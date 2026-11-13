@@ -24,10 +24,16 @@ func TestComments_AutoSendBannerAndSentRow(t *testing.T) {
 		t.Fatalf("setup: %q %v", why, err)
 	}
 
+	again := e.waiting(t, 1, "c-again", "ส่งรายละเอียดด้วยครับ", time.Now())
+	_ = e.store.SaveReview(ctx, again.ID, comments.Review{Pass: true})
+
 	// Act
 	page := serve(e.mux, commentsGet("")).Body.String()
 
 	// Assert
+	if !strings.Contains(page, "passed every check, but waits for you: this person already got a private reply.") {
+		t.Fatalf("hold reason not shown:\n%s", page)
+	}
 	if !strings.Contains(page, "Auto-send is on.") || !strings.Contains(page, "Sent automatically") ||
 		!strings.Contains(page, "Sent automatically so far: 1.") {
 		t.Fatalf("auto-send not shown:\n%s", page)

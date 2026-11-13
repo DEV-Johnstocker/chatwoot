@@ -188,6 +188,9 @@ type Store interface {
 	// LastReplies returns, for each of fromIDs that was sent a private reply
 	// in this account, the time of the latest one.
 	LastReplies(ctx context.Context, accountID int64, fromIDs []string) (map[string]time.Time, error)
+	// SendingTo reports whether a private reply to this person is being sent
+	// right now (a comment of theirs in StatusSending).
+	SendingTo(ctx context.Context, accountID int64, fromID string) (bool, error)
 	// ReviewStats compares the reviewer with the owner's decisions.
 	ReviewStats(ctx context.Context, accountID int64) (ReviewStats, error)
 	// Purge deletes comments received before cutoff and returns how many.

@@ -87,8 +87,13 @@ after a draft passes review and sends the stored draft only when **all** hold:
   (`recentchat.Chats`, fed by every signed Chatwoot `message_created`). The
   comment author's id equals their Messenger chat id (page-scoped; checked on
   STAGING, 2026-11-14, `28980592198262942` in both). The record lives in
-  memory, so for 24 hours after a restart every comment waits for the owner;
-- this person never got a private reply before in the account.
+  memory, so for 24 hours after a restart every comment waits for the owner,
+  and so does every comment after 6 hours with no customer message in the
+  account (Chatwoot may have stopped sending events);
+- this person got no private reply in the account in the last 30 days (comments are
+  kept 30 days), and no reply to them is being sent right now;
+- at most 20 automatic replies per account per hour, and Jev's own reading of the
+  comment (intent) agrees with the sorter's.
 
 The reply is recorded with `decided_by = auto-send`. Auto-sent comments are
 counted apart (`ReviewStats.AutoSent`) so the agreement numbers keep

@@ -1,14 +1,17 @@
 package server
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webhook"
 )
 
 type fakeChats struct{ got []string }
@@ -70,5 +73,25 @@ func TestWebhook_ForgedRequestRecordsNoChat(t *testing.T) {
 	// Assert
 	if code != http.StatusUnauthorized || len(chats.got) != 0 {
 		t.Errorf("code=%d recorded=%v, want 401 and nothing", code, chats.got)
+	}
+}
+
+func TestWebhook_StaleOrMalformedRecordsNoChat(t *testing.T) {
+	// Arrange
+	q, chats := &fakeQueue{}, &fakeChats{}
+	h := chatsHandler(q, chats)
+	body := fmt.Sprintf(psidMsg, "incoming", "false")
+	stale := signedRequest(body)
+	old := strconv.FormatInt(fixedNow.Add(-time.Hour).Unix(), 10)
+	stale.Header.Set("X-Chatwoot-Timestamp", old)
+	stale.Header.Set("X-Chatwoot-Signature", "sha256="+hex.EncodeToString(webhook.Sign(secret, old, []byte(body))))
+
+	// Act
+	staleCode := do(h, stale)
+	badCode := do(h, signedRequest(`{"event":"message_created","conversation":{"contact_inbox":`))
+
+	// Assert
+	if staleCode != http.StatusUnauthorized || badCode != http.StatusBadRequest || len(chats.got) != 0 {
+		t.Fatalf("stale=%d malformed=%d recorded=%v, want 401, 400 and nothing", staleCode, badCode, chats.got)
 	}
 }

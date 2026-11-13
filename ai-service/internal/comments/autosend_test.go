@@ -52,14 +52,28 @@ func TestTryAutoSend_HoldsForTheOwner(t *testing.T) {
 		setup func(q *Queue, store Store, c *Comment)
 		want  string
 	}{
-		"switch off":         {func(q *Queue, _ Store, _ *Comment) { q.AutoSend = false }, HoldOff},
-		"no page token":      {func(q *Queue, _ Store, _ *Comment) { q.Sender = nil }, HoldOff},
-		"no chat record":     {func(q *Queue, _ Store, _ *Comment) { q.Chats = nil }, HoldOff},
-		"reviewer held it":   {func(_ *Queue, s Store, c *Comment) { _ = s.SaveReview(context.Background(), c.ID, Review{Pass: false}) }, HoldReviewer},
-		"may be chatting":    {func(q *Queue, _ Store, _ *Comment) { q.Chats = fakeChats{chatted: true} }, HoldMaybeChats},
-		"window passed":      {func(q *Queue, _ Store, _ *Comment) { q.Now = func() time.Time { return now.Add(8 * 24 * time.Hour) } }, HoldExpired},
-		"complaint":          {func(_ *Queue, s Store, c *Comment) { setIntent(s, c.ID, IntentComplaint) }, HoldIntent},
-		"already answered":   {func(_ *Queue, s Store, _ *Comment) { sentEarlier(t, s) }, HoldRepeatReply},
+		"switch off":       {func(q *Queue, _ Store, _ *Comment) { q.AutoSend = false }, HoldOff},
+		"no page token":    {func(q *Queue, _ Store, _ *Comment) { q.Sender = nil }, HoldOff},
+		"no chat record":   {func(q *Queue, _ Store, _ *Comment) { q.Chats = nil }, HoldOff},
+		"reviewer held it": {func(_ *Queue, s Store, c *Comment) { _ = s.SaveReview(context.Background(), c.ID, Review{Pass: false}) }, HoldReviewer},
+		"may be chatting":  {func(q *Queue, _ Store, _ *Comment) { q.Chats = fakeChats{chatted: true} }, HoldMaybeChats},
+		"window passed":    {func(q *Queue, _ Store, _ *Comment) { q.Now = func() time.Time { return now.Add(8 * 24 * time.Hour) } }, HoldExpired},
+		"complaint":        {func(_ *Queue, s Store, c *Comment) { setIntent(s, c.ID, IntentComplaint) }, HoldIntent},
+		"already answered": {func(_ *Queue, s Store, _ *Comment) { sentEarlier(t, s) }, HoldRepeatReply},
+		"sorter and reviewer disagree": {func(_ *Queue, s Store, c *Comment) {
+			_ = s.SaveReview(context.Background(), c.ID, Review{Pass: true, Intent: IntentOther})
+		}, HoldIntentSplit},
+		"hourly limit reached": {func(q *Queue, _ Store, _ *Comment) {
+			for range MaxAutoSendsPerHour {
+				q.countAutoSend(2, now.Add(-30*time.Minute))
+			}
+		}, HoldRateLimit},
+		"owner is sending to the same person": {func(_ *Queue, s Store, _ *Comment) {
+			other := waitingComment(t, s, now.Add(-2*time.Hour))
+			if _, err := s.Claim(context.Background(), 2, other.ID, other.Version); err != nil {
+				t.Fatal(err)
+			}
+		}, HoldRepeatReply},
 		"owner dismissed it": {func(_ *Queue, s Store, c *Comment) { _ = s.Dismiss(context.Background(), 2, c.ID, c.Version, "owner") }, HoldNotWaiting},
 	}
 	for name, tc := range cases {
@@ -159,5 +173,24 @@ func TestWorker_OffersOnlyPassedReviewsToAutoSend(t *testing.T) {
 				t.Fatalf("offered %v, want %d", auto.ids, c.want)
 			}
 		})
+	}
+}
+
+func TestTryAutoSend_HourlyLimitFreesUpAfterAnHour(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store, sender := &Memory{}, &fakeSender{}
+	q := autoQueue(store, sender)
+	for range MaxAutoSendsPerHour {
+		q.countAutoSend(2, now.Add(-61*time.Minute))
+	}
+	c := reviewedComment(t, store, true)
+
+	// Act
+	sent, why, err := q.TryAutoSend(ctx, 2, c.ID)
+
+	// Assert
+	if err != nil || !sent {
+		t.Fatalf("sent %v why %q err %v, want old sends to stop counting", sent, why, err)
 	}
 }

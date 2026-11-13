@@ -9,8 +9,9 @@ import (
 var t0 = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 
 func TestMaybeChatted_BlindForOneWindowAfterStart(t *testing.T) {
-	// Arrange
+	// Arrange: other customers keep chatting, so the record is live.
 	c := New(t0)
+	c.Saw(1, "someone-else", t0.Add(24*time.Hour+30*time.Minute))
 
 	// Act
 	early := c.MaybeChatted(1, "psid", t0.Add(23*time.Hour))
@@ -23,10 +24,11 @@ func TestMaybeChatted_BlindForOneWindowAfterStart(t *testing.T) {
 }
 
 func TestMaybeChatted_SeenWithinWindowOnly(t *testing.T) {
-	// Arrange: past the blind window.
-	start := t0.Add(-48 * time.Hour)
-	c := New(start)
+	// Arrange: past the blind window; both accounts keep hearing customers.
+	c := New(t0.Add(-48 * time.Hour))
 	c.Saw(1, "psid", t0)
+	c.Saw(1, "busy", t0.Add(24*time.Hour+30*time.Minute))
+	c.Saw(2, "busy", t0.Add(30*time.Minute))
 
 	// Act
 	within := c.MaybeChatted(1, "psid", t0.Add(23*time.Hour))
@@ -72,5 +74,42 @@ func TestSaw_OlderMessageDoesNotRewindAndCapHolds(t *testing.T) {
 	}
 	if !c.MaybeChatted(1, "p4", t0.Add(time.Hour)) {
 		t.Error("the newest person must stay")
+	}
+}
+
+func TestSaw_EvictingARecentChatterFailsClosed(t *testing.T) {
+	// Arrange: past the blind window, cap of 2, three people chat now.
+	c := New(t0.Add(-48 * time.Hour))
+	c.max = 2
+
+	// Act
+	for _, id := range []string{"a", "b", "c"} {
+		c.Saw(1, id, t0)
+	}
+
+	// Assert: whoever was dropped must still count as maybe chatting.
+	for _, id := range []string{"a", "b", "c"} {
+		if !c.MaybeChatted(1, id, t0.Add(time.Hour)) {
+			t.Errorf("%s: forgotten chatter treated as not chatting", id)
+		}
+	}
+}
+
+func TestMaybeChatted_QuietRecordFailsClosed(t *testing.T) {
+	// Arrange: started long ago, last customer message 7 hours ago.
+	c := New(t0.Add(-72 * time.Hour))
+	c.Saw(1, "someone", t0.Add(-30*time.Hour))
+	c.Saw(1, "", t0.Add(-7*time.Hour)) // an incoming message without an id still counts as heard
+	never := New(t0.Add(-72 * time.Hour))
+
+	// Act
+	quiet := c.MaybeChatted(1, "stranger", t0)
+	noEvents := never.MaybeChatted(1, "stranger", t0)
+	c.Saw(1, "other", t0.Add(-time.Hour))
+	live := c.MaybeChatted(1, "stranger", t0)
+
+	// Assert
+	if !quiet || !noEvents || live {
+		t.Fatalf("quiet %v noEvents %v (want both true), live %v (want false)", quiet, noEvents, live)
 	}
 }

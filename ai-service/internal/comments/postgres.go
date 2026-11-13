@@ -262,3 +262,11 @@ func (p *Postgres) LastReplies(ctx context.Context, accountID int64, fromIDs []s
 	}
 	return out, rows.Err()
 }
+
+// SendingTo implements Store.
+func (p *Postgres) SendingTo(ctx context.Context, accountID int64, fromID string) (bool, error) {
+	var busy bool
+	err := p.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM fb_comments
+		WHERE account_id = $1 AND from_id = $2 AND status = 'sending')`, accountID, fromID).Scan(&busy)
+	return busy, err
+}

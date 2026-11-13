@@ -49,7 +49,7 @@
       <h3 class="sub">{{T "Comment"}}</h3>
       <pre class="code diff-now">{{.Message}}</pre>
       {{with .Reason}}<p class="field-hint">{{T "Why: %s" .}}</p>{{end}}
-      {{with .Shadow}}<p class="field-hint">{{T "Auto-send test (sends nothing): %s" .}}</p>{{end}}
+      {{with .Shadow}}<p class="field-hint">{{if $.AutoSend}}{{T "Jev: %s" .}}{{else}}{{T "Auto-send test (sends nothing): %s" .}}{{end}}</p>{{end}}
     </div>
     {{with .LastFail}}<div class="alert warn" role="status">{{T "The last send failed: %s" .}}</div>{{end}}
     <form method="post" action="/admin/comments">

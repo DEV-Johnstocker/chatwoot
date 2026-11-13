@@ -298,7 +298,7 @@ each comment and compares itself with what the owner does; it sends nothing unle
 `go run ./cmd/comment-eval -llm <models>` (see `testdata/comment-eval/`).
 With `COMMENT_AUTO_SEND=on` (and `jev`), Jev sends the safest replies itself:
 leads and questions it fully passes, from people who have not chatted in the
-last 24 hours and were never answered before. Everything else still waits on
+last 24 hours and got no private reply in the last 30 days, at most 20 an hour. Everything else still waits on
 `/admin/comments`.
 
 Settings: `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ID` (all three
