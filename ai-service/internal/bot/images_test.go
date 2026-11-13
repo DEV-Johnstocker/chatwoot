@@ -194,3 +194,16 @@ func TestAnswer_ShowsWhichPictureForTheJudge(t *testing.T) {
 		t.Fatalf("with %q without %q errs %v %v", a.Content, n.Content, err1, err2)
 	}
 }
+
+func TestAnswer_HandoffShowsNoPicture(t *testing.T) {
+	// Arrange
+	b, _, _, _ := imageBot(t, "ขอส่งต่อทีมงานครับ\n[[IMAGE: รีวิว Workshop]]\n[[HANDOFF]]", true)
+
+	// Act
+	a, _, err := b.Answer(context.Background(), 1, 0, []memory.Turn{{Role: "user", Content: "Workshop มีรีวิวไหม"}})
+
+	// Assert
+	if err != nil || strings.Contains(a.Content, "ส่งรูป") || !strings.Contains(a.Content, "[[HANDOFF]]") {
+		t.Fatalf("got %q err %v", a.Content, err)
+	}
+}

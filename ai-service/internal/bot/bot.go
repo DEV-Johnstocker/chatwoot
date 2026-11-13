@@ -427,9 +427,12 @@ func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Tu
 	if err == nil {
 		text, wantsHuman := SplitHandoff(res.Content)
 		text, names := takeImageMarkers(text)
-		// What the customer gets: the reply, then the owner's pictures.
-		for _, img := range b.imagesToSend(ctx, b.opts.Logger, acct, 0, history, names) {
-			text = strings.TrimSpace(text + "\n" + ImageSent(img.Name))
+		// What the customer gets: the reply, then the owner's pictures (none
+		// at a handoff, as in reply).
+		if !wantsHuman {
+			for _, img := range b.imagesToSend(ctx, b.opts.Logger, acct, 0, history, names) {
+				text = strings.TrimSpace(text + "\n" + ImageSent(img.Name))
+			}
 		}
 		if text, ok := g.check(text); !ok {
 			res.Content = "[[HANDOFF]]"
