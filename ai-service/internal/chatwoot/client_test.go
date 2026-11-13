@@ -353,3 +353,28 @@ func TestRecentTurns_MarksPageMessagesSentBeforeTheBotSpoke(t *testing.T) {
 		}
 	}
 }
+
+func TestRecentTurns_MarksTheBotsReviewImage(t *testing.T) {
+	// Arrange: the bot sent the review image (an attachment with a caption);
+	// staff sent a file of their own.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"payload":[
+			{"id":1,"message_type":1,"private":false,"content":"รีวิวจากผู้เรียนจริงครับ","attachments":[{"file_type":"image"}],"sender":{"type":"agent_bot"}},
+			{"id":2,"message_type":1,"private":false,"content":"","attachments":[{"file_type":"image"}],"sender":{"type":"agent_bot"}},
+			{"id":3,"message_type":1,"private":false,"content":"ไฟล์จากแอดมิน","attachments":[{"file_type":"file"}],"sender":{"type":"user"}}
+		]}`))
+	}))
+	defer srv.Close()
+	r := NewReader(srv.URL, "t", nil)
+
+	// Act
+	turns, err := r.RecentTurns(context.Background(), 1, 76, 0)
+
+	// Assert
+	if err != nil || len(turns) != 3 {
+		t.Fatalf("err %v turns %+v", err, turns)
+	}
+	if turns[0].Content != "รีวิวจากผู้เรียนจริงครับ\n[[IMAGE: ?]]" || turns[1].Content != "[[IMAGE: ?]]" || turns[2].Content != "ไฟล์จากแอดมิน" {
+		t.Fatalf("turns %+v", turns)
+	}
+}

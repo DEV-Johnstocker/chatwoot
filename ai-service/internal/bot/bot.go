@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
+	ownerimages "github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
@@ -100,7 +101,10 @@ type Options struct {
 	Staff StaffDirectory
 	// CommentEchoes recognises private replies sent from the comment queue
 	// when they reach a chat; nil: no comment-lead note.
-	CommentEchoes  CommentEchoes
+	CommentEchoes CommentEchoes
+	// Images gives each account's pictures, sent where the model writes
+	// profile.ImageMarker; nil: the bot never offers any.
+	Images         ImageStore
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -136,6 +140,10 @@ type Bot struct {
 	mu      sync.Mutex
 	pending map[convKey]*pendingReply // replies waiting for a burst to end
 	closed  bool                      // set by Close; no new waiting reply is queued
+
+	// imagesSent remembers which images each chat got (images.go).
+	imagesMu   sync.Mutex
+	imagesSent map[imageKey]time.Time
 }
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
@@ -358,6 +366,12 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		b.handoff(ctx, log, acct, inbox, conv, b.opts.HandoffMessage, ReasonNumberHeld, images)
 		return
 	}
+	text, names := takeImageMarkers(text)
+	stored, _ = takeImageMarkers(stored) // markers are added back only for pictures that went out
+	var pics []ownerimages.Image
+	if len(names) > 0 {
+		pics = b.imagesToSend(ctx, log, acct, conv, history, names)
+	}
 	if wantsHuman {
 		if text == "" {
 			text = b.opts.HandoffMessage
@@ -370,9 +384,24 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		b.handoff(ctx, log, acct, inbox, conv, text, ReasonAIRequest, images)
 		return
 	}
-	if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
-		log.Error("send reply failed", "error", err)
-		return
+	if text == "" && len(pics) == 0 {
+		text = b.opts.HandoffMessage // only markers the bot cannot honour: never send nothing
+	}
+	if text != "" {
+		if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
+			log.Error("send reply failed", "error", err)
+			return
+		}
+	}
+	if len(pics) > 0 {
+		sent := b.sendImages(ctx, log, acct, conv, pics)
+		if text == "" && len(sent) == 0 { // the reply was only pictures and none went out
+			text = b.opts.HandoffMessage
+			if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
+				log.Error("send reply failed", "error", err)
+			}
+		}
+		stored = strings.TrimSpace(text + "\n" + strings.Join(sent, "\n"))
 	}
 	tr.Outcome = "replied"
 	b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
@@ -397,6 +426,14 @@ func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Tu
 	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
 	if err == nil {
 		text, wantsHuman := SplitHandoff(res.Content)
+		text, names := takeImageMarkers(text)
+		// What the customer gets: the reply, then the owner's pictures (none
+		// at a handoff, as in reply).
+		if !wantsHuman {
+			for _, img := range b.imagesToSend(ctx, b.opts.Logger, acct, 0, history, names) {
+				text = strings.TrimSpace(text + "\n" + ImageSent(img.Name))
+			}
+		}
 		if text, ok := g.check(text); !ok {
 			res.Content = "[[HANDOFF]]"
 		} else if wantsHuman {
@@ -484,6 +521,7 @@ func (b *Bot) systemPrompt(ctx context.Context, log *slog.Logger, acct int64) (s
 		if err != nil {
 			log.Error("business profile lookup failed", "error", err)
 		} else {
+			p.Images = b.imageInfos(ctx, log, acct)
 			prompt, used = profile.Prompt(prompt, p), p
 		}
 	}

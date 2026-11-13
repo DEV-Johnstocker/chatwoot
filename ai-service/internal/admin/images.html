@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Bot images · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "images"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Bot images"}}</h1>
+      <p class="lead">{{T "Pictures the bot may send: customer reviews per product, examples of work and so on. It sends one only when its \"when to send\" line fits what the customer asks, after its text, each at most once in a chat. It never writes reviews itself."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/images" "Current" .Account)}}
+  </div>
+
+  {{with .Box}}
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "Bot images are off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  {{if eq .Done "added"}}<div class="alert ok" role="status">{{T "Image added. The bot can send it from the next message."}}</div>{{end}}
+  {{if eq .Done "saved"}}<div class="alert ok" role="status">{{T "Image saved."}}</div>{{end}}
+  {{if eq .Done "removed"}}<div class="alert ok" role="status">{{T "Image removed. The bot no longer sends it."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+  <p class="hint">{{T "%d of %d images" (len .Items) .Limits.Count}}</p>
+
+  {{$lim := .Limits}}
+  <div class="img-grid">
+    {{range .Items}}
+    <section class="card img-card" aria-labelledby="img-title-{{.ID}}">
+      <details>
+        <summary>
+          {{if .Preview}}<img class="thumb" src="{{.Preview}}" alt="" width="240" height="240">{{end}}
+          <span class="img-head">
+            <span class="img-name" id="img-title-{{.ID}}">{{.Name}}</span>
+            <span class="when">{{if .When}}{{.When}}{{else}}{{T "No \"when to send\" line yet: the bot cannot tell when to use it."}}{{end}}</span>
+            <span class="img-edit">{{T "Edit"}}</span>
+          </span>
+        </summary>
+        <form method="post" action="/admin/images" enctype="multipart/form-data" autocomplete="off" class="img-form">
+          <input type="hidden" name="account" value="{{$.Account}}">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <div><label for="img-name-{{.ID}}">{{T "Name (what the bot uses)"}}</label>
+            <input id="img-name-{{.ID}}" name="name" type="text" required maxlength="{{$lim.Name}}" value="{{.Name}}"></div>
+          <div><label for="img-cap-{{.ID}}">{{T "Caption sent with the image"}}</label>
+            <input id="img-cap-{{.ID}}" name="caption" type="text" maxlength="{{$lim.Caption}}" value="{{.Caption}}"></div>
+          <div class="full"><label for="img-when-{{.ID}}">{{T "When to send it"}}</label>
+            <textarea id="img-when-{{.ID}}" name="when" rows="2" maxlength="{{$lim.When}}">{{.When}}</textarea></div>
+          <div class="full"><label for="img-file-{{.ID}}">{{T "Replace the picture (optional)"}}</label>
+            <input id="img-file-{{.ID}}" name="image" type="file" accept="image/jpeg,image/png">
+            <p class="field-hint">{{.Size}}</p></div>
+          <div class="card-foot">
+            <button type="submit" name="action" value="remove" class="danger small">{{T "Remove"}}</button>
+            <button type="submit" name="action" value="save" class="primary small">{{T "Save"}}</button>
+          </div>
+        </form>
+      </details>
+    </section>
+    {{end}}
+    {{if .CanAdd}}
+    <section class="card img-card img-add" aria-labelledby="img-add-title">
+      <h2 id="img-add-title">＋ {{T "Add an image"}}</h2>
+      <details{{if not .Items}} open{{end}}>
+        <summary>{{T "Choose a picture"}}</summary>
+        <form method="post" action="/admin/images" enctype="multipart/form-data" autocomplete="off" class="img-new">
+          <input type="hidden" name="account" value="{{$.Account}}">
+          <label for="img-new-file">{{T "Picture (JPG or PNG, up to %d MB)" $lim.MB}}</label>
+          <input id="img-new-file" name="image" type="file" accept="image/jpeg,image/png" required>
+          <label for="img-new-name">{{T "Name (what the bot uses)"}}</label>
+          <input id="img-new-name" name="name" type="text" required maxlength="{{$lim.Name}}" placeholder="รีวิว AutoCut">
+          <label for="img-new-when">{{T "When to send it"}}</label>
+          <textarea id="img-new-when" name="when" rows="3" maxlength="{{$lim.When}}" placeholder="ลูกค้าขอดูรีวิว หรือถามว่ามีคนใช้คอร์ส AutoCut จริงไหม"></textarea>
+          <label for="img-new-cap">{{T "Caption sent with the image"}}</label>
+          <input id="img-new-cap" name="caption" type="text" maxlength="{{$lim.Caption}}" placeholder="รีวิวจากผู้เรียนจริงครับ">
+          <div class="card-foot"><button type="submit" name="action" value="add" class="primary small">{{T "Add image"}}</button></div>
+        </form>
+      </details>
+    </section>
+    {{end}}
+  </div>
+  {{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>

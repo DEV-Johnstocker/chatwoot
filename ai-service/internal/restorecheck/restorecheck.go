@@ -40,6 +40,7 @@ var RequiredTables = []string{
 	"oauth_clients",
 	"oauth_codes",
 	"oauth_grants",
+	"bot_images",
 	"team_members",
 	"web_sources",
 }

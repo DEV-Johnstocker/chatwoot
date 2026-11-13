@@ -25,6 +25,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/brand"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/cfaccess"
 	embedclient "github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/mcp"
@@ -85,6 +86,9 @@ type Handler struct {
 	Knowledge *knowledge.Service
 	// Profiles enables the business profile page; nil when no database is set.
 	Profiles profile.Store
+	// Images keeps the pictures each account lets the bot send; nil hides the box.
+	Images   images.Store
+	previews sync.Map // image ID → previewCache
 	onceMu   sync.Mutex
 	once     map[string]time.Time
 
@@ -147,6 +151,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/knowledge", wrap(h.submitKnowledge))
 	mux.Handle("GET /admin/business", wrap(h.showBusiness))
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
+	mux.Handle("GET /admin/images", wrap(h.showImages))
+	mux.Handle("POST /admin/images", wrap(h.submitImage))
 	mux.Handle("GET /admin/approvals", wrap(h.showApprovals))
 	mux.Handle("POST /admin/approvals", wrap(h.submitApprovals))
 	mux.Handle("GET /admin/comments", wrap(h.showComments))

@@ -156,6 +156,33 @@
   .biz .side { position: sticky; top: 24px; }
   .biz .side label.check:first-of-type { margin-top: 4px; }
   @media (max-width: 1100px) { .biz { grid-template-columns: minmax(0, 1fr); } .biz .side { position: static; } }
+  .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; grid-auto-flow: row dense; }
+  .img-card { margin: 0; }
+  .img-card summary { list-style: none; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; gap: 10px; color: var(--text); font-weight: 400; min-height: 0; }
+  .img-card summary::before { content: none; }
+  .img-card summary::-webkit-details-marker { display: none; }
+  .img-card .thumb { aspect-ratio: 1 / 1; width: 100%; height: auto; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; background: var(--bg); }
+  .img-head { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .img-name { font-weight: 650; overflow-wrap: anywhere; }
+  .img-card .when { color: var(--muted); font-size: .875rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .img-edit { color: var(--accent); font-weight: 600; font-size: .875rem; min-height: 32px; display: flex; align-items: center; }
+  .img-card details[open] .img-edit { display: none; }
+  .img-card summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+  /* An open card takes the whole row: picture left, fields right, two columns. */
+  .img-card:has(details[open]) { grid-column: 1 / -1; }
+  .img-card details[open] { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 4px 24px; }
+  .img-card details[open] summary { grid-row: 1 / span 2; }
+  .img-card details[open] .when { -webkit-line-clamp: unset; }
+  .img-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; align-content: start; }
+  .img-form > div { min-width: 0; }
+  .img-form .full, .img-form .card-foot { grid-column: 1 / -1; }
+  .img-form input[type=file], .img-new input[type=file] { width: 100%; }
+  .img-form .card-foot { margin-top: 12px; }
+  .img-add { border-style: dashed; }
+  .img-add h2 { font-size: 1rem; margin: 0 0 4px; }
+  .img-add details[open] { display: block; }
+  .img-add summary { font-weight: 600; color: var(--accent); min-height: 44px; justify-content: center; }
+  @media (max-width: 640px) { .img-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .img-card details[open] { display: block; } .img-form { grid-template-columns: 1fr; } }
   label.check { display: flex; gap: 12px; align-items: flex-start; font-weight: 400; margin: 12px 0 0; min-height: 44px; cursor: pointer; }
   label.check input { width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
   label.check strong { display: block; }
@@ -363,13 +390,14 @@
     <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
     <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
     <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
+    <a href="/admin/images"{{if eq . "images"}} aria-current="page"{{end}}>{{T "Bot images"}}</a>
     <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
     <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
     <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
     <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
 {{end}}
 
-{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
+{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
 
 {{define "theme-form"}}
   <form class="theme" method="post" action="/admin/theme" aria-label="{{T "Colour theme"}}">

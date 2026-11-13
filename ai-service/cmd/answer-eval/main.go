@@ -28,6 +28,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/bot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/config"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
@@ -108,6 +109,7 @@ func run() error {
 	}
 	defer pg.Pool.Close()
 	profiles := &profile.Postgres{Pool: pg.Pool}
+	botImages := &images.Postgres{Pool: pg.Pool}
 	kb := &knowledge.Service{Store: pg, Embedder: embedder, TopK: cfg.RAGTopK, MinScore: cfg.RAGMinScore, ChunkRunes: cfg.RAGChunkRunes}
 	if *seedKB != "" {
 		n, err := answereval.Seed(ctx, kb, *seedAccount, *seedKB)
@@ -127,6 +129,7 @@ func run() error {
 		LLM:            chat,
 		Knowledge:      kb,
 		Profiles:       profiles,
+		Images:         botImages,
 		History:        memory.NewHistory(cfg.HistoryLimit, time.Hour, nil),
 		SystemPrompt:   cfg.SystemPrompt,
 		HandoffMessage: cfg.HandoffMessage,
@@ -169,6 +172,12 @@ func run() error {
 			p, err := profiles.Get(ctx, acct)
 			if err != nil {
 				return ""
+			}
+			// The judge learns which pictures exist and what their markers mean.
+			if list, err := botImages.List(ctx, acct); err == nil {
+				for _, m := range list {
+					p.Images = append(p.Images, profile.ImageInfo{Name: m.Name, When: m.When})
+				}
 			}
 			return profile.Prompt("", p)
 		},

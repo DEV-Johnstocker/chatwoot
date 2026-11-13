@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -284,7 +285,7 @@ func TestAdminTools_UpdateProfileRefusals(t *testing.T) {
 			if !isErr(res) || !strings.Contains(text(res), c.want) {
 				t.Fatalf("res = %v, want error containing %q", text(res), c.want)
 			}
-			if e.profiles.saves != 0 || e.profiles.byAcct[1] != want || e.profiles.byAcct[2].Rules != "secret rule" {
+			if e.profiles.saves != 0 || !reflect.DeepEqual(e.profiles.byAcct[1], want) || e.profiles.byAcct[2].Rules != "secret rule" {
 				t.Fatal("a refused update changed a profile")
 			}
 			if !c.fail && len(e.events.events) != 0 {

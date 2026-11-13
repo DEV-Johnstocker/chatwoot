@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ func TestApproval_ProfileEditWaits(t *testing.T) {
 	if out["result"] != "waiting for approval" || out["id"] == nil {
 		t.Fatalf("out = %v", out)
 	}
-	if e.profiles.saves != 0 || e.profiles.byAcct[1] != before || len(e.events.events) != 0 {
+	if e.profiles.saves != 0 || !reflect.DeepEqual(e.profiles.byAcct[1], before) || len(e.events.events) != 0 {
 		t.Fatal("the profile changed before approval")
 	}
 	if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 1 {
