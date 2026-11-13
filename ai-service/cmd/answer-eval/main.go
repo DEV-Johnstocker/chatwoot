@@ -170,7 +170,7 @@ func run() error {
 			if err != nil {
 				return ""
 			}
-			return profile.Prompt("", p)
+			return judgeProfile(p)
 		},
 	}, cases)
 	rep.Verbose = *verbose
