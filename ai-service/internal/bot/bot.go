@@ -100,7 +100,10 @@ type Options struct {
 	Staff StaffDirectory
 	// CommentEchoes recognises private replies sent from the comment queue
 	// when they reach a chat; nil: no comment-lead note.
-	CommentEchoes  CommentEchoes
+	CommentEchoes CommentEchoes
+	// Reviews gives each account's review image, sent where the model writes
+	// profile.ReviewMarker; nil: the bot never offers it.
+	Reviews        ReviewImages
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -358,6 +361,11 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		b.handoff(ctx, log, acct, inbox, conv, b.opts.HandoffMessage, ReasonNumberHeld, images)
 		return
 	}
+	text, wantsReviews := takeReviewMarker(text)
+	sendReviews := wantsReviews && !reviewSentBefore(history) && b.hasReviewImage(ctx, log, acct)
+	if !sendReviews {
+		stored, _ = takeReviewMarker(stored) // history keeps the marker only when the image went out
+	}
 	if wantsHuman {
 		if text == "" {
 			text = b.opts.HandoffMessage
@@ -365,14 +373,29 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		if stored == "" {
 			stored = text
 		}
+		stored, _ = takeReviewMarker(stored) // a handoff sends no image
 		tr.Outcome, tr.Output = "handoff:"+ReasonAIRequest, stored
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
 		b.handoff(ctx, log, acct, inbox, conv, text, ReasonAIRequest, images)
 		return
 	}
-	if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
-		log.Error("send reply failed", "error", err)
-		return
+	if text == "" && !sendReviews {
+		text = b.opts.HandoffMessage // only a marker the bot cannot honour: never send nothing
+	}
+	if text != "" {
+		if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
+			log.Error("send reply failed", "error", err)
+			return
+		}
+	}
+	if sendReviews && !b.sendReviewImage(ctx, log, acct, conv) {
+		stored, _ = takeReviewMarker(stored)
+		if text == "" { // the reply was only the image: say something instead
+			stored = b.opts.HandoffMessage
+			if err := cw.SendMessage(ctx, acct, conv, stored); err != nil {
+				log.Error("send reply failed", "error", err)
+			}
+		}
 	}
 	tr.Outcome = "replied"
 	b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
@@ -397,6 +420,11 @@ func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Tu
 	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
 	if err == nil {
 		text, wantsHuman := SplitHandoff(res.Content)
+		text, wantsReviews := takeReviewMarker(text)
+		if wantsReviews && !reviewSentBefore(history) && b.hasReviewImage(ctx, b.opts.Logger, acct) {
+			// What the customer gets: the reply, then the owner's image.
+			text = strings.TrimSpace(text + "\n" + ReviewImageSent)
+		}
 		if text, ok := g.check(text); !ok {
 			res.Content = "[[HANDOFF]]"
 		} else if wantsHuman {
@@ -484,6 +512,7 @@ func (b *Bot) systemPrompt(ctx context.Context, log *slog.Logger, acct int64) (s
 		if err != nil {
 			log.Error("business profile lookup failed", "error", err)
 		} else {
+			p.ReviewImage = b.hasReviewImage(ctx, log, acct)
 			prompt, used = profile.Prompt(prompt, p), p
 		}
 	}

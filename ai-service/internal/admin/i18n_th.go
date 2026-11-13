@@ -176,6 +176,25 @@ var thai = map[string]string{
 	"That comment is no longer waiting. It may have been answered, dismissed or deleted.":                                  "คอมเมนต์นี้ไม่ได้รออยู่แล้ว อาจถูกตอบ ข้าม หรือลบไปแล้ว",
 	"Facebook will not accept a private reply to this comment (%s). It was moved to the history.":                          "Facebook ไม่รับข้อความส่วนตัวสำหรับคอมเมนต์นี้ (%s) ย้ายไปที่ประวัติแล้ว",
 	"Not sent. The comment still waits; try again. If it keeps failing, check the Page access token and the service logs.": "ส่งไม่สำเร็จ คอมเมนต์ยังรออยู่ ลองอีกครั้ง ถ้ายังไม่ได้ ให้ตรวจ Page access token และ log ของระบบ",
+	// Review image box (Business profile)
+	"Review image": "รูปรีวิวลูกค้า",
+	"In use":       "ใช้อยู่",
+	"One picture of real customer reviews. When a customer asks for reviews or doubts that the course works, the bot sends this image once in that chat, with the caption below. It never writes reviews itself.": "รูปรีวิวจากลูกค้าจริง 1 รูป เมื่อลูกค้าขอดูรีวิวหรือยังไม่มั่นใจว่าคอร์สใช้ได้จริง บอทจะส่งรูปนี้ 1 ครั้งต่อแชท พร้อมข้อความด้านล่าง บอทจะไม่แต่งรีวิวขึ้นเอง",
+	"Image saved. The bot can send it from the next message.":                  "บันทึกรูปแล้ว บอทส่งได้ตั้งแต่ข้อความถัดไป",
+	"Image removed. The bot no longer offers it.":                              "ลบรูปแล้ว บอทจะไม่ส่งรูปนี้อีก",
+	"Current review image":                                                     "รูปรีวิวที่ใช้อยู่",
+	"Replace the image (JPG or PNG, up to %d MB)":                              "เปลี่ยนรูป (JPG หรือ PNG ไม่เกิน %d MB)",
+	"Image (JPG or PNG, up to %d MB)":                                          "รูป (JPG หรือ PNG ไม่เกิน %d MB)",
+	"Caption sent with the image":                                              "ข้อความที่ส่งไปพร้อมรูป",
+	"Remove image":                                                             "ลบรูป",
+	"Save image":                                                               "บันทึกรูป",
+	"Could not load the review image. Check the database connection.":          "โหลดรูปรีวิวไม่ได้ ตรวจการเชื่อมต่อฐานข้อมูล",
+	"The image is too large or the form is broken. Images can be up to %d MB.": "รูปใหญ่เกินไปหรือฟอร์มผิดพลาด รูปต้องไม่เกิน %d MB",
+	"Could not remove the image. Try again.":                                   "ลบรูปไม่สำเร็จ ลองอีกครั้ง",
+	"Choose an image file first.":                                              "เลือกไฟล์รูปก่อน",
+	"The file must be a JPG or PNG image.":                                     "ไฟล์ต้องเป็นรูป JPG หรือ PNG",
+	"The caption can be at most %d characters.":                                "ข้อความใต้รูปยาวได้ไม่เกิน %d ตัวอักษร",
+	"Could not save the image. Try again.":                                     "บันทึกรูปไม่สำเร็จ ลองอีกครั้ง",
 }
 
 // thaiConflicts lists English lines that two page files translate

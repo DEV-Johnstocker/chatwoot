@@ -31,6 +31,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/oauth"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/reviews"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
 )
@@ -85,8 +86,10 @@ type Handler struct {
 	Knowledge *knowledge.Service
 	// Profiles enables the business profile page; nil when no database is set.
 	Profiles profile.Store
-	onceMu   sync.Mutex
-	once     map[string]time.Time
+	// Reviews keeps each account's review image; nil hides the box.
+	Reviews reviews.Store
+	onceMu  sync.Mutex
+	once    map[string]time.Time
 
 	// Places lists known accounts and inboxes for the dropdowns; nil shows
 	// only the current value.
@@ -147,6 +150,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/knowledge", wrap(h.submitKnowledge))
 	mux.Handle("GET /admin/business", wrap(h.showBusiness))
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
+	mux.Handle("POST /admin/business/review-image", wrap(h.submitReviewImage))
 	mux.Handle("GET /admin/approvals", wrap(h.showApprovals))
 	mux.Handle("POST /admin/approvals", wrap(h.submitApprovals))
 	mux.Handle("GET /admin/comments", wrap(h.showComments))

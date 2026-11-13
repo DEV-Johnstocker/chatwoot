@@ -75,6 +75,30 @@
       <div class="card-foot"><button type="submit" class="primary">{{T "Save profile"}}</button></div>
     </aside>
   </form>
+
+  {{with .Reviews}}{{if .Enabled}}
+  <section class="card" id="reviews" aria-labelledby="reviews-title">
+    <h2 id="reviews-title">{{T "Review image"}}{{if .Set}} <span class="badge on">{{T "In use"}}</span>{{end}}</h2>
+    <p class="hint">{{T "One picture of real customer reviews. When a customer asks for reviews or doubts that the course works, the bot sends this image once in that chat, with the caption below. It never writes reviews itself."}}</p>
+    {{if eq .Done "saved"}}<div class="alert ok" role="status">{{T "Image saved. The bot can send it from the next message."}}</div>{{end}}
+    {{if eq .Done "removed"}}<div class="alert ok" role="status">{{T "Image removed. The bot no longer offers it."}}</div>{{end}}
+    {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+    <div class="review-box">
+      {{if .Preview}}<figure class="review-preview"><img src="{{.Preview}}" alt="{{T "Current review image"}}" width="180"><figcaption class="field-hint">{{.Size}}</figcaption></figure>{{end}}
+      <form method="post" action="/admin/business/review-image" enctype="multipart/form-data" autocomplete="off" class="review-form">
+        <input type="hidden" name="account" value="{{$.Profile.AccountID}}">
+        <label for="review_image">{{if .Set}}{{T "Replace the image (JPG or PNG, up to %d MB)" .MaxMB}}{{else}}{{T "Image (JPG or PNG, up to %d MB)" .MaxMB}}{{end}}</label>
+        <input id="review_image" name="image" type="file" accept="image/jpeg,image/png"{{if not .Set}} required{{end}}>
+        <label for="review_caption">{{T "Caption sent with the image"}}</label>
+        <input id="review_caption" name="caption" type="text" maxlength="{{.MaxCap}}" value="{{.Caption}}" placeholder="รีวิวจากผู้เรียนจริงครับ">
+        <div class="card-foot">
+          {{if .Set}}<button type="submit" name="action" value="remove" class="danger">{{T "Remove image"}}</button>{{end}}
+          <button type="submit" name="action" value="save" class="primary">{{T "Save image"}}</button>
+        </div>
+      </form>
+    </div>
+  </section>
+  {{end}}{{end}}
   {{end}}
 </main>
 </div>

@@ -183,3 +183,18 @@ func TestBankTransfer_ValidatedAndInPrompt(t *testing.T) {
 		t.Errorf("prompt lacks the bank section:\n%s", got)
 	}
 }
+
+func TestPrompt_ReviewImageSectionOnlyWhenSet(t *testing.T) {
+	// Arrange
+	p := Profile{AccountID: 1, BusinessName: "AutoCut"}
+
+	// Act
+	without := Prompt("BASE", p)
+	p.ReviewImage = true
+	with := Prompt("BASE", p)
+
+	// Assert
+	if strings.Contains(without, ReviewMarker) || !strings.Contains(with, "# Review image") || !strings.Contains(with, ReviewMarker) {
+		t.Fatalf("without has marker %v, with lacks section %v", strings.Contains(without, ReviewMarker), !strings.Contains(with, "# Review image"))
+	}
+}

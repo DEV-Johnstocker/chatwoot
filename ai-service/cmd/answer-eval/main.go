@@ -32,6 +32,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/reviews"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 )
 
@@ -108,6 +109,7 @@ func run() error {
 	}
 	defer pg.Pool.Close()
 	profiles := &profile.Postgres{Pool: pg.Pool}
+	reviewImages := &reviews.Postgres{Pool: pg.Pool}
 	kb := &knowledge.Service{Store: pg, Embedder: embedder, TopK: cfg.RAGTopK, MinScore: cfg.RAGMinScore, ChunkRunes: cfg.RAGChunkRunes}
 	if *seedKB != "" {
 		n, err := answereval.Seed(ctx, kb, *seedAccount, *seedKB)
@@ -127,6 +129,7 @@ func run() error {
 		LLM:            chat,
 		Knowledge:      kb,
 		Profiles:       profiles,
+		Reviews:        reviewImages,
 		History:        memory.NewHistory(cfg.HistoryLimit, time.Hour, nil),
 		SystemPrompt:   cfg.SystemPrompt,
 		HandoffMessage: cfg.HandoffMessage,
@@ -170,6 +173,7 @@ func run() error {
 			if err != nil {
 				return ""
 			}
+			p.ReviewImage, _ = reviewImages.Has(ctx, acct) // the judge learns what the review marker means
 			return profile.Prompt("", p)
 		},
 	}, cases)
