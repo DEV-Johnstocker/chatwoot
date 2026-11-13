@@ -76,55 +76,6 @@
     </aside>
   </form>
 
-  {{with .Images}}{{if .Enabled}}
-  <section class="card" id="images" aria-labelledby="images-title">
-    <h2 id="images-title">{{T "Images the bot can send"}} <span class="badge">{{T "%d of %d" (len .Items) .Limits.Count}}</span></h2>
-    <p class="hint">{{T "Pictures such as customer reviews per product or examples of work. The bot sends one only when its \"when to send\" line fits what the customer asks, after its text, each at most once in a chat. It never writes reviews itself."}}</p>
-    {{if eq .Done "added"}}<div class="alert ok" role="status">{{T "Image added. The bot can send it from the next message."}}</div>{{end}}
-    {{if eq .Done "saved"}}<div class="alert ok" role="status">{{T "Image saved."}}</div>{{end}}
-    {{if eq .Done "removed"}}<div class="alert ok" role="status">{{T "Image removed. The bot no longer sends it."}}</div>{{end}}
-    {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
-    {{$lim := .Limits}}
-    {{range .Items}}
-    <form method="post" action="/admin/business/images" enctype="multipart/form-data" autocomplete="off" class="img-row">
-      <input type="hidden" name="account" value="{{$.Profile.AccountID}}">
-      <input type="hidden" name="id" value="{{.ID}}">
-      {{if .Preview}}<figure class="img-preview"><img src="{{.Preview}}" alt="{{.Name}}" width="120"><figcaption class="field-hint">{{.Size}}</figcaption></figure>{{end}}
-      <div class="img-fields">
-        <label for="img-name-{{.ID}}">{{T "Name (what the bot uses)"}}</label>
-        <input id="img-name-{{.ID}}" name="name" type="text" required maxlength="{{$lim.Name}}" value="{{.Name}}">
-        <label for="img-when-{{.ID}}">{{T "When to send it"}}</label>
-        <input id="img-when-{{.ID}}" name="when" type="text" maxlength="{{$lim.When}}" value="{{.When}}">
-        <label for="img-cap-{{.ID}}">{{T "Caption sent with the image"}}</label>
-        <input id="img-cap-{{.ID}}" name="caption" type="text" maxlength="{{$lim.Caption}}" value="{{.Caption}}">
-        <label for="img-file-{{.ID}}">{{T "Replace the picture (optional)"}}</label>
-        <input id="img-file-{{.ID}}" name="image" type="file" accept="image/jpeg,image/png">
-        <div class="card-foot">
-          <button type="submit" name="action" value="remove" class="danger">{{T "Remove"}}</button>
-          <button type="submit" name="action" value="save" class="primary">{{T "Save"}}</button>
-        </div>
-      </div>
-    </form>
-    {{end}}
-    {{if .CanAdd}}
-    <form method="post" action="/admin/business/images" enctype="multipart/form-data" autocomplete="off" class="img-row img-add">
-      <input type="hidden" name="account" value="{{$.Profile.AccountID}}">
-      <div class="img-fields">
-        <h3>{{T "Add an image"}}</h3>
-        <label for="img-new-file">{{T "Picture (JPG or PNG, up to %d MB)" $lim.MB}}</label>
-        <input id="img-new-file" name="image" type="file" accept="image/jpeg,image/png" required>
-        <label for="img-new-name">{{T "Name (what the bot uses)"}}</label>
-        <input id="img-new-name" name="name" type="text" required maxlength="{{$lim.Name}}" placeholder="รีวิว AutoCut">
-        <label for="img-new-when">{{T "When to send it"}}</label>
-        <input id="img-new-when" name="when" type="text" maxlength="{{$lim.When}}" placeholder="ลูกค้าขอดูรีวิว หรือถามว่ามีคนใช้คอร์ส AutoCut จริงไหม">
-        <label for="img-new-cap">{{T "Caption sent with the image"}}</label>
-        <input id="img-new-cap" name="caption" type="text" maxlength="{{$lim.Caption}}" placeholder="รีวิวจากผู้เรียนจริงครับ">
-        <div class="card-foot"><button type="submit" name="action" value="add" class="primary">{{T "Add image"}}</button></div>
-      </div>
-    </form>
-    {{end}}
-  </section>
-  {{end}}{{end}}
   {{end}}
 </main>
 </div>

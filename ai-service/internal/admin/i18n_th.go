@@ -176,9 +176,14 @@ var thai = map[string]string{
 	"That comment is no longer waiting. It may have been answered, dismissed or deleted.":                                  "คอมเมนต์นี้ไม่ได้รออยู่แล้ว อาจถูกตอบ ข้าม หรือลบไปแล้ว",
 	"Facebook will not accept a private reply to this comment (%s). It was moved to the history.":                          "Facebook ไม่รับข้อความส่วนตัวสำหรับคอมเมนต์นี้ (%s) ย้ายไปที่ประวัติแล้ว",
 	"Not sent. The comment still waits; try again. If it keeps failing, check the Page access token and the service logs.": "ส่งไม่สำเร็จ คอมเมนต์ยังรออยู่ ลองอีกครั้ง ถ้ายังไม่ได้ ให้ตรวจ Page access token และ log ของระบบ",
-	// Images box (Business profile)
-	"Images the bot can send": "รูปที่บอทส่งได้",
-	"Pictures such as customer reviews per product or examples of work. The bot sends one only when its \"when to send\" line fits what the customer asks, after its text, each at most once in a chat. It never writes reviews itself.": "รูป เช่น รีวิวลูกค้าของแต่ละสินค้า หรือตัวอย่างผลงาน บอทจะส่งรูปเมื่อสิ่งที่ลูกค้าถามตรงกับช่อง \"ส่งเมื่อไร\" เท่านั้น ส่งต่อจากข้อความ และแต่ละรูปส่งได้ครั้งเดียวต่อแชท บอทจะไม่แต่งรีวิวขึ้นเอง",
+	// Bot images page
+	"Bot images":          "รูปที่บอทส่งได้",
+	"Bot images · Pronto": "รูปที่บอทส่งได้ · Pronto",
+	"Pictures the bot may send: customer reviews per product, examples of work and so on. It sends one only when its \"when to send\" line fits what the customer asks, after its text, each at most once in a chat. It never writes reviews itself.": "รูปที่บอทส่งให้ลูกค้าได้ เช่น รีวิวลูกค้าของแต่ละสินค้า หรือตัวอย่างผลงาน บอทจะส่งรูปเมื่อสิ่งที่ลูกค้าถามตรงกับช่อง \"ส่งเมื่อไร\" เท่านั้น ส่งต่อจากข้อความ และแต่ละรูปส่งได้ครั้งเดียวต่อแชท บอทจะไม่แต่งรีวิวขึ้นเอง",
+	"Bot images are off.": "รูปที่บอทส่งได้ปิดอยู่",
+	"%d of %d images":     "%d จาก %d รูป",
+	"No \"when to send\" line yet: the bot cannot tell when to use it.": "ยังไม่ได้กรอกช่อง \"ส่งเมื่อไร\" บอทจะไม่รู้ว่าควรส่งรูปนี้ตอนไหน",
+	"Choose a picture": "เลือกรูป",
 	"Image added. The bot can send it from the next message.": "เพิ่มรูปแล้ว บอทส่งได้ตั้งแต่ข้อความถัดไป",
 	"Image saved.": "บันทึกรูปแล้ว",
 	"Image removed. The bot no longer sends it.":                "ลบรูปแล้ว บอทจะไม่ส่งรูปนี้อีก",

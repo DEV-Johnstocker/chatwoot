@@ -58,7 +58,7 @@ func imagePost(t *testing.T, fields map[string]string, file []byte) *http.Reques
 		_, _ = part.Write(file)
 	}
 	_ = w.Close()
-	r := httptest.NewRequest(http.MethodPost, "/admin/business/images", &body)
+	r := httptest.NewRequest(http.MethodPost, "/admin/images", &body)
 	r.Header.Set("Content-Type", w.FormDataContentType())
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	r.SetBasicAuth(Username, pw)
@@ -79,7 +79,7 @@ func TestImages_AddListEditRemove(t *testing.T) {
 	// Act
 	added := serve(mux, imagePost(t, map[string]string{"account": "1", "action": "add", "name": "รีวิว AutoCut", "when": "ขอดูรีวิว", "caption": "รีวิวจริงครับ"}, testPNG(t)))
 	_ = serve(mux, imagePost(t, map[string]string{"account": "1", "action": "add", "name": "รีวิว Workshop", "when": "ถามบรรยากาศ Workshop"}, testPNG(t)))
-	page := serve(mux, getPath("/admin/business?account=1&image=added")).Body.String()
+	page := serve(mux, getPath("/admin/images?account=1&done=added")).Body.String()
 	list, _ := im.List(ctx, 1)
 	id := strconv.FormatInt(list[0].ID, 10)
 	edited := serve(mux, imagePost(t, map[string]string{"account": "1", "id": id, "action": "save", "name": "รีวิว AutoCut", "when": "ใหม่"}, nil))
@@ -91,7 +91,7 @@ func TestImages_AddListEditRemove(t *testing.T) {
 	if added.Code != http.StatusSeeOther || edited.Code != http.StatusSeeOther || removed.Code != http.StatusSeeOther {
 		t.Fatalf("codes %d %d %d", added.Code, edited.Code, removed.Code)
 	}
-	if strings.Count(page, `src="data:image/jpeg;base64,`) != 2 || !strings.Contains(page, `value="รีวิว Workshop"`) || !strings.Contains(page, "Image added.") || !strings.Contains(page, "2 of 10") {
+	if strings.Count(page, `src="data:image/jpeg;base64,`) != 2 || !strings.Contains(page, `value="รีวิว Workshop"`) || !strings.Contains(page, "Image added.") || !strings.Contains(page, "2 of 10 images") {
 		t.Fatalf("page lacks previews, names or notice")
 	}
 	if afterEdit.When != "ใหม่" || afterEdit.Size == 0 || len(after) != 1 || after[0].Name != "รีวิว Workshop" {

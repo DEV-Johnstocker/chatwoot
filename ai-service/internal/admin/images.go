@@ -1,6 +1,6 @@
 package admin
 
-// The images box on the Business profile page: up to images.MaxPerAccount
+// The Bot images page: up to images.MaxPerAccount
 // named pictures (reviews per product, examples...) the bot may send, each
 // with a line saying when. Issue: DEV-Johnstocker/chatwoot#1
 
@@ -39,12 +39,24 @@ type imageBox struct {
 	Limits  struct{ Count, MB, Name, When, Caption int }
 }
 
+// imagesData is the Bot images page.
+type imagesData struct {
+	Account int64
+	Box     imageBox
+}
+
+// showImages renders the Bot images page.
+func (h *Handler) showImages(w http.ResponseWriter, r *http.Request) {
+	acct := accountParam(r.URL.Query().Get("account"))
+	h.renderPage(w, r, http.StatusOK, "images.html", imagesData{Account: acct, Box: h.loadImageBox(r, acct)})
+}
+
 // loadImageBox fills the box for an account; errors only show a message.
 func (h *Handler) loadImageBox(r *http.Request, acct int64) imageBox {
 	box := imageBox{Enabled: h.Images != nil}
 	box.Limits.Count, box.Limits.MB = images.MaxPerAccount, images.MaxBytes>>20
 	box.Limits.Name, box.Limits.When, box.Limits.Caption = images.MaxNameRunes, images.MaxWhenRunes, images.MaxCaptionRunes
-	switch d := r.URL.Query().Get("image"); d {
+	switch d := r.URL.Query().Get("done"); d {
 	case "added", "saved", "removed":
 		box.Done = d
 	}
@@ -114,7 +126,7 @@ func (h *Handler) submitImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.record(r, acct, "bot image "+done, strings.TrimSpace(meta.Name), nil)
-	http.Redirect(w, r, "/admin/business?account="+strconv.FormatInt(acct, 10)+"&image="+done+"#images", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/images?account="+strconv.FormatInt(acct, 10)+"&done="+done, http.StatusSeeOther)
 }
 
 // readImageFile returns the uploaded file; http.ErrMissingFile when none.
@@ -149,21 +161,14 @@ func imageError(lang string, err error) string {
 	return tr(lang, "Could not save the image. Try again.")
 }
 
-// imageFailed shows the business page again with the error in the box.
+// imageFailed shows the Bot images page again with the error.
 func (h *Handler) imageFailed(w http.ResponseWriter, r *http.Request, acct int64, msg string) {
 	if acct < 1 {
 		acct = accountParam(r.FormValue("account"))
 	}
-	data := businessData{Enabled: h.Profiles != nil}
-	data.Profile.AccountID = acct
-	if h.Profiles != nil {
-		if p, err := h.Profiles.Get(r.Context(), acct); err == nil {
-			data.Profile = p
-		}
-	}
-	data.Images = h.loadImageBox(r, acct)
-	data.Images.Done, data.Images.Error = "", msg
-	h.renderBusiness(w, r, http.StatusUnprocessableEntity, data)
+	box := h.loadImageBox(r, acct)
+	box.Done, box.Error = "", msg
+	h.renderPage(w, r, http.StatusUnprocessableEntity, "images.html", imagesData{Account: acct, Box: box})
 }
 
 // previewCache keeps one thumbnail per image, so a page view does not decode

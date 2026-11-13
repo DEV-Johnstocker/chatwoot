@@ -20,7 +20,6 @@ type businessData struct {
 	Saved   bool
 	Error   string
 	Limits  struct{ Name, Field, Rules, Bank int }
-	Images  imageBox
 }
 
 func (h *Handler) showBusiness(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +84,6 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderBusiness(w http.ResponseWriter, r *http.Request, status int, data businessData) {
-	if !data.Images.Enabled && data.Images.Error == "" {
-		data.Images = h.loadImageBox(r, data.Profile.AccountID)
-	}
 	data.Limits.Name, data.Limits.Field, data.Limits.Rules, data.Limits.Bank = profile.MaxNameRunes, profile.MaxFieldRunes, profile.MaxRulesRunes, profile.MaxBankRunes
 	if !data.Profile.UpdatedAt.IsZero() {
 		data.Updated = h.whenIn(langOf(r), data.Profile.UpdatedAt)
