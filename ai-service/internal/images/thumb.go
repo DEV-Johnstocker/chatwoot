@@ -1,4 +1,4 @@
-package reviews
+package images
 
 import (
 	"bytes"

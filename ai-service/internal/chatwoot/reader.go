@@ -105,9 +105,9 @@ func toTurn(m listedMessage, skipID int64) (memory.Turn, bool) {
 	}
 	content := m.Content
 	if role == "assistant" && len(m.Attachments) > 0 && m.Sender != nil && m.Sender.Type == "agent_bot" {
-		// The bot's only attachment is the review image: keep it marked, so a
-		// recalled chat still knows the image went out (once per chat).
-		return memory.Turn{Role: role, Content: strings.TrimSpace(content + "\n" + profile.ReviewMarker)}, true
+		// The bot only sends owner images as attachments: keep them marked, so a
+		// recalled chat still knows one went out ("?": its caption tells which).
+		return memory.Turn{Role: role, Content: strings.TrimSpace(content + "\n" + profile.ImageMarker("?"))}, true
 	}
 	if content == "" {
 		if role == "assistant" || len(m.Attachments) == 0 {

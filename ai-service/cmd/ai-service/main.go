@@ -25,6 +25,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/config"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/mcp"
@@ -36,7 +37,6 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/places"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/recentchat"
-	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/reviews"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/trace"
@@ -96,9 +96,9 @@ func run() error {
 	var usage bot.UsageRecorder
 	var mcpStore *mcp.Postgres
 	var oauthStore *oauth.Postgres
-	var reviewStore reviews.Store // nil interface without a database
+	var imageStore images.Store // nil interface without a database
 	if kb != nil {
-		reviewStore = &reviews.Postgres{Pool: profiles.Pool}
+		imageStore = &images.Postgres{Pool: profiles.Pool}
 		mcpStore = &mcp.Postgres{Pool: profiles.Pool}
 		oauthStore = &oauth.Postgres{Pool: profiles.Pool}
 		retriever, botProfiles, adminProfiles, usage = kb, profiles, profiles, kb
@@ -149,7 +149,7 @@ func run() error {
 		HistoryReader:     historyReader,
 		Staff:             staff,
 		CommentEchoes:     commentEchoes,
-		Reviews:           reviewStore,
+		Images:            imageStore,
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),
@@ -225,7 +225,7 @@ func run() error {
 		(&admin.Handler{
 			Password: cfg.AdminPassword, Store: store, Switch: completer, Embedder: embedder,
 			Rewrite: rewriteLLM, RewriteModel: cfg.RewriteModel,
-			Knowledge: kb, Profiles: adminProfiles, Reviews: reviewStore, Tester: b, Location: cfg.Location, Timeout: cfg.LLMTimeout,
+			Knowledge: kb, Profiles: adminProfiles, Images: imageStore, Tester: b, Location: cfg.Location, Timeout: cfg.LLMTimeout,
 			Tokens: mcpTokens(mcpStore), Apps: oauthApps(oauthStore), MCPURL: cfg.MCPPublicURL,
 			TeamSignIn: cfg.CFAccessAUD != "", Owners: cfg.Owners, AdminAccess: adminAccess(cfg),
 			Events: adminEvents(profiles, cfg.AuditRetentionDays),

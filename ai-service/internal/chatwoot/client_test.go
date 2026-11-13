@@ -374,7 +374,7 @@ func TestRecentTurns_MarksTheBotsReviewImage(t *testing.T) {
 	if err != nil || len(turns) != 3 {
 		t.Fatalf("err %v turns %+v", err, turns)
 	}
-	if turns[0].Content != "รีวิวจากผู้เรียนจริงครับ\n[[REVIEWS]]" || turns[1].Content != "[[REVIEWS]]" || turns[2].Content != "ไฟล์จากแอดมิน" {
+	if turns[0].Content != "รีวิวจากผู้เรียนจริงครับ\n[[IMAGE: ?]]" || turns[1].Content != "[[IMAGE: ?]]" || turns[2].Content != "ไฟล์จากแอดมิน" {
 		t.Fatalf("turns %+v", turns)
 	}
 }

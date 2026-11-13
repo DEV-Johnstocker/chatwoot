@@ -156,12 +156,13 @@
   .biz .side { position: sticky; top: 24px; }
   .biz .side label.check:first-of-type { margin-top: 4px; }
   @media (max-width: 1100px) { .biz { grid-template-columns: minmax(0, 1fr); } .biz .side { position: static; } }
-  #reviews { margin-top: 16px; }
-  .review-box { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
-  .review-preview { margin: 0; flex: none; }
-  .review-preview img { display: block; width: 180px; height: auto; border: 1px solid var(--border); border-radius: 8px; }
-  .review-form { flex: 1 1 280px; min-width: 0; }
-  .review-form input[type=file] { width: 100%; }
+  #images { margin-top: 16px; }
+  .img-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; padding-top: 16px; margin-top: 16px; border-top: 1px solid var(--border); }
+  .img-preview { margin: 0; flex: none; }
+  .img-preview img { display: block; width: 120px; height: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .img-fields { flex: 1 1 280px; min-width: 0; }
+  .img-fields input[type=file] { width: 100%; }
+  .img-add h3 { margin: 0 0 4px; font-size: 1rem; }
   label.check { display: flex; gap: 12px; align-items: flex-start; font-weight: 400; margin: 12px 0 0; min-height: 44px; cursor: pointer; }
   label.check input { width: 22px; height: 22px; min-height: 0; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
   label.check strong { display: block; }

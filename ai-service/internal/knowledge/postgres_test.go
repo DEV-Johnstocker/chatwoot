@@ -967,7 +967,7 @@ func TestMigrate_V16AddsAnEmptyBankTransfer(t *testing.T) {
 	}
 }
 
-// v17 on a Supabase-like database: the review image table must come with row
+// v17 on a Supabase-like database: the bot image table must come with row
 // level security on and the API roles shut out.
 func TestPostgres_V17UpgradeShutsOutAPIRoles(t *testing.T) {
 	// Arrange
@@ -978,12 +978,14 @@ func TestPostgres_V17UpgradeShutsOutAPIRoles(t *testing.T) {
 			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
 		END $$;
 		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
-		DROP TABLE review_images;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+		DROP TABLE bot_images;
 		UPDATE kb_schema_version SET version = 16;`); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;`)
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;`)
 	})
 
 	// Act
@@ -994,17 +996,19 @@ func TestPostgres_V17UpgradeShutsOutAPIRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	var rls, open bool
+	var rls, open, seqOpen bool
 	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
-		(SELECT relrowsecurity FROM pg_class WHERE relname = 'review_images'),
+		(SELECT relrowsecurity FROM pg_class WHERE relname = 'bot_images'),
 		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
-			AND has_table_privilege(r.rolname, 'review_images', 'SELECT,INSERT,UPDATE,DELETE'))`).Scan(&version, &rls, &open); err != nil {
+			AND has_table_privilege(r.rolname, 'bot_images', 'SELECT,INSERT,UPDATE,DELETE')),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_sequence_privilege(r.rolname, 'bot_images_id_seq', 'USAGE,SELECT,UPDATE'))`).Scan(&version, &rls, &open, &seqOpen); err != nil {
 		t.Fatal(err)
 	}
-	if version != SchemaVersion || !rls || open {
-		t.Fatalf("version=%d rls=%v open=%v", version, rls, open)
+	if version != SchemaVersion || !rls || open || seqOpen {
+		t.Fatalf("version=%d rls=%v open=%v sequence open=%v", version, rls, open, seqOpen)
 	}
-	_, bad := db.Pool.Exec(ctx, `INSERT INTO review_images (account_id, content_type, data) VALUES (0, 'image/png', '\x01')`)
+	_, bad := db.Pool.Exec(ctx, `INSERT INTO bot_images (account_id, name, name_key, content_type, data) VALUES (0, 'x', 'x', 'image/png', '\x01')`)
 	if bad == nil {
 		t.Error("account 0 must be refused")
 	}

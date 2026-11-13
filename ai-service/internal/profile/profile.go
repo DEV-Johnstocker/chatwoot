@@ -29,9 +29,16 @@ const (
 // replaces it with BankTransfer, so the model never types the digits.
 const BankMarker = "[[BANK]]"
 
-// ReviewMarker is what the model writes where the business's review image
-// belongs; the bot sends the image the owner uploaded (internal/reviews).
-const ReviewMarker = "[[REVIEWS]]"
+// ImageMarker is what the model writes where one of the business's images
+// belongs; the bot sends the picture the owner uploaded under that name
+// (internal/images).
+func ImageMarker(name string) string { return "[[IMAGE: " + name + "]]" }
+
+// ImageInfo is an image the bot may send: its name and when to send it.
+type ImageInfo struct {
+	Name string
+	When string
+}
 
 // Profile is one account's business profile. Empty fields are left out of the prompt.
 type Profile struct {
@@ -42,11 +49,11 @@ type Profile struct {
 	Contact      string // how to buy, pay, or reach staff
 	Rules        string // do and don't
 	BankTransfer string // bank, account name and number the bot may send as written (only the owner sets it)
-	// ReviewImage is set at reply time, not stored here: the account has a
-	// review image (internal/reviews) the bot may send with ReviewMarker.
-	ReviewImage bool
-	Features    Features
-	UpdatedAt   time.Time
+	// Images is filled at reply time, not stored here: the pictures the
+	// account lets the bot send (internal/images), by ImageMarker.
+	Images    []ImageInfo
+	Features  Features
+	UpdatedAt time.Time
 }
 
 // Features are the AI abilities a business switches on (all off by default).
@@ -128,9 +135,14 @@ func Prompt(base string, p Profile) string {
 		b.WriteString("\n\n# Bank transfer\nThe business takes bank transfers. Where the bank account belongs in a reply, write " + BankMarker +
 			" on its own line: the system puts in the bank, account name and number exactly as the owner wrote them. Never write a bank account number yourself.")
 	}
-	if p.ReviewImage {
-		b.WriteString("\n\n# Review image\nThe business has one image of real customer reviews. When the customer asks for reviews or whether real people use it, write " +
-			ReviewMarker + " on its own line: the system sends that image after your text. If they only doubt that it works, you may write it too. It adds to, never replaces, an examples or proof link the profile gives. Write it at most once in a chat; if an earlier reply already has it, do not write it again. Never quote, describe or name reviewers yourself.")
+	if len(p.Images) > 0 {
+		b.WriteString("\n\n# Images you can send\nThe business has these pictures. To send one, write " + ImageMarker("<name>") +
+			" on its own line with the exact name; the system sends the picture after your text. Send a picture only when its line below fits " +
+			"what the customer asks, at most two in a reply, and each at most once in a chat (if an earlier reply has its marker, do not repeat it). " +
+			"A picture adds to, never replaces, a link the profile gives. Never describe what a picture shows, quote or name reviewers yourself.\n")
+		for _, im := range p.Images {
+			b.WriteString("- " + fence(im.Name) + ": " + fence(oneLine(im.When)) + "\n")
+		}
 	}
 	return b.String()
 }
@@ -173,3 +185,6 @@ type Store interface {
 	Get(ctx context.Context, accountID int64) (Profile, error)
 	Save(ctx context.Context, p Profile) error
 }
+
+// oneLine keeps an owner's text on one prompt line.
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
