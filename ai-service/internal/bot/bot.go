@@ -97,7 +97,10 @@ type Options struct {
 	HistoryReader HistoryReader
 	// Staff looks up who is online and how busy they are, so a handed-off
 	// chat goes to the least busy person. Optional (needs the reader token).
-	Staff          StaffDirectory
+	Staff StaffDirectory
+	// CommentEchoes recognises private replies sent from the comment queue
+	// when they reach a chat; nil: no comment-lead note.
+	CommentEchoes  CommentEchoes
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -239,7 +242,10 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.opts.History.Forget(acct, conv)
 		log.Debug("conversation resolved, history cleared")
 	case webhook.Record:
-		takeover := b.staffTookOver(ev) // decided before this message joins the memory
+		// A private reply to a comment is the page's message, not staff
+		// taking the chat over.
+		lead, fromComment := b.commentEcho(ev)
+		takeover := !fromComment && b.staffTookOver(ev) // decided before this message joins the memory
 		if !automated(ev, takeover) {
 			b.cancelPending(acct, conv) // staff are handling the chat
 		}
@@ -251,6 +257,9 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			content = memory.PageMessagePrefix + content
 		}
 		b.opts.History.Append(acct, conv, memory.Turn{Role: role, Content: content})
+		if fromComment {
+			b.noteCommentLead(ctx, log, acct, conv, lead)
+		}
 		if takeover {
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonStaffReplied, nil)
 		}

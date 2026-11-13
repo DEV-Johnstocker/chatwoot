@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/commentecho"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,10 +26,10 @@ func TestGraph_SendsAPrivateReply(t *testing.T) {
 	g := &Graph{BaseURL: srv.URL + "/v24.0", PageID: testPage, PageToken: "page-token-xyz"}
 
 	// Act
-	err := g.SendPrivateReply(context.Background(), "2222_3333", "สวัสดีค่ะ")
+	mid, err := g.SendPrivateReply(context.Background(), "2222_3333", "สวัสดีค่ะ")
 
 	// Assert
-	if err != nil || gotPath != "/v24.0/1111/messages" || gotAuth != "Bearer page-token-xyz" || gotRawQuery != "" {
+	if err != nil || mid != "m" || gotPath != "/v24.0/1111/messages" || gotAuth != "Bearer page-token-xyz" || gotRawQuery != "" {
 		t.Fatalf("err %v path %q auth %q query %q", err, gotPath, gotAuth, gotRawQuery)
 	}
 	if gotBody["recipient"]["comment_id"] != "2222_3333" || gotBody["message"]["text"] != "สวัสดีค่ะ" {
@@ -58,7 +59,7 @@ func TestGraph_RefusalsAreTypedAndHideTheToken(t *testing.T) {
 			g := &Graph{BaseURL: srv.URL, PageID: testPage, PageToken: "page-token-xyz"}
 
 			// Act
-			err := g.SendPrivateReply(context.Background(), "c", "hi")
+			_, err := g.SendPrivateReply(context.Background(), "c", "hi")
 
 			// Assert
 			var se *SendError
@@ -74,9 +75,12 @@ type fakeSender struct {
 	err   error
 }
 
-func (f *fakeSender) SendPrivateReply(_ context.Context, commentID, text string) error {
+func (f *fakeSender) SendPrivateReply(_ context.Context, commentID, text string) (string, error) {
 	f.calls = append(f.calls, commentID+"|"+text)
-	return f.err
+	if f.err != nil {
+		return "", f.err
+	}
+	return "m_" + commentID, nil
 }
 
 var now = time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
@@ -224,7 +228,7 @@ func TestGraph_NetworkErrorNamesTheHostOnly(t *testing.T) {
 	g := &Graph{BaseURL: "http://127.0.0.1:1/v24.0", PageID: testPage, PageToken: "page-token-xyz"}
 
 	// Act
-	err := g.SendPrivateReply(context.Background(), "c", "hi")
+	_, err := g.SendPrivateReply(context.Background(), "c", "hi")
 
 	// Assert
 	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") || strings.Contains(err.Error(), "/messages") || strings.Contains(err.Error(), "page-token-xyz") {
@@ -273,5 +277,41 @@ func TestQueue_SendStoresBrowserLineBreaksAsPlainNewlines(t *testing.T) {
 	got, _ := store.Get(ctx, 1, c.ID)
 	if err != nil || got.Reply != "line one\nline two" || len(sender.calls) != 1 || sender.calls[0] != "c1|line one\nline two" {
 		t.Fatalf("err %v reply %q sent %q", err, got.Reply, sender.calls)
+	}
+}
+
+func TestQueue_SentReplyIsRecordedForItsEcho(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store := &Memory{}
+	echoes := &commentecho.Echoes{}
+	q := &Queue{Store: store, Sender: &fakeSender{}, Echoes: echoes, Now: func() time.Time { return now }}
+	c := waitingComment(t, store, now.Add(-time.Hour))
+
+	// Act
+	err := q.Send(ctx, 2, c.ID, c.Version, "Hello", "owner")
+
+	// Assert
+	lead, ok := echoes.Take("m_" + c.CommentID)
+	if err != nil || !ok || lead.CommentID != c.CommentID || !lead.CommentedAt.Equal(c.CreatedAt) {
+		t.Fatalf("err %v ok %v lead %+v", err, ok, lead)
+	}
+}
+
+func TestQueue_RefusedReplyIsNotRecorded(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store := &Memory{}
+	echoes := &commentecho.Echoes{}
+	sender := &fakeSender{err: &SendError{Code: 10900, Message: "Activity already replied to", Permanent: true}}
+	q := &Queue{Store: store, Sender: sender, Echoes: echoes, Now: func() time.Time { return now }}
+	c := waitingComment(t, store, now.Add(-time.Hour))
+
+	// Act
+	_ = q.Send(ctx, 2, c.ID, c.Version, "Hello", "owner")
+
+	// Assert
+	if echoes.Len() != 0 {
+		t.Fatalf("a refused reply has no echo, but %d were recorded", echoes.Len())
 	}
 }
