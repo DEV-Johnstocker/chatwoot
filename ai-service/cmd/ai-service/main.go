@@ -29,6 +29,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/mcp"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/media"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/messenger"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/oauth"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pdftext"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
@@ -127,6 +128,12 @@ func run() error {
 		historyReader, staff = reader, reader
 		logger.Info("chat recall and workload assignment on")
 	}
+	var referrals bot.ReferralSource // nil interface while the Messenger relay is off
+	var pendingReferrals *messenger.Pending
+	if cfg.MessengerRelayURL != "" {
+		pendingReferrals = &messenger.Pending{}
+		referrals = pendingReferrals
+	}
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
 		LLM:               completer,
@@ -149,6 +156,7 @@ func run() error {
 		AttachmentMessage: cfg.AttachmentMessage,
 		Location:          cfg.Location,
 		ReplyDelay:        cfg.ReplyDelay,
+		Referrals:         referrals,
 		Logger:            logger,
 		// Primary + fallback calls, plus Chatwoot API calls.
 		Timeout: 2*cfg.LLMTimeout + 30*time.Second,
@@ -169,6 +177,11 @@ func run() error {
 		h.Places = &places.Recorder{Store: placeStore}
 	}
 	mux := h.Routes()
+	if pendingReferrals != nil {
+		(&messenger.Relay{Target: cfg.MessengerRelayURL, AppSecret: cfg.MessengerAppSecret,
+			Pending: pendingReferrals, Logger: logger.With("component", "messenger")}).Routes(mux)
+		logger.Info("messenger relay on", "path", messenger.RelayPath, "target_host", hostOf(cfg.MessengerRelayURL))
+	}
 	var commentKnowledge comments.Retriever // nil interface without a knowledge base
 	if kb != nil {
 		commentKnowledge = kb

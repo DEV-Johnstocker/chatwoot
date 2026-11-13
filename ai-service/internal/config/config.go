@@ -3,6 +3,7 @@ package config
 
 import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/trace"
+	"net/url"
 
 	"errors"
 	"fmt"
@@ -93,12 +94,17 @@ type Config struct {
 
 	// Facebook Page comments (/webhooks/meta, /admin/comments): on when the
 	// app secret, verify token and Page ID are set, with a database.
-	MetaAppSecret    string // verifies Meta's webhook signature (secret)
-	MetaVerifyToken  string // our token for Meta's subscription check (secret)
-	MetaPageID       string
-	MetaPageToken    string // Page access token for private replies; empty: no sending (secret)
-	MetaAccountID    int64  // the Chatwoot account the Page belongs to (default 1)
-	MetaGraphVersion string // Graph API version, e.g. v24.0
+	// MessengerRelayURL is Chatwoot's Messenger endpoint (its /bot) when Meta
+	// sends the Messenger webhook to ai-service first, to keep the ad a
+	// customer came from; "" turns the relay off.
+	MessengerRelayURL  string
+	MessengerAppSecret string // the Messenger app's secret (Chatwoot's FB_APP_SECRET)
+	MetaAppSecret      string // verifies Meta's webhook signature (secret)
+	MetaVerifyToken    string // our token for Meta's subscription check (secret)
+	MetaPageID         string
+	MetaPageToken      string // Page access token for private replies; empty: no sending (secret)
+	MetaAccountID      int64  // the Chatwoot account the Page belongs to (default 1)
+	MetaGraphVersion   string // Graph API version, e.g. v24.0
 	// CommentReviewer is the shadow reviewer of drafted replies: off, llm
 	// (the main provider, or CommentReviewModel on it) or jev (TypeSafe).
 	// It only records what it would do; it never sends.
@@ -276,6 +282,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	errs = loadMeta(&cfg, get, errs)
+	errs = loadMessenger(&cfg, get, errs)
 
 	required := []struct{ key, val string }{
 		{"CHATWOOT_BASE_URL", cfg.ChatwootBaseURL},
@@ -321,6 +328,24 @@ var (
 	digitsRe       = regexp.MustCompile(`^[0-9]{1,32}$`)
 	graphVersionRe = regexp.MustCompile(`^v[0-9]{1,3}\.[0-9]{1,2}$`)
 )
+
+// loadMessenger reads the Messenger relay settings: the URL and the app
+// secret come together, so the relay never stores unsigned referrals.
+func loadMessenger(cfg *Config, get func(key, def string) string, errs []error) []error {
+	cfg.MessengerRelayURL = strings.TrimSpace(get("MESSENGER_RELAY_URL", ""))
+	cfg.MessengerAppSecret = get("MESSENGER_APP_SECRET", "")
+	if cfg.MessengerRelayURL == "" && cfg.MessengerAppSecret == "" {
+		return errs
+	}
+	if cfg.MessengerRelayURL == "" || cfg.MessengerAppSecret == "" {
+		return append(errs, errors.New("MESSENGER_RELAY_URL and MESSENGER_APP_SECRET are required together"))
+	}
+	u, err := url.Parse(cfg.MessengerRelayURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		errs = append(errs, errors.New("MESSENGER_RELAY_URL must be an http(s) URL without credentials or query, e.g. http://rails:3000/bot"))
+	}
+	return errs
+}
 
 // loadMeta reads the Facebook Page comment settings. The app secret, verify
 // token and Page ID come together; the Page token is optional (without it

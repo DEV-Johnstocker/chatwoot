@@ -163,3 +163,23 @@ func TestVerify(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_ReadsMessengerContactAndAttributes(t *testing.T) {
+	// Arrange: the conversation part of a Chatwoot message_created payload
+	// (Conversations::EventDataPresenter#push_data).
+	body := []byte(`{"event":"message_created","conversation":{"id":7,"channel":"Channel::FacebookPage",
+	 "contact_inbox":{"id":3,"source_id":"25000000000000001"},
+	 "custom_attributes":{"ad_id":"1202","ad_count":2}}}`)
+
+	// Act
+	ev, err := Parse(body)
+
+	// Assert
+	c := ev.Conversation
+	if err != nil || c.Channel != "Channel::FacebookPage" || c.ContactInbox.SourceID != "25000000000000001" {
+		t.Fatalf("conversation %+v err %v", c, err)
+	}
+	if c.StringAttribute("ad_id") != "1202" || c.StringAttribute("ad_count") != "" || c.StringAttribute("missing") != "" {
+		t.Errorf("attributes %+v", c.CustomAttributes)
+	}
+}
