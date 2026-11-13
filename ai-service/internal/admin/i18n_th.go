@@ -138,7 +138,7 @@ var thai = map[string]string{
 	"the reviewer held it":                    "ผู้ตรวจให้รอ",
 	"reply window passed":                     "เลยเวลาตอบแล้ว",
 	"no draft":                                "ยังไม่มีข้อความร่าง",
-	"may be chatting already":                 "คนนี้อาจกำลังคุยแชทกับคุณอยู่ (หรือระบบเพิ่งเริ่มใหม่ไม่ถึง 24 ชม. จึงยังไม่รู้)",
+	"may be chatting already":                 "คนนี้อาจกำลังคุยแชทกับคุณอยู่ (หรือระบบยังไม่แน่ใจ เช่น เพิ่งเริ่มระบบใหม่)",
 	"this person already got a private reply": "คนนี้เคยได้รับข้อความส่วนตัวไปแล้ว",
 	"Auto-send is on.":                        "เปิดส่งอัตโนมัติอยู่",
 	"Jev sends the reply itself for likely buyers and questions that pass every check, unless the person may already be chatting with you or already got a private reply. Everything else waits here for you.": "Jev ส่งข้อความส่วนตัวเองเฉพาะคอมเมนต์ที่น่าจะซื้อหรือมีคำถาม และผ่านการตรวจทุกข้อ ยกเว้นคนที่อาจกำลังคุยแชทกับคุณอยู่ หรือเคยได้รับข้อความส่วนตัวไปแล้ว คอมเมนต์อื่นยังรอคุณอยู่ที่หน้านี้",
