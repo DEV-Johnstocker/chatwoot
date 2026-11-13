@@ -80,6 +80,22 @@ type Sender struct {
 type Conversation struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"` // open | resolved | pending | snoozed
+	// Channel is the inbox type, e.g. "Channel::FacebookPage".
+	Channel string `json:"channel"`
+	// ContactInbox.SourceID is the customer's id on the channel; for
+	// Messenger it is the Page-scoped id (PSID) Meta's webhook uses.
+	ContactInbox struct {
+		SourceID string `json:"source_id"`
+	} `json:"contact_inbox"`
+	// CustomAttributes are the conversation's custom attributes; values
+	// that are not strings are skipped (see StringAttribute).
+	CustomAttributes map[string]any `json:"custom_attributes"`
+}
+
+// StringAttribute returns a custom attribute when it is a string, else "".
+func (c Conversation) StringAttribute(key string) string {
+	s, _ := c.CustomAttributes[key].(string)
+	return s
 }
 
 // Parse decodes a webhook body.

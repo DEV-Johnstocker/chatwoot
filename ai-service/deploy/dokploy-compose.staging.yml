@@ -168,6 +168,10 @@ services:
       # set). Meta posts to /webhooks/meta, signed with the app secret; that path
       # needs a public route of its own (see internal/comments/comments.contract.md).
       # Without META_PAGE_TOKEN comments are collected but no reply can be sent.
+      # Messenger relay (ad tracking): off unless both are set. Staging calls
+      # Chatwoot inside the stack: MESSENGER_RELAY_URL=http://stg-rails:3000/bot.
+      MESSENGER_RELAY_URL: ${MESSENGER_RELAY_URL:-}
+      MESSENGER_APP_SECRET: ${MESSENGER_APP_SECRET:-}
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
       META_PAGE_ID: ${META_PAGE_ID:-}

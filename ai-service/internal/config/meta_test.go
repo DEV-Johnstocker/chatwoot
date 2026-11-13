@@ -98,3 +98,41 @@ func TestLoad_CommentReviewer(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_MessengerRelay(t *testing.T) {
+	cases := map[string]struct {
+		env  map[string]string
+		want string // "" means valid
+	}{
+		"off":              {map[string]string{}, ""},
+		"on":               {map[string]string{"MESSENGER_RELAY_URL": "http://rails:3000/bot", "MESSENGER_APP_SECRET": "s"}, ""},
+		"url without key":  {map[string]string{"MESSENGER_RELAY_URL": "http://rails:3000/bot"}, "required together"},
+		"key without url":  {map[string]string{"MESSENGER_APP_SECRET": "s"}, "required together"},
+		"not http":         {map[string]string{"MESSENGER_RELAY_URL": "file:///etc/passwd", "MESSENGER_APP_SECRET": "s"}, "http(s) URL"},
+		"with credentials": {map[string]string{"MESSENGER_RELAY_URL": "http://u:p@rails:3000/bot", "MESSENGER_APP_SECRET": "s"}, "http(s) URL"},
+		"with query":       {map[string]string{"MESSENGER_RELAY_URL": "http://rails:3000/bot?x=1", "MESSENGER_APP_SECRET": "s"}, "http(s) URL"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			env := requiredEnv()
+			for k, v := range c.env {
+				env[k] = v
+			}
+
+			// Act
+			cfg, err := Load(lookupFrom(env))
+
+			// Assert
+			if c.want == "" {
+				if err != nil || cfg.MessengerRelayURL != c.env["MESSENGER_RELAY_URL"] {
+					t.Fatalf("cfg relay %q err %v", cfg.MessengerRelayURL, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err %v, want %q", err, c.want)
+			}
+		})
+	}
+}

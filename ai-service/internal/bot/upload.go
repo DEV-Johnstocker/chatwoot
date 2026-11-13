@@ -98,7 +98,7 @@ func (b *Bot) PreviewMedia(parent context.Context, acct, inbox int64, history []
 	if b.opts.Handoff.Wants(in.text) {
 		p = Preview{Reply: b.opts.HandoffMessage, Handoff: true, Reason: ReasonCustomerAsked}
 	} else {
-		res, hits, err := b.answer(ctx, log, acct, inbox, turns, &trace.Turn{}, in.images)
+		res, hits, err := b.answer(ctx, log, acct, inbox, turns, &trace.Turn{}, in.images, Origin{})
 		p = previewOf(b, res.Content, res.Model, hits, err)
 	}
 	p.Input, p.Media, p.Transcript = in.text, media.Media, media.Transcript

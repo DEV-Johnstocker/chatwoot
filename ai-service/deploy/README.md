@@ -31,6 +31,10 @@ Traefik (managed by Dokploy) serves `https://pronto.johnstockeraistudio.com`:
 - `/webhooks/chatwoot` → `ai-service:8080` (the Agent Bot webhook URL).
 - everything else → `rails:3000`.
 
+- `/webhooks/messenger` → `ai-service:8080`, only once the Messenger relay
+  is switched on (see `internal/messenger/messenger.contract.md`). Until
+  then Meta posts to `/bot` on Rails directly.
+
 These domain rules live in the Dokploy UI, not in git. If you change them,
 update this section in the same PR.
 

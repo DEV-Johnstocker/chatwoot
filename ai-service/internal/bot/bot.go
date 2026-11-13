@@ -94,6 +94,9 @@ type Options struct {
 	// HistoryReader recalls a chat from Chatwoot when the bot has no memory of
 	// it (after a restart, or a closed chat reopened). Optional.
 	HistoryReader HistoryReader
+	// Referrals hands over the ad or link a Messenger customer came from
+	// (messenger.Pending). Optional.
+	Referrals ReferralSource
 	// Staff looks up who is online and how busy they are, so a handed-off
 	// chat goes to the least busy person. Optional (needs the reader token).
 	Staff          StaffDirectory
@@ -132,6 +135,7 @@ type Bot struct {
 	mu      sync.Mutex
 	pending map[convKey]*pendingReply // replies waiting for a burst to end
 	closed  bool                      // set by Close; no new waiting reply is queued
+	origins map[convKey]knownOrigin   // where each chat's customer came from (origin.go)
 }
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
@@ -235,6 +239,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		}
 	case webhook.Forget:
 		b.cancelPending(acct, conv)
+		b.forgetOrigin(acct, conv)
 		b.opts.History.Forget(acct, conv)
 		log.Debug("conversation resolved, history cleared")
 	case webhook.Record:
@@ -256,6 +261,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	case webhook.HandOff, webhook.Reply:
 		tr := b.startTurn(ev, customerText(ev))
 		defer b.finishTurn(tr)
+		b.noteOrigin(ctx, log, ev)
 		p := profile.Profile{AccountID: acct}
 		if len(ev.Attachments) > 0 { // text-only messages skip the extra profile query
 			p = b.mediaProfile(ctx, log, acct)
@@ -322,7 +328,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 
 	history := b.opts.History.Get(acct, conv)
 	started := time.Now()
-	res, hits, err := b.answer(ctx, log, acct, inbox, history, tr, images)
+	res, hits, err := b.answer(ctx, log, acct, inbox, history, tr, images, b.originOf(acct, conv))
 	latency := time.Since(started)
 	log = log.With(sourceAttrs(hits)...)
 	if err == nil && len(hits) > 0 {
@@ -368,13 +374,22 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 // search (with rewritten queries) and the chat model. answer-eval uses it to
 // test exactly what customers get.
 func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Turn) (llm.Result, []knowledge.Hit, error) {
-	return b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	return b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil, Origin{})
+}
+
+// AnswerFrom is Answer for a customer who came from an ad or a tagged link,
+// so answer-eval can test the ad context too.
+func (b *Bot) AnswerFrom(ctx context.Context, acct, inbox int64, history []memory.Turn, o Origin) (llm.Result, []knowledge.Hit, error) {
+	return b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil, o)
 }
 
 // answer fills tr's rewrite, search and generation steps as it goes.
 // images go with the latest customer message only; history stays text.
-func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, error) {
+func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string, origin Origin) (llm.Result, []knowledge.Hit, error) {
 	messages := []llm.Message{{Role: "system", Content: b.systemPrompt(ctx, log, acct)}}
+	if p := originPrompt(origin); p != "" {
+		messages = append(messages, llm.Message{Role: "system", Content: p})
+	}
 	var hits []knowledge.Hit
 	if b.opts.Knowledge != nil {
 		queries := b.searchQueries(ctx, log, history, tr)
