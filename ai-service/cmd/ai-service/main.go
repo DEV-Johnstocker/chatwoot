@@ -37,6 +37,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/places"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/recentchat"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/trace"
@@ -97,8 +98,12 @@ func run() error {
 	var mcpStore *mcp.Postgres
 	var oauthStore *oauth.Postgres
 	var imageStore images.Store // nil interface without a database
+	var botHours bot.Hours
+	var adminHours schedule.Store
 	if kb != nil {
 		imageStore = &images.Postgres{Pool: profiles.Pool}
+		hours := &schedule.Postgres{Pool: profiles.Pool}
+		botHours, adminHours = hours, hours
 		mcpStore = &mcp.Postgres{Pool: profiles.Pool}
 		oauthStore = &oauth.Postgres{Pool: profiles.Pool}
 		retriever, botProfiles, adminProfiles, usage = kb, profiles, profiles, kb
@@ -141,6 +146,7 @@ func run() error {
 		Knowledge:         retriever,
 		Usage:             usage,
 		Profiles:          botProfiles,
+		Hours:             botHours,
 		Rewriter:          rewriter,
 		Fetcher:           attachmentFetcher(cfg),
 		Transcriber:       liveTranscriber{store: store, model: cfg.TranscribeModel},
@@ -231,7 +237,7 @@ func run() error {
 			Events: adminEvents(profiles, cfg.AuditRetentionDays),
 			Web:    webStore(profiles), WebSync: webSyncer, Places: adminPlaces(placeStore), Logger: logger,
 			Pending: pendingStore(profiles), Approver: adminApprover(srvMCP),
-			Comments: commentQueue,
+			Comments: commentQueue, Hours: adminHours,
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")

@@ -29,6 +29,7 @@ import (
 var RequiredTables = []string{
 	"admin_events",
 	"ai_pending_changes",
+	"bot_schedules",
 	"business_profiles",
 	"chatwoot_inboxes",
 	"fb_comments",

@@ -72,6 +72,7 @@ var reasonLabels = map[string]string{
 	ReasonAttachment:    "ลูกค้าส่งไฟล์ที่บอทเปิดไม่ได้",
 	ReasonAIRequest:     "บอทตอบเองไม่ได้ หรือเรื่องนี้ต้องให้ทีมงานดูแล",
 	ReasonStaffReplied:  "แอดมินตอบลูกค้าโดยตรง บอทหยุดตอบแชทนี้แล้ว (ปิดแชทเมื่อเสร็จ บอทจะกลับมาตอบ)",
+	ReasonBotOff:        "บอทปิดอยู่ หรือข้อความเข้ามานอกเวลาทำงานของบอท แชทนี้ส่งให้ทีมงานตอบ",
 	ReasonNumberHeld:    "คำตอบของบอทมีเลขบัญชี เบอร์ หรือเลขยาวที่ไม่ได้มาจากโปรไฟล์ธุรกิจ ระบบจึงไม่ส่งให้ลูกค้า",
 }
 
@@ -87,8 +88,9 @@ var noteSecrets = []*regexp.Regexp{
 // is a readable label. gap reports a handoff only because the bot lacked the
 // answer, so the chat can be labelled for filling the knowledge base.
 func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) (note string, gap bool) {
-	if reason == ReasonStaffReplied {
-		return "🤖 " + reasonLabels[reason] + "\n" + reason, false // staff are already in the chat
+	if reason == ReasonStaffReplied || reason == ReasonBotOff {
+		// Staff are already in the chat, or the bot never spoke: nothing to summarise.
+		return "🤖 " + reasonLabels[reason] + "\n" + reason, false
 	}
 	if b.opts.NoteLLM == nil {
 		return reason, false

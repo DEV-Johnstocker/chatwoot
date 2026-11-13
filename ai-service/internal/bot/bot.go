@@ -99,6 +99,10 @@ type Options struct {
 	// Staff looks up who is online and how busy they are, so a handed-off
 	// chat goes to the least busy person. Optional (needs the reader token).
 	Staff StaffDirectory
+	// Hours is the owner's main switch and weekly hours per account. When
+	// the bot is off, a customer message goes straight to staff. Optional:
+	// nil keeps the bot on at all times.
+	Hours Hours
 	// CommentEchoes recognises private replies sent from the comment queue
 	// when they reach a chat; nil: no comment-lead note.
 	CommentEchoes CommentEchoes
@@ -274,6 +278,11 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	case webhook.HandOff, webhook.Reply:
 		tr := b.startTurn(ev, customerText(ev))
 		defer b.finishTurn(tr)
+		if !b.botOn(ctx, log, acct) {
+			tr.Outcome = "handoff:" + ReasonBotOff
+			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonBotOff, nil)
+			return
+		}
 		p := profile.Profile{AccountID: acct}
 		if len(ev.Attachments) > 0 { // text-only messages skip the extra profile query
 			p = b.mediaProfile(ctx, log, acct)
