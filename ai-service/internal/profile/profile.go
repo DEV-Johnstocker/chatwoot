@@ -129,8 +129,8 @@ func Prompt(base string, p Profile) string {
 			" on its own line: the system puts in the bank, account name and number exactly as the owner wrote them. Never write a bank account number yourself.")
 	}
 	if p.ReviewImage {
-		b.WriteString("\n\n# Review image\nThe business has one image of real customer reviews. When the customer asks for reviews or proof that real people use it, or doubts that it works, write " +
-			ReviewMarker + " on its own line: the system sends that image. Write it at most once in a chat; if an earlier reply already has it, do not write it again. Never quote, describe or make up reviews yourself.")
+		b.WriteString("\n\n# Review image\nThe business has one image of real customer reviews. When the customer asks for reviews or whether real people use it, write " +
+			ReviewMarker + " on its own line: the system sends that image after your text. If they only doubt that it works, you may write it too. It adds to, never replaces, an examples or proof link the profile gives. Write it at most once in a chat; if an earlier reply already has it, do not write it again. Never quote, describe or name reviewers yourself.")
 	}
 	return b.String()
 }
