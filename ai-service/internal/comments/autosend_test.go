@@ -2,10 +2,13 @@ package comments
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 )
 
 type fakeChats struct{ chatted bool }
@@ -21,6 +24,13 @@ func reviewedComment(t *testing.T, store Store, pass bool) Comment {
 	}
 	return c
 }
+
+type fakeSwitch struct {
+	s   schedule.Schedule
+	err error
+}
+
+func (f fakeSwitch) Get(context.Context, int64) (schedule.Schedule, error) { return f.s, f.err }
 
 func autoQueue(store Store, sender *fakeSender) *Queue {
 	return &Queue{Store: store, Sender: sender, AutoSend: true, Chats: fakeChats{}, Now: func() time.Time { return now }}
@@ -74,7 +84,19 @@ func TestTryAutoSend_HoldsForTheOwner(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, HoldRepeatReply},
-		"owner dismissed it": {func(_ *Queue, s Store, c *Comment) { _ = s.Dismiss(context.Background(), 2, c.ID, c.Version, "owner") }, HoldNotWaiting},
+		"bot switched off": {func(q *Queue, _ Store, _ *Comment) {
+			off := schedule.Default(2)
+			off.Mode = schedule.ModeOff
+			q.Hours = fakeSwitch{s: off}
+		}, HoldBotOff},
+		"outside bot hours": {func(q *Queue, _ Store, _ *Comment) {
+			s := schedule.Default(2) // 09:00–18:00 Bangkok
+			s.Mode = schedule.ModeScheduled
+			q.Hours = fakeSwitch{s: s}
+			q.Now = func() time.Time { return time.Date(2026, 11, 9, 23, 0, 0, 0, time.UTC) } // 06:00 Bangkok
+		}, HoldBotOff},
+		"bot switch unreadable": {func(q *Queue, _ Store, _ *Comment) { q.Hours = fakeSwitch{err: errors.New("db down")} }, HoldBotOff},
+		"owner dismissed it":    {func(_ *Queue, s Store, c *Comment) { _ = s.Dismiss(context.Background(), 2, c.ID, c.Version, "owner") }, HoldNotWaiting},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -192,5 +214,22 @@ func TestTryAutoSend_HourlyLimitFreesUpAfterAnHour(t *testing.T) {
 	// Assert
 	if err != nil || !sent {
 		t.Fatalf("sent %v why %q err %v, want old sends to stop counting", sent, why, err)
+	}
+}
+
+func TestTryAutoSend_BotOnStillSends(t *testing.T) {
+	// Arrange: the switch is read and on; auto-send works as before.
+	ctx := context.Background()
+	store, sender := &Memory{}, &fakeSender{}
+	q := autoQueue(store, sender)
+	q.Hours = fakeSwitch{s: schedule.Default(2)}
+	c := reviewedComment(t, store, true)
+
+	// Act
+	sent, why, err := q.TryAutoSend(ctx, 2, c.ID)
+
+	// Assert
+	if err != nil || !sent || why != "" {
+		t.Fatalf("sent %v why %q err %v", sent, why, err)
 	}
 }

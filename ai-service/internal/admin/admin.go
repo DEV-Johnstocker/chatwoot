@@ -32,6 +32,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/oauth"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
 )
@@ -89,8 +90,10 @@ type Handler struct {
 	// Images keeps the pictures each account lets the bot send; nil hides the box.
 	Images   images.Store
 	previews sync.Map // image ID → previewCache
-	onceMu   sync.Mutex
-	once     map[string]time.Time
+	// Hours enables the bot on/off page; nil when no database is set.
+	Hours  schedule.Store
+	onceMu sync.Mutex
+	once   map[string]time.Time
 
 	// Places lists known accounts and inboxes for the dropdowns; nil shows
 	// only the current value.
@@ -149,6 +152,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/test", wrap(h.submitTest))
 	mux.Handle("GET /admin/knowledge", wrap(h.showKnowledge))
 	mux.Handle("POST /admin/knowledge", wrap(h.submitKnowledge))
+	mux.Handle("GET /admin/hours", wrap(h.showHours))
+	mux.Handle("POST /admin/hours", wrap(h.submitHours))
 	mux.Handle("GET /admin/business", wrap(h.showBusiness))
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
 	mux.Handle("GET /admin/images", wrap(h.showImages))

@@ -28,7 +28,7 @@ func openTestDB(t *testing.T) *Postgres {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS kb_chunks, kb_documents, business_profiles, kb_audit, mcp_tokens, oauth_codes, oauth_grants, oauth_clients, team_members, admin_events, web_sources, chatwoot_inboxes, ai_pending_changes, fb_comments, kb_schema_version"); err != nil {
+	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS kb_chunks, kb_documents, business_profiles, kb_audit, mcp_tokens, oauth_codes, oauth_grants, oauth_clients, team_members, admin_events, web_sources, chatwoot_inboxes, ai_pending_changes, fb_comments, bot_schedules, kb_schema_version"); err != nil {
 		t.Fatal(err)
 	}
 	p := &Postgres{Pool: pool}
@@ -851,6 +851,55 @@ func TestMigrate_V13CommentsTableIsClosedAndChecked(t *testing.T) {
 	}
 	if okErr != nil || dupErr == nil || badStatus == nil {
 		t.Fatalf("insert ok=%v duplicate=%v bad status=%v", okErr, dupErr, badStatus)
+	}
+}
+
+// v18 on a Supabase-like database: the upgrade from v17 must create the bot
+// switch table with row level security on and anon/authenticated shut out,
+// and refuse an unknown mode or a days list that is not seven days.
+func TestMigrate_V18BotSchedulesIsClosedAndChecked(t *testing.T) {
+	// Arrange
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+		END $$;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+		DROP TABLE bot_schedules;
+		UPDATE kb_schema_version SET version = 17;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;`)
+	})
+	week := `[{"on":true,"from":0,"to":0},{"on":true,"from":0,"to":0},{"on":true,"from":0,"to":0},{"on":true,"from":0,"to":0},{"on":true,"from":0,"to":0},{"on":true,"from":0,"to":0},{"on":true,"from":0,"to":0}]`
+
+	// Act
+	err := db.Migrate(ctx)
+	insert := func(acct int, mode, days string) error {
+		_, err := db.Pool.Exec(ctx, `INSERT INTO bot_schedules (account_id, mode, days) VALUES ($1, $2, $3::jsonb)`, acct, mode, days)
+		return err
+	}
+	okErr, badMode, shortWeek, badAcct := insert(1, "off", week), insert(2, "sometimes", week), insert(3, "on", "[]"), insert(0, "on", week)
+
+	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	var rls, tableOpen bool
+	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
+		(SELECT relrowsecurity FROM pg_class WHERE relname = 'bot_schedules'),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_table_privilege(r.rolname, 'bot_schedules', 'SELECT,INSERT,UPDATE,DELETE'))`).Scan(&version, &rls, &tableOpen); err != nil {
+		t.Fatal(err)
+	}
+	if version != SchemaVersion || !rls || tableOpen {
+		t.Fatalf("version=%d rls=%v table open=%v", version, rls, tableOpen)
+	}
+	if okErr != nil || badMode == nil || shortWeek == nil || badAcct == nil {
+		t.Fatalf("insert ok=%v bad mode=%v short week=%v bad account=%v", okErr, badMode, shortWeek, badAcct)
 	}
 }
 

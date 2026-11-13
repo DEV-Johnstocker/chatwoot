@@ -286,6 +286,33 @@
   form.sched { display: inline-flex; gap: 6px; align-items: center; }
   form.sched select { min-height: 36px; padding: 4px 8px; width: auto; }
   @media (max-width: 640px) { td.row-actions { text-align: left; } }
+  /* Bot on/off */
+  .bot-state { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+  .bot-state .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+  .bot-state.is-on { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
+  .bot-state.is-on .dot { background: var(--ok-text); }
+  .bot-state.is-off { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+  .bot-state.is-off .dot { background: var(--warn-text); }
+  .bot-state .field-hint { color: inherit; opacity: .85; }
+  form.hours { display: grid; gap: 16px; }
+  fieldset.mode-choice { display: grid; gap: 4px; }
+  fieldset.mode-choice label { display: flex; gap: 12px; align-items: flex-start; font-weight: 400; margin: 0; min-height: 44px; cursor: pointer; padding: 8px 0; }
+  fieldset.mode-choice input[type="radio"] { width: 20px; height: 20px; min-height: 0; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+  fieldset.mode-choice strong { display: block; }
+  form.hours .tz { max-width: 280px; margin-bottom: 12px; }
+  table.week th[scope="row"] { font-weight: 600; text-align: left; white-space: nowrap; }
+  table.week input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color: var(--accent); }
+  table.week input[type="time"] { width: auto; min-width: 7.5em; }
+  table.week td { white-space: nowrap; }
+  /* Phones: each day is two lines, "Monday ☑" then "From [..] To [..]". */
+  @media (max-width: 640px) {
+    table.week tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; align-items: center; }
+    table.week th[scope="row"] { padding: 0; }
+    table.week td { padding: 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; white-space: normal; }
+    table.week td.on { justify-content: flex-end; }
+    table.week td[data-label]::before { font-size: .8rem; }
+    table.week input[type="time"] { min-width: 0; width: auto; flex: 1 1 5.5em; }
+  }
   /* Connections: the one-time token and setup snippets */
   .mono, pre.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .85rem; }
   /* A value with its Copy button beside it. */
@@ -387,6 +414,7 @@
 
 {{define "nav-links"}}
     <a href="/admin"{{if eq . "home"}} aria-current="page"{{end}}>{{T "Home"}}</a>
+    <a href="/admin/hours"{{if eq . "hours"}} aria-current="page"{{end}}>{{T "Bot on/off"}}</a>
     <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
     <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
     <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>

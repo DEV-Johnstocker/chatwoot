@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Bot on/off · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "hours"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Bot on/off"}}</h1>
+      <p class="lead">{{T "One switch for this account's chat bot. While the bot is off, each new customer chat goes straight to your team in Chatwoot (Open) with a note, and the bot sends nothing."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/hours" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "The bot switch is off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next customer message."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+
+  {{if .StateUnknown}}
+  <section class="card bot-state is-off" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <div><strong>{{T "Could not read the saved switch, so the bot keeps answering until the database is back."}}</strong></div>
+  </section>
+  {{else}}
+  <section class="card bot-state {{if .ActiveNow}}is-on{{else}}is-off{{end}}" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <div>
+      <strong>{{if .ActiveNow}}{{T "Right now the bot is answering."}}{{else}}{{T "Right now the bot is off. Your team gets every new chat."}}{{end}}</strong>
+      <span class="field-hint">{{if .Error}}{{T "This is the saved setting; the form below was not saved."}} {{end}}{{if .Now}}{{T "Time now: %s (%s)." .Now .TimeZone}} {{end}}{{if .Updated}}{{T "Last changed %s." .Updated}}{{end}}</span>
+    </div>
+  </section>
+  {{end}}
+
+  <form class="hours" method="post" action="/admin/hours" autocomplete="off">
+    <input type="hidden" name="account" value="{{.AccountID}}">
+    <section class="card">
+      <fieldset class="mode-choice">
+        <legend>{{T "Bot"}}</legend>
+        <label><input type="radio" name="mode" value="on"{{if eq (printf "%s" .Mode) "on"}} checked{{end}}>
+          <span><strong>{{T "On"}}</strong><span class="field-hint">{{T "Answers at any time."}}</span></span></label>
+        <label><input type="radio" name="mode" value="scheduled"{{if eq (printf "%s" .Mode) "scheduled"}} checked{{end}}>
+          <span><strong>{{T "On during set hours"}}</strong><span class="field-hint">{{T "Answers only in the hours below; your team gets chats at other times."}}</span></span></label>
+        <label><input type="radio" name="mode" value="off"{{if eq (printf "%s" .Mode) "off"}} checked{{end}}>
+          <span><strong>{{T "Off"}}</strong><span class="field-hint">{{T "Answers nothing; your team gets every new chat. Automatic replies to Page comments stop too."}}</span></span></label>
+      </fieldset>
+    </section>
+
+    <section class="card">
+      <fieldset>
+        <legend>{{T "Bot hours"}}</legend>
+        <p class="hint">{{T "Used only when the bot is on during set hours. An end time earlier than the start runs past midnight (for example 18:00 to 09:00 covers the night). The same start and end time, or 00:00 to 23:59, means the whole day."}}</p>
+        <div class="tz">
+          <label for="time_zone">{{T "Time zone"}}</label>
+          <select id="time_zone" name="time_zone">
+            {{range .Zones}}<option value="{{.}}"{{if eq . $.TimeZone}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+        </div>
+        <table class="week">
+          <thead><tr><th scope="col">{{T "Day"}}</th><th scope="col">{{T "Bot on"}}</th><th scope="col">{{T "From"}}</th><th scope="col">{{T "To"}}</th></tr></thead>
+          <tbody>
+          {{range .Days}}
+            <tr>
+              <th scope="row" id="day{{.Index}}">{{.Name}}</th>
+              <td class="on"><input type="checkbox" name="day{{.Index}}_on" aria-labelledby="day{{.Index}}"{{if .On}} checked{{end}}></td>
+              <td data-label="{{T "From"}}"><input type="time" name="day{{.Index}}_from" value="{{.From}}" required aria-label="{{T "%s from" .Name}}"></td>
+              <td data-label="{{T "To"}}"><input type="time" name="day{{.Index}}_to" value="{{.To}}" required aria-label="{{T "%s to" .Name}}">{{if .Overnight}} <span class="badge">{{T "next day"}}</span>{{end}}</td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+      </fieldset>
+      <div class="card-foot"><button type="submit" class="primary">{{T "Save"}}</button></div>
+    </section>
+  </form>
+  <p class="hint">{{T "Chats already handed to your team stay with them. Chatwoot's own business hours only send an away message; they do not switch the bot."}}</p>
+  {{end}}
+</main>
+</div>
+</body>
+</html>

@@ -133,5 +133,12 @@ func (b *Bot) flush(ctx context.Context, log *slog.Logger, j Job) {
 	}
 	tr := b.startTurn(ev, strings.Join(texts, "\n"))
 	defer b.finishTurn(tr)
+	// The owner may have switched the bot off, or its hours ended, while
+	// the reply waited.
+	if !b.botOn(ctx, log, acct) {
+		tr.Outcome = "handoff:" + ReasonBotOff
+		b.handOffBotOff(ctx, log, acct, ev.Inbox.ID, conv)
+		return
+	}
 	b.reply(ctx, log, acct, ev.Inbox.ID, conv, tr, images)
 }
