@@ -10,6 +10,7 @@ package messenger
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -31,6 +32,7 @@ type Referral struct {
 type Sighting struct {
 	PageID   string
 	PSID     string
+	Key      string // identifies the event, so a retry of it is kept once
 	Referral Referral
 }
 
@@ -62,6 +64,7 @@ type payload struct {
 			Timestamp int64        `json:"timestamp"`
 			Referral  *rawReferral `json:"referral"`
 			Message   *struct {
+				MID      string       `json:"mid"`
 				IsEcho   bool         `json:"is_echo"`
 				Referral *rawReferral `json:"referral"`
 			} `json:"message"`
@@ -100,7 +103,11 @@ func ParseReferrals(body []byte) []Sighting {
 			if r.Source == "" && r.Ref == "" && r.AdID == "" {
 				continue
 			}
-			out = append(out, Sighting{PageID: Digits(e.ID, maxID), PSID: psid, Referral: r})
+			key := fmt.Sprintf("%s:%d:%s:%s:%s", psid, m.Timestamp, r.Source, r.AdID, r.Ref)
+			if m.Message != nil && m.Message.MID != "" {
+				key = "mid:" + m.Message.MID
+			}
+			out = append(out, Sighting{PageID: Digits(e.ID, maxID), PSID: psid, Key: key, Referral: r})
 		}
 	}
 	return out
@@ -159,7 +166,7 @@ func Text(s string, max int) string {
 			break
 		}
 		switch {
-		case unicode.IsSpace(c) || unicode.IsControl(c) || strings.ContainsRune("\"'`<>[]{}#", c):
+		case unicode.IsSpace(c) || unicode.IsControl(c) || strings.ContainsRune("\"'`<>[]{}#“”„‟«»‘’‚‹›＂＇", c):
 			space = b.Len() > 0
 			continue
 		case unicode.Is(unicode.Cf, c): // zero-width and direction marks

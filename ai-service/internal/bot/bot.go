@@ -135,7 +135,7 @@ type Bot struct {
 	mu      sync.Mutex
 	pending map[convKey]*pendingReply // replies waiting for a burst to end
 	closed  bool                      // set by Close; no new waiting reply is queued
-	origins map[convKey]Origin        // where each chat's customer came from (origin.go)
+	origins map[convKey]knownOrigin   // where each chat's customer came from (origin.go)
 }
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.

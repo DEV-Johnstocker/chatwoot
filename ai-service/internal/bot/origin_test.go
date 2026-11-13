@@ -70,7 +70,7 @@ func systemText(l *fakeLLM) string {
 func TestOrigin_AdReferralIsSavedAndTold(t *testing.T) {
 	// Arrange
 	cw, l, p := &originChatwoot{}, &fakeLLM{reply: "ok"}, &messenger.Pending{}
-	p.Put("251", messenger.Referral{Source: "ADS", AdID: "1202", AdTitle: "AutoCut โปร", Ref: "nov", PostID: "1_2"})
+	p.Put("251", "", messenger.Referral{Source: "ADS", AdID: "1202", AdTitle: "AutoCut โปร", Ref: "nov", PostID: "1_2"})
 	b := newOriginBot(cw, l, p)
 
 	// Act
@@ -135,7 +135,7 @@ func TestOrigin_SavedAttributesAreCleanedForThePrompt(t *testing.T) {
 func TestOrigin_OtherChannelsAndStrangersGetNothing(t *testing.T) {
 	// Arrange
 	cw, l, p := &originChatwoot{}, &fakeLLM{reply: "ok"}, &messenger.Pending{}
-	p.Put("251", messenger.Referral{Source: "ADS", AdID: "1202"})
+	p.Put("251", "", messenger.Referral{Source: "ADS", AdID: "1202"})
 	b := newOriginBot(cw, l, p)
 	web := messengerMsg("hi", "251", nil)
 	web.Event.Conversation.Channel = "Channel::WebWidget"
@@ -156,7 +156,7 @@ func TestOrigin_OtherChannelsAndStrangersGetNothing(t *testing.T) {
 func TestOrigin_LinkReferralAndForget(t *testing.T) {
 	// Arrange
 	cw, l, p := &originChatwoot{}, &fakeLLM{reply: "ok"}, &messenger.Pending{}
-	p.Put("251", messenger.Referral{Source: "SHORTLINK", Ref: "Workshop-Dec"})
+	p.Put("251", "", messenger.Referral{Source: "SHORTLINK", Ref: "Workshop-Dec"})
 	b := newOriginBot(cw, l, p)
 
 	// Act
@@ -173,6 +173,38 @@ func TestOrigin_LinkReferralAndForget(t *testing.T) {
 	}
 	if before.Empty() || !b.originOf(1, 7).Empty() {
 		t.Error("origin should be known, then forgotten when the chat is resolved")
+	}
+}
+
+func TestOrigin_NewReferralBlanksTheOldAdsAttributes(t *testing.T) {
+	// Arrange: Chatwoot merges attributes, so every key must be sent.
+	cw, l, p := &originChatwoot{}, &fakeLLM{reply: "ok"}, &messenger.Pending{}
+	p.Put("251", "", messenger.Referral{Source: "SHORTLINK", Ref: "bio"})
+	b := newOriginBot(cw, l, p)
+
+	// Act
+	b.Process(context.Background(), messengerMsg("hi", "251", map[string]any{AttrAdID: "1202", AttrAdTitle: "Old ad"}))
+
+	// Assert
+	if v, ok := cw.attrs[AttrAdID]; !ok || v != "" {
+		t.Errorf("ad_id = %q (sent %v), want blank so the old ad is cleared", v, ok)
+	}
+	if v, ok := cw.attrs[AttrAdTitle]; !ok || v != "" || cw.attrs[AttrAdRef] != "bio" {
+		t.Errorf("attrs = %v", cw.attrs)
+	}
+	if strings.Contains(systemText(l), "Old ad") {
+		t.Error("the old ad must not reach the prompt")
+	}
+}
+
+func TestOrigin_ExpiresAfterTTL(t *testing.T) {
+	// Arrange
+	b := newOriginBot(&originChatwoot{}, &fakeLLM{reply: "ok"}, nil)
+	b.origins = map[convKey]knownOrigin{{1, 7}: {Origin{AdID: "5"}, time.Now().Add(-originTTL - time.Minute)}}
+
+	// Act + Assert
+	if !b.originOf(1, 7).Empty() {
+		t.Error("an origin older than the TTL must be ignored")
 	}
 }
 

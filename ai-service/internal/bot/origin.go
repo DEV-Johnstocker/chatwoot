@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/messenger"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webhook"
@@ -107,10 +108,21 @@ func (b *Bot) noteOrigin(ctx context.Context, log *slog.Logger, ev webhook.Event
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.origins == nil {
-		b.origins = map[convKey]Origin{}
+		b.origins = map[convKey]knownOrigin{}
 	}
-	if !o.Empty() { // keep what this process already knows when the attributes are missing
-		b.origins[convKey{acct, conv}] = o
+	now := time.Now()
+	if len(b.origins) >= maxOrigins {
+		for k, v := range b.origins {
+			if now.Sub(v.at) > originTTL {
+				delete(b.origins, k)
+			}
+		}
+	}
+	// Empty attributes do not clear a known origin: a quick second message
+	// can carry attributes from before this process saved them. A cleared
+	// origin ends with the TTL or when the chat is resolved.
+	if !o.Empty() {
+		b.origins[convKey{acct, conv}] = knownOrigin{o, now}
 	}
 }
 
@@ -118,12 +130,9 @@ func (b *Bot) saveOrigin(ctx context.Context, log *slog.Logger, acct, conv int64
 	o := Origin{Source: r.Source, AdID: r.AdID, AdTitle: r.AdTitle, Ref: r.Ref}
 	log = log.With("source", r.Source, "ad_id", r.AdID)
 	if setter, ok := b.opts.Chatwoot.(AttributeSetter); ok {
+		// All five keys, blanks included: Chatwoot merges, so a key left out
+		// would keep an older ad's value next to this referral's.
 		attrs := map[string]string{AttrAdSource: r.Source, AttrAdID: r.AdID, AttrAdTitle: r.AdTitle, AttrAdRef: r.Ref, AttrAdPost: r.PostID}
-		for k, v := range attrs {
-			if v == "" {
-				delete(attrs, k)
-			}
-		}
 		if err := setter.SetConversationAttributes(ctx, acct, conv, attrs); err != nil {
 			log.Warn("ad origin not saved", "error", err)
 		}
@@ -139,8 +148,25 @@ func (b *Bot) saveOrigin(ctx context.Context, log *slog.Logger, acct, conv int64
 func (b *Bot) originOf(acct, conv int64) Origin {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.origins[convKey{acct, conv}]
+	v, ok := b.origins[convKey{acct, conv}]
+	if !ok || time.Since(v.at) > originTTL {
+		return Origin{}
+	}
+	return v.o
 }
+
+// knownOrigin is an origin and when it was last seen. Entries older than
+// originTTL are ignored and dropped once the map is large, so chats that are
+// never resolved cannot grow it without bound.
+type knownOrigin struct {
+	o  Origin
+	at time.Time
+}
+
+const (
+	originTTL  = 24 * time.Hour // like the chat memory
+	maxOrigins = 10000
+)
 
 func (b *Bot) forgetOrigin(acct, conv int64) {
 	b.mu.Lock()

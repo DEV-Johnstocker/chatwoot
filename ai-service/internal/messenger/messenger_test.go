@@ -131,8 +131,8 @@ func TestPending_TakeOnceAndExpire(t *testing.T) {
 	// Arrange: expiry counts from receipt, not from Meta's (old) timestamp.
 	now := time.Date(2026, 11, 13, 9, 0, 0, 0, time.UTC)
 	p := &Pending{TTL: time.Hour, Now: func() time.Time { return now }}
-	p.Put("1", Referral{AdID: "5", At: now.Add(-24 * time.Hour)})
-	p.Put("2", Referral{AdID: "6"})
+	p.Put("1", "", Referral{AdID: "5", At: now.Add(-24 * time.Hour)})
+	p.Put("2", "", Referral{AdID: "6"})
 	now = now.Add(30 * time.Minute)
 
 	// Act
@@ -153,12 +153,12 @@ func TestPending_CapDropsOldest(t *testing.T) {
 	p := &Pending{Max: 2, Now: func() time.Time { return now }}
 
 	// Act
-	p.Put("a", Referral{Ref: "a"})
+	p.Put("a", "", Referral{Ref: "a"})
 	now = now.Add(time.Second)
-	p.Put("b", Referral{Ref: "b"})
+	p.Put("b", "", Referral{Ref: "b"})
 	now = now.Add(time.Second)
-	p.Put("c", Referral{Ref: "c"})
-	p.Put("", Referral{Ref: "nobody"})
+	p.Put("c", "", Referral{Ref: "c"})
+	p.Put("", "", Referral{Ref: "nobody"})
 
 	// Assert
 	if p.Len() != 2 {
@@ -226,9 +226,10 @@ func TestRelay_SignedDeliveryReachesChatwootUnchanged(t *testing.T) {
 
 	// Act
 	rec := post(mux, adMessage, h)
+	retry := post(mux, adMessage, h) // Meta retrying the same delivery
 
 	// Assert
-	if rec.Code != http.StatusOK || cw.calls != 1 {
+	if rec.Code != http.StatusOK || retry.Code != http.StatusOK || cw.calls != 2 {
 		t.Fatalf("status=%d calls=%d", rec.Code, cw.calls)
 	}
 	if !bytes.Equal(cw.body, []byte(adMessage)) {
@@ -242,6 +243,13 @@ func TestRelay_SignedDeliveryReachesChatwootUnchanged(t *testing.T) {
 	}
 	if r, ok := p.Take("25000000000000001"); !ok || r.AdID != "120200000000000001" {
 		t.Errorf("referral not kept: %+v", r)
+	}
+	if p.Len() != 0 {
+		t.Error("the retry must not put the used referral back")
+	}
+	again := post(mux, adMessage, h)
+	if _, ok := p.Take("25000000000000001"); ok || again.Code != http.StatusOK {
+		t.Error("a replay after use must still reach Chatwoot but not be kept again")
 	}
 }
 
@@ -320,6 +328,49 @@ func TestRelay_TooLargeBody(t *testing.T) {
 	// Assert
 	if rec.Code != http.StatusRequestEntityTooLarge || cw.calls != 0 {
 		t.Errorf("status=%d calls=%d", rec.Code, cw.calls)
+	}
+}
+
+func TestRelay_HandshakeRefusesMalformedChecksWithoutCallingChatwoot(t *testing.T) {
+	cases := map[string]string{
+		"no params":    "",
+		"no token":     "?hub.mode=subscribe&hub.challenge=1",
+		"wrong mode":   "?hub.mode=unsubscribe&hub.verify_token=t&hub.challenge=1",
+		"huge token":   "?hub.mode=subscribe&hub.challenge=1&hub.verify_token=" + strings.Repeat("a", 300),
+		"no challenge": "?hub.mode=subscribe&hub.verify_token=t",
+	}
+	for name, q := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			cw := &chatwoot{}
+			_, _, mux := newRelay(t, cw)
+			rec := httptest.NewRecorder()
+
+			// Act
+			mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, RelayPath+q, nil))
+
+			// Assert
+			if rec.Code != http.StatusBadRequest || cw.calls != 0 {
+				t.Errorf("status=%d calls=%d", rec.Code, cw.calls)
+			}
+		})
+	}
+}
+
+func TestRelay_FailureLogHasNoVerifyToken(t *testing.T) {
+	// Arrange
+	var logs bytes.Buffer
+	r, _, mux := newRelay(t, &chatwoot{})
+	r.Target = "http://127.0.0.1:1/bot"
+	r.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	rec := httptest.NewRecorder()
+
+	// Act
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, RelayPath+"?hub.mode=subscribe&hub.verify_token=SECRET-TOKEN&hub.challenge=1", nil))
+
+	// Assert
+	if rec.Code != http.StatusBadGateway || strings.Contains(logs.String(), "SECRET-TOKEN") || !strings.Contains(logs.String(), "127.0.0.1:1") {
+		t.Errorf("status=%d logs=%s", rec.Code, logs.String())
 	}
 }
 

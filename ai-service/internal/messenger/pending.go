@@ -16,7 +16,8 @@ type Pending struct {
 	Now func() time.Time
 
 	mu    sync.Mutex
-	items map[string]entry // by PSID
+	items map[string]entry     // by PSID
+	seen  map[string]time.Time // event keys already kept, so a retry is not kept again
 }
 
 // entry is a referral and when we received it; expiry counts from receipt,
@@ -26,17 +27,35 @@ type entry struct {
 	at time.Time
 }
 
-// Put keeps r for the customer psid, replacing an older one.
-func (p *Pending) Put(psid string, r Referral) {
+// Put keeps r for the customer psid, replacing an older one. key names the
+// Meta event; an event already kept within the TTL (Meta retrying a delivery,
+// or a replayed body) is skipped and Put reports false.
+func (p *Pending) Put(psid, key string, r Referral) bool {
 	if psid == "" {
-		return
+		return false
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.items == nil {
-		p.items = map[string]entry{}
+		p.items, p.seen = map[string]entry{}, map[string]time.Time{}
 	}
 	now := p.now()
+	if key != "" {
+		if at, ok := p.seen[key]; ok && now.Sub(at) <= p.ttl() {
+			return false
+		}
+		if len(p.seen) >= p.max() {
+			for k, at := range p.seen {
+				if now.Sub(at) > p.ttl() {
+					delete(p.seen, k)
+				}
+			}
+			if len(p.seen) >= p.max() {
+				clear(p.seen) // worst case a retry is kept twice; never unbounded
+			}
+		}
+		p.seen[key] = now
+	}
 	if _, ok := p.items[psid]; !ok && len(p.items) >= p.max() {
 		p.dropExpired(now)
 		if len(p.items) >= p.max() {
@@ -44,6 +63,7 @@ func (p *Pending) Put(psid string, r Referral) {
 		}
 	}
 	p.items[psid] = entry{r: r, at: now}
+	return true
 }
 
 // Take returns and removes the referral for psid, if one is waiting and

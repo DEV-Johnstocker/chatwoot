@@ -72,6 +72,7 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
 | GET/POST | `/admin/knowledge` | Knowledge base page (also needs `DATABASE_URL`) |
 | GET/POST | `/webhooks/meta` | Facebook Page feed webhook (requires valid `X-Hub-Signature-256`; only when the `META_*` settings are set) |
 | GET/POST | `/admin/comments` | Comment leads: send one private reply or dismiss |
+| GET/POST | `/webhooks/messenger` | Messenger relay: keeps the ad a customer came from, passes the delivery to Chatwoot's `/bot` (requires valid `X-Hub-Signature-256`; only when `MESSENGER_RELAY_URL` and `MESSENGER_APP_SECRET` are set; see `internal/messenger/messenger.contract.md`) |
 
 ## Configuration
 

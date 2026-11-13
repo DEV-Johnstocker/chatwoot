@@ -19,6 +19,9 @@ import (
 // callback URL points at ai-service instead of Chatwoot's /bot.
 const RelayPath = "/webhooks/messenger"
 
+// maxHubParam caps each hub.* parameter of the subscription check.
+const maxHubParam = 256
+
 // MaxBodyBytes caps one delivery. Meta batches events, but a batch is far
 // smaller than this.
 const MaxBodyBytes = 1 << 20
@@ -50,18 +53,26 @@ func (h *Relay) Routes(mux *http.ServeMux) {
 
 // handshake passes Meta's subscription check to Chatwoot, which owns the
 // verify token; ai-service never sees or stores it.
+// Only a well-formed subscription check is passed on, so anyone's GET cannot
+// make ai-service call Chatwoot.
 func (h *Relay) handshake(w http.ResponseWriter, r *http.Request) {
+	in := r.URL.Query()
 	q := url.Values{}
 	for _, k := range []string{"hub.mode", "hub.verify_token", "hub.challenge"} {
-		if v := r.URL.Query().Get(k); v != "" {
-			q.Set(k, v)
+		v := in.Get(k)
+		if v == "" || len(v) > maxHubParam {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
 		}
+		q.Set(k, v)
 	}
-	target := h.Target
-	if len(q) > 0 {
-		target += "?" + q.Encode()
+	if q.Get("hub.mode") != "subscribe" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
 	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.Target+"?"+q.Encode(), nil)
 	if err != nil {
 		http.Error(w, "bad target", http.StatusInternalServerError)
 		return
@@ -83,7 +94,9 @@ func (h *Relay) receive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, s := range ParseReferrals(body) {
-		h.Pending.Put(s.PSID, s.Referral)
+		if !h.Pending.Put(s.PSID, s.Key, s.Referral) {
+			continue // a retry or replay of a referral already kept
+		}
 		h.Logger.Info("messenger referral kept", "page_id", s.PageID, "source", s.Referral.Source, "ad_id", s.Referral.AdID)
 	}
 	// Chatwoot must get the delivery even if Meta hangs up first.
@@ -107,6 +120,12 @@ func (h *Relay) receive(w http.ResponseWriter, r *http.Request) {
 func (h *Relay) forward(w http.ResponseWriter, req *http.Request) {
 	resp, err := h.client().Do(req)
 	if err != nil {
+		// url.Error's text holds the full URL, and the handshake's query holds
+		// Chatwoot's verify token: log the host and the cause only.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
 		h.Logger.Error("messenger relay to chatwoot failed", "host", req.URL.Host, "error", err)
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
