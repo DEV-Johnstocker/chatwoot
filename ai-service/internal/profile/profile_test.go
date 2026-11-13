@@ -165,3 +165,21 @@ func TestPromptFenceKeepsOrdinaryHashesAndCatchesHiddenTags(t *testing.T) {
 		t.Fatalf("hidden tag or marker survived:\n%s", inside)
 	}
 }
+
+func TestBankTransfer_ValidatedAndInPrompt(t *testing.T) {
+	// Arrange
+	ok := Profile{AccountID: 1, BankTransfer: "  ไทยพาณิชย์ 9952310945 \r\n"}.Normalize()
+	long := Profile{AccountID: 1, BankTransfer: strings.Repeat("9", MaxBankRunes+1)}
+
+	// Act
+	okErr, longErr := ok.Validate(), long.Validate()
+	got := Prompt("BASE", ok)
+
+	// Assert
+	if okErr != nil || longErr == nil {
+		t.Fatalf("Validate: ok=%v long=%v", okErr, longErr)
+	}
+	if ok.Empty() || !strings.Contains(got, BankMarker) || strings.Contains(got, "9952310945") {
+		t.Errorf("prompt lacks the bank section:\n%s", got)
+	}
+}

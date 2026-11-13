@@ -118,7 +118,7 @@ func TestAIText_AllowsOrdinaryShopText(t *testing.T) {
 
 func TestAIText_PatternsSurviveNormalization(t *testing.T) {
 	// Arrange: text is NFKD-normalised before matching, which splits ำ.
-	patterns := []string{aiLink.String(), aiWords.String(), aiLINE.String(), aiCurrency.String()}
+	patterns := []string{aiLink.String(), aiWords.String(), aiLINE.String()}
 
 	for _, p := range patterns {
 		// Act

@@ -143,7 +143,7 @@ func TestPostgres_BusinessProfileRoundTrip(t *testing.T) {
 	// Act: an unknown account reads as empty, then save twice (upsert).
 	empty, errEmpty := store.Get(ctx, 7)
 	errFirst := store.Save(ctx, profile.Profile{AccountID: 7, BusinessName: "First", Rules: "ห้ามให้ส่วนลด", Features: profile.Features{Voice: true, Stickers: true}})
-	errSecond := store.Save(ctx, profile.Profile{AccountID: 7, BusinessName: "Johnstocker AI Studio", About: "คอร์สออนไลน์"})
+	errSecond := store.Save(ctx, profile.Profile{AccountID: 7, BusinessName: "Johnstocker AI Studio", About: "คอร์สออนไลน์", BankTransfer: "ไทยพาณิชย์ 9952310945"})
 	errInvalid := store.Save(ctx, profile.Profile{AccountID: 0, BusinessName: "x"})
 	got, errGet := store.Get(ctx, 7)
 	other, _ := store.Get(ctx, 8)
@@ -160,7 +160,7 @@ func TestPostgres_BusinessProfileRoundTrip(t *testing.T) {
 	if errInvalid == nil {
 		t.Error("saving account 0 succeeded, want a validation error")
 	}
-	if got.BusinessName != "Johnstocker AI Studio" || got.About != "คอร์สออนไลน์" || got.Rules != "" || got.UpdatedAt.IsZero() ||
+	if got.BusinessName != "Johnstocker AI Studio" || got.About != "คอร์สออนไลน์" || got.BankTransfer != "ไทยพาณิชย์ 9952310945" || got.Rules != "" || got.UpdatedAt.IsZero() ||
 		got.Features != (profile.Features{}) {
 		t.Errorf("after upsert = %+v", got)
 	}
@@ -940,5 +940,29 @@ func TestMigrate_V15KeepsTheOneProfileRowRule(t *testing.T) {
 	}
 	if err != nil || kindChecks != 1 {
 		t.Fatalf("kind checks allowing source = %d, %v; want exactly 1", kindChecks, err)
+	}
+}
+
+func TestMigrate_V16AddsAnEmptyBankTransfer(t *testing.T) {
+	// Arrange: a v15 database with a saved profile and no bank column.
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `ALTER TABLE business_profiles DROP COLUMN bank_transfer;
+		INSERT INTO business_profiles (account_id, business_name) VALUES (1, 'Shop');
+		UPDATE kb_schema_version SET version = 15;`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	err := db.Migrate(ctx)
+	again := db.Migrate(ctx)
+	got, getErr := (&profile.Postgres{Pool: db.Pool}).Get(ctx, 1)
+
+	// Assert
+	if err != nil || again != nil || getErr != nil {
+		t.Fatalf("migrate %v, again %v, get %v", err, again, getErr)
+	}
+	if got.BusinessName != "Shop" || got.BankTransfer != "" {
+		t.Errorf("after v16 = %+v, want the profile kept with an empty bank field", got)
 	}
 }

@@ -74,11 +74,13 @@ func (w *Worker) sortFirst(ctx context.Context, c Comment) (out Comment, skipped
 	return c, true, true
 }
 
-// profileFor is the business profile for the comment's account, or an empty
-// one when there is no profile store.
+// profileFor is the business profile for the comment's account, without the
+// bank account (comments never quote it), or an empty one when there is no
+// profile store.
 func (w *Worker) profileFor(ctx context.Context, c Comment) (profile.Profile, error) {
 	if w.Profiles == nil {
 		return profile.Profile{}, nil
 	}
-	return w.Profiles.Get(ctx, c.AccountID)
+	p, err := w.Profiles.Get(ctx, c.AccountID)
+	return withoutBank(p), err
 }

@@ -22,7 +22,12 @@ const (
 	MaxNameRunes  = 120
 	MaxFieldRunes = 4000
 	MaxRulesRunes = 10000
+	MaxBankRunes  = 300
 )
+
+// BankMarker is what the model writes where the bank account goes; the bot
+// replaces it with BankTransfer, so the model never types the digits.
+const BankMarker = "[[BANK]]"
 
 // Profile is one account's business profile. Empty fields are left out of the prompt.
 type Profile struct {
@@ -32,6 +37,7 @@ type Profile struct {
 	Tone         string // voice, persona, language preferences
 	Contact      string // how to buy, pay, or reach staff
 	Rules        string // do and don't
+	BankTransfer string // bank, account name and number the bot may send as written (only the owner sets it)
 	Features     Features
 	UpdatedAt    time.Time
 }
@@ -45,7 +51,7 @@ type Features struct {
 
 // Empty reports whether no field is filled.
 func (p Profile) Empty() bool {
-	return p.BusinessName == "" && p.About == "" && p.Tone == "" && p.Contact == "" && p.Rules == ""
+	return p.BusinessName == "" && p.About == "" && p.Tone == "" && p.Contact == "" && p.Rules == "" && p.BankTransfer == ""
 }
 
 // Normalize trims every field and turns CRLF into LF.
@@ -58,6 +64,7 @@ func (p Profile) Normalize() Profile {
 	p.Tone = clean(p.Tone)
 	p.Contact = clean(p.Contact)
 	p.Rules = clean(p.Rules)
+	p.BankTransfer = clean(p.BankTransfer)
 	return p
 }
 
@@ -82,6 +89,7 @@ func (p Profile) Validate() error {
 	check("tone", p.Tone, MaxFieldRunes)
 	check("contact", p.Contact, MaxFieldRunes)
 	check("rules", p.Rules, MaxRulesRunes)
+	check("bank transfer", p.BankTransfer, MaxBankRunes)
 	return errors.Join(errs...)
 }
 
@@ -109,6 +117,10 @@ func Prompt(base string, p Profile) string {
 	section("How customers buy or reach staff", p.Contact)
 	section("Rules", p.Rules)
 	b.WriteString("</business_profile>")
+	if p.BankTransfer != "" {
+		b.WriteString("\n\n# Bank transfer\nThe business takes bank transfers. Where the bank account belongs in a reply, write " + BankMarker +
+			" on its own line: the system puts in the bank, account name and number exactly as the owner wrote them. Never write a bank account number yourself.")
+	}
 	return b.String()
 }
 

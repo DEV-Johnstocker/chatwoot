@@ -77,6 +77,8 @@ func init() {
 		"Voice, length, emoji, polite particles.":         "น้ำเสียง ความยาว อีโมจิ คำลงท้าย",
 		"How customers buy or reach staff":                "ลูกค้าซื้อหรือติดต่อทีมงานอย่างไร",
 		"Links, channels and hours the bot may give out.": "ลิงก์ ช่องทาง และเวลาทำการที่บอตบอกลูกค้าได้",
+		"Bank transfer": "บัญชีสำหรับโอนเงิน",
+		"Bank, account name and number. The bot sends them exactly as written; a reply with any other account number is stopped and passed to staff. Leave empty and the bot hands bank transfers to staff.": "ธนาคาร ชื่อบัญชี และเลขบัญชี บอตส่งให้ลูกค้าตามที่เขียนไว้ทุกตัวอักษร ถ้าคำตอบมีเลขบัญชีอื่น ระบบจะไม่ส่งและส่งต่อให้ทีมงาน ถ้าเว้นว่าง บอตจะส่งเรื่องโอนเงินให้ทีมงาน",
 		"Rules": "กฎ",
 		"Things the bot must or must not do for this business.": "สิ่งที่บอตต้องทำหรือห้ามทำสำหรับธุรกิจนี้",
 		"AI features": "ฟีเจอร์ AI",

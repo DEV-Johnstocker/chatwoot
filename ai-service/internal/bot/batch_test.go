@@ -277,7 +277,8 @@ func TestInstantReplyDoesNotCancelTheWaitingReply(t *testing.T) {
 	_ = b.Enqueue(msgN(1, "สนใจคอร์ส"))
 	time.Sleep(20 * time.Millisecond)
 	_ = b.Enqueue(greeting)
-	waitFor(t, func() bool { n, _ := l.snapshot(); return n > 0 })
+	// Wait for the reply itself: the LLM call is counted before it is posted.
+	waitFor(t, func() bool { return strings.Contains(cw.joined(), "msg:") })
 
 	// Assert
 	if calls, _ := l.snapshot(); calls != 1 || !strings.Contains(cw.joined(), "msg:ตอบรวมครับ") {
