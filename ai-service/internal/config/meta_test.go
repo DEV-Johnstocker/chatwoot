@@ -98,3 +98,39 @@ func TestLoad_CommentReviewer(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_CommentAutoSend(t *testing.T) {
+	cases := map[string]struct {
+		env     map[string]string
+		want    bool
+		wantErr string
+	}{
+		"off by default": {map[string]string{}, false, ""},
+		"on with jev":    {map[string]string{"COMMENT_AUTO_SEND": "on", "COMMENT_REVIEWER": "jev", "TYPESAFE_API_KEY": "k"}, true, ""},
+		"on without jev": {map[string]string{"COMMENT_AUTO_SEND": "on", "COMMENT_REVIEWER": "llm"}, false, "needs COMMENT_REVIEWER=jev"},
+		"unknown value":  {map[string]string{"COMMENT_AUTO_SEND": "yes"}, false, "off or on"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			env := requiredEnv()
+			for k, v := range c.env {
+				env[k] = v
+			}
+
+			// Act
+			cfg, err := Load(lookupFrom(env))
+
+			// Assert
+			if c.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+					t.Fatalf("err %v, want %q", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil || cfg.CommentAutoSend != c.want {
+				t.Fatalf("auto %v err %v, want %v", cfg.CommentAutoSend, err, c.want)
+			}
+		})
+	}
+}

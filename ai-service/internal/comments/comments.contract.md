@@ -70,9 +70,43 @@ become customers.
   The question shape follows TypeSafe's System One primitives (Choice and Noul), so `COMMENT_REVIEWER=jev` and `COMMENT_REVIEWER=llm` answer the same contract.
 - Off unless `META_APP_SECRET`, `META_VERIFY_TOKEN`, `META_PAGE_ID` and `DATABASE_URL` are set. Without `META_PAGE_TOKEN` the queue fills but Send is refused.
 
+## Auto-send (owner decision, 2026-11-14)
+
+John chose to let Jev send the safest replies without a click, based on the
+mock benchmark (Jev 96%, 0 false sends) and the 17 STAGING test comments.
+`COMMENT_AUTO_SEND=on` (needs `COMMENT_REVIEWER=jev` and `META_PAGE_TOKEN`)
+turns it on per environment; default off. `Queue.TryAutoSend` runs right
+after a draft passes review and sends the stored draft only when **all** hold:
+
+- the comment still waits for the owner, and its intent is lead or question
+  (complaints and "other" always wait);
+- Jev passed every check (`Review.Pass`), which includes the code rules that
+  hold any draft with a link, a long number, a price or a percentage;
+- the 7-day reply window is open and the draft is not empty;
+- the commenter has not sent a chat message in the last 24 hours
+  (`recentchat.Chats`, fed by every signed Chatwoot `message_created`). The
+  comment author's id equals their Messenger chat id (page-scoped; checked on
+  STAGING, 2026-11-14, `28980592198262942` in both). The record lives in
+  memory, so for 24 hours after a restart every comment waits for the owner,
+  and so does every comment after 6 hours with no customer message in the
+  account (Chatwoot may have stopped sending events);
+- this person got no private reply in the account in the last 30 days (comments are
+  kept 30 days), and no reply to them is being sent right now;
+- at most 20 automatic replies per account per hour, and Jev's own reading of the
+  comment (intent) agrees with the sorter's.
+
+The reply is recorded with `decided_by = auto-send`. Auto-sent comments are
+counted apart (`ReviewStats.AutoSent`) so the agreement numbers keep
+comparing Jev with the owner's own decisions only. `/admin/comments` says
+auto-send is on, how many it sent, and marks those rows "Sent automatically".
+
+Gates: `go test ./internal/comments/ ./internal/recentchat/ ./internal/server/ ./internal/config/ ./internal/admin/`
+(`TestTryAutoSend_*`, `TestWorker_OffersOnlyPassedReviewsToAutoSend`,
+`TestWebhook_RecordsCustomerChatMessagesOnly`, `TestLoad_CommentAutoSend`,
+`TestComments_AutoSendBannerAndSentRow`).
+
 ## Not in scope (later, each needs the owner's decision)
 
-- Automatic sending without approval. The shadow reviewer only collects evidence for that decision. Turning it on is a separate change and the owner's call, after the agreement numbers on real comments.
 - Public replies under the comment, which need `pages_manage_engagement`.
 - Hiding spam comments.
 - Instagram comments.
@@ -84,7 +118,7 @@ become customers.
 
 - A captured, signed `add` replayed **after** the 30-day purge is stored again. It cannot be sent, because the 7-day window uses Meta's signed `created_time`; it costs one model call and shows as too late to reply.
 - Meta puts `hub.verify_token` in the subscription check's query string, so proxy access logs may record it. It only lets someone complete the handshake. Rotate it if those logs are shared.
-- **Prompt injection can reach the reviewer's scores.** The comment and the draft are part of its input, so a well-crafted comment can push every check toward "fine". Today the result is only a hint on `/admin/comments`. `Review.Pass` must never gate a real send until the benchmark has injection cases in both the comment and the draft, and the shadow numbers on real comments hold up.
+- **Prompt injection can reach the reviewer's scores.** The comment and the draft are part of its input, so a well-crafted comment can push every check toward "fine". Since 2026-11-14 `Review.Pass` gates real sends when `COMMENT_AUTO_SEND=on`. The owner accepted this before shadow numbers on real comments exist. Limits on the damage: the code rules (no links, long numbers, prices or percentages) are not model output and cannot be talked past; only leads and questions are sent; one automatic reply per person; STAGING first. Turn it off (`COMMENT_AUTO_SEND=off`, redeploy) if the "Sent automatically" rows show a bad reply.
 - **New data flow when `COMMENT_REVIEWER=jev`.** The commenter's name, the comment, the draft and the business profile go to TypeSafe (`api.typesafe.ai`), a processor the service did not use before. It is opt-in, and production stays on `llm` (the existing provider). Before switching, add TypeSafe to the privacy policy and to the Meta App Review data-handling answers. `llm` mode sends the same data to the existing provider a second time, so it costs one extra model call per draft.
 - One Page per service: `comment_id` is unique across the table and `Forget` is not account-scoped. Make both per account before adding a second Page.
 

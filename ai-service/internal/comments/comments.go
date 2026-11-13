@@ -188,6 +188,9 @@ type Store interface {
 	// LastReplies returns, for each of fromIDs that was sent a private reply
 	// in this account, the time of the latest one.
 	LastReplies(ctx context.Context, accountID int64, fromIDs []string) (map[string]time.Time, error)
+	// SendingTo reports whether a private reply to this person is being sent
+	// right now (a comment of theirs in StatusSending).
+	SendingTo(ctx context.Context, accountID int64, fromID string) (bool, error)
 	// ReviewStats compares the reviewer with the owner's decisions.
 	ReviewStats(ctx context.Context, accountID int64) (ReviewStats, error)
 	// Purge deletes comments received before cutoff and returns how many.
@@ -204,6 +207,9 @@ type ReviewStats struct {
 	TooLoose int
 	// TooStrict: the reviewer would have held a draft the owner sent unchanged.
 	TooStrict int
+	// AutoSent: replies auto-send sent. They are not owner decisions, so they
+	// are not in the counts above.
+	AutoSent int
 }
 
 // Agreement classifies one decided comment: "agreed", "too_loose" or
@@ -221,6 +227,10 @@ func Agreement(c Comment) string {
 
 func (s *ReviewStats) add(c Comment) {
 	if c.Review == nil || (c.Status != StatusSent && c.Status != StatusDismissed) {
+		return
+	}
+	if c.DecidedBy == AutoSentBy {
+		s.AutoSent++
 		return
 	}
 	s.Decided++

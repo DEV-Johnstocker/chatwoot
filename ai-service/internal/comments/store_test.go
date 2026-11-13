@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -317,6 +318,32 @@ func TestStore_SaveReviewAndStats(t *testing.T) {
 		}
 		if stats != (ReviewStats{Decided: 2, Agreed: 1, TooLoose: 1}) || other.Decided != 0 {
 			t.Fatalf("stats %+v other %+v", stats, other)
+		}
+	})
+}
+
+func TestStore_SendingToSeesOnlyInFlightRepliesOfThatPerson(t *testing.T) {
+	each(t, func(t *testing.T, db Store) {
+		// Arrange
+		ctx := context.Background()
+		id := "send-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+		c := scored(t, db, 5, id)
+		before, err1 := db.SendingTo(ctx, 5, "9999")
+
+		// Act
+		if _, err := db.Claim(ctx, 5, c.ID, c.Version); err != nil {
+			t.Fatal(err)
+		}
+		during, err2 := db.SendingTo(ctx, 5, "9999")
+		otherAccount, _ := db.SendingTo(ctx, 6, "9999")
+		otherPerson, _ := db.SendingTo(ctx, 5, "1234")
+		_ = db.Finish(ctx, c.ID, StatusSent, "hi", "owner", "")
+		after, _ := db.SendingTo(ctx, 5, "9999")
+
+		// Assert
+		if err1 != nil || err2 != nil || before || !during || otherAccount || otherPerson || after {
+			t.Fatalf("before %v during %v otherAccount %v otherPerson %v after %v errs %v %v",
+				before, during, otherAccount, otherPerson, after, err1, err2)
 		}
 	})
 }

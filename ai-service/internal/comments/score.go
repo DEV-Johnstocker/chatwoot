@@ -215,8 +215,11 @@ type Worker struct {
 	// choice to the drafter.
 	Sorter Sorter
 	// Reviewer, when set, reviews each new draft in shadow mode: its answer
-	// is stored next to the comment and never sends anything.
+	// is stored next to the comment; a pass is offered to AutoSend.
 	Reviewer Reviewer
+	// AutoSend, when set, gets each comment the reviewer passed and sends it
+	// if every auto-send rule allows (Queue.TryAutoSend).
+	AutoSend AutoSender
 	// Profiles gives the reviewer the business profile; nil reviews without it.
 	Profiles profile.Store
 	// Posts reads the post each comment was left on; nil drafts without it.
@@ -383,8 +386,33 @@ func (w *Worker) review(ctx context.Context, c Comment, intent Intent, draft str
 		w.Logger.Error("save comment review", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
 		return
 	}
-	w.Logger.Info("page comment reviewed (shadow)", "account_id", c.AccountID, "comment_id", c.CommentID,
+	w.Logger.Info("page comment reviewed", "account_id", c.AccountID, "comment_id", c.CommentID,
 		"would_send", r.Pass, "intent", string(intent), "reviewer_intent", string(r.Intent), "model", r.Model, "latency_ms", r.Latency.Milliseconds())
+	if r.Pass {
+		w.autoSend(ctx, c)
+	}
+}
+
+// AutoSender sends a reviewed comment's draft when the auto-send rules allow.
+type AutoSender interface {
+	TryAutoSend(ctx context.Context, accountID, id int64) (bool, string, error)
+}
+
+// autoSend offers a passed comment to auto-send. A failure leaves it waiting
+// for the owner, as before.
+func (w *Worker) autoSend(ctx context.Context, c Comment) {
+	if w.AutoSend == nil {
+		return
+	}
+	sent, why, err := w.AutoSend.TryAutoSend(ctx, c.AccountID, c.ID)
+	switch {
+	case err != nil:
+		w.Logger.Warn("auto-send page comment", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+	case sent:
+		w.Logger.Info("page comment auto-sent", "account_id", c.AccountID, "comment_id", c.CommentID)
+	default:
+		w.Logger.Info("page comment left for the owner", "account_id", c.AccountID, "comment_id", c.CommentID, "reason", why)
+	}
 }
 
 // withoutBank keeps the bank account out of comment drafts and the reviewer:

@@ -101,11 +101,15 @@ type Config struct {
 	MetaGraphVersion string // Graph API version, e.g. v24.0
 	// CommentReviewer is the shadow reviewer of drafted replies: off, llm
 	// (the main provider, or CommentReviewModel on it) or jev (TypeSafe).
-	// It only records what it would do; it never sends.
+	// It records what it would do; it sends only with CommentAutoSend.
 	CommentReviewer    string
 	CommentReviewModel string
 	TypeSafeAPIKey     string // for COMMENT_REVIEWER=jev (secret)
 	TypeSafeModel      string
+	// CommentAutoSend lets Jev send a private reply without the owner when
+	// every auto-send rule allows (comments.Queue.TryAutoSend). Needs
+	// COMMENT_REVIEWER=jev; sending also needs META_PAGE_TOKEN.
+	CommentAutoSend bool
 	// CommentPublicReply is posted under a comment, as the Page, after its
 	// private reply was sent and the owner ticked it; empty: off.
 	CommentPublicReply string
@@ -347,6 +351,16 @@ func loadMeta(cfg *Config, get func(key, def string) string, errs []error) []err
 		}
 	default:
 		errs = append(errs, errors.New("COMMENT_REVIEWER must be off, llm or jev"))
+	}
+	switch get("COMMENT_AUTO_SEND", "off") {
+	case "off":
+	case "on":
+		cfg.CommentAutoSend = true
+		if cfg.CommentReviewer != "jev" {
+			errs = append(errs, errors.New("COMMENT_AUTO_SEND=on needs COMMENT_REVIEWER=jev"))
+		}
+	default:
+		errs = append(errs, errors.New("COMMENT_AUTO_SEND must be off or on"))
 	}
 	n, err := strconv.ParseInt(get("META_ACCOUNT_ID", "1"), 10, 64)
 	if err != nil || n < 1 {

@@ -254,3 +254,15 @@ func (m *Memory) LastReplies(_ context.Context, accountID int64, fromIDs []strin
 	}
 	return out, nil
 }
+
+// SendingTo implements Store.
+func (m *Memory) SendingTo(_ context.Context, accountID int64, fromID string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, c := range m.rows {
+		if c.AccountID == accountID && c.FromID == fromID && c.Status == StatusSending {
+			return true, nil
+		}
+	}
+	return false, nil
+}

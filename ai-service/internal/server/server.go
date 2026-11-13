@@ -37,6 +37,23 @@ type Handler struct {
 	Now    func() time.Time
 	// Places records the account and inbox names of signed webhooks; nil skips it.
 	Places PlaceRecorder
+	// Chats records when each customer last sent a chat message, for comment
+	// auto-send (recentchat.Chats); nil skips it.
+	Chats ChatRecorder
+}
+
+// ChatRecorder remembers customers' last chat message (recentchat.Chats).
+type ChatRecorder interface {
+	Saw(accountID int64, id string, t time.Time)
+}
+
+// recordChat notes a customer's chat message from any signed event, before
+// filtering: chats staff handle count too.
+func (h *Handler) recordChat(ev webhook.Event, now time.Time) {
+	if h.Chats == nil || ev.Event != "message_created" || ev.MessageType != "incoming" || ev.Private {
+		return
+	}
+	h.Chats.Saw(ev.Account.ID, ev.Conversation.ContactInbox.SourceID, now)
 }
 
 // Routes returns the HTTP mux; callers may register more routes on it.
@@ -77,6 +94,7 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.recordPlace(r.Context(), ev)
+	h.recordChat(ev, now())
 
 	decision := webhook.Classify(ev)
 	if decision == webhook.Ignore {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/commentecho"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -50,6 +51,14 @@ type Queue struct {
 	// Echoes, when set, gets each sent reply's message id, so the bot can
 	// add a note to the Chatwoot chat the reply lands in.
 	Echoes EchoRecorder
+	// AutoSend lets TryAutoSend send reviewed drafts without the owner
+	// (COMMENT_AUTO_SEND=on). Chats tells it who may be chatting already;
+	// auto-send stays off without it.
+	AutoSend bool
+	Chats    ChatChecker
+
+	autoMu   sync.Mutex
+	autoSent map[int64][]time.Time // automatic replies of the last hour, per account
 }
 
 // PublicReplier answers a comment in public (Graph).
