@@ -156,7 +156,7 @@
   .biz .side { position: sticky; top: 24px; }
   .biz .side label.check:first-of-type { margin-top: 4px; }
   @media (max-width: 1100px) { .biz { grid-template-columns: minmax(0, 1fr); } .biz .side { position: static; } }
-  .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
+  .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; grid-auto-flow: row dense; }
   .img-card { margin: 0; }
   .img-card summary { list-style: none; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; gap: 10px; color: var(--text); font-weight: 400; min-height: 0; }
   .img-card summary::before { content: none; }
