@@ -11,7 +11,8 @@ import (
 
 // The reviewer is a second AI pass over each drafted reply. It runs in
 // shadow mode: it records whether it would send the draft unchanged, next to
-// what the owner actually does, and never sends anything itself.
+// what the owner actually does. It sends nothing itself; with auto-send on
+// (autosend.go) a pass can let the queue send the draft.
 //
 // Its questions are shaped like TypeSafe's System One primitives (one Choice,
 // several yes/no "Noul" checks, each a probability), so a chat LLM and Jev

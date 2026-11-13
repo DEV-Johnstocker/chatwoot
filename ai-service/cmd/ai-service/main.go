@@ -35,6 +35,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/places"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/recentchat"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/trace"
@@ -163,11 +164,13 @@ func run() error {
 		go webSyncer.Run(context.Background(), 10*time.Minute)
 	}
 
+	chats := recentchat.New(time.Now()) // who chatted lately, for comment auto-send
 	h := &server.Handler{
 		Secret: cfg.WebhookSecret,
 		Queue:  b,
 		Seen:   memory.NewSeen(30*time.Minute, nil),
 		Logger: logger,
+		Chats:  chats,
 	}
 	placeStore := placesStore(profiles)
 	if placeStore != nil {
@@ -178,7 +181,7 @@ func run() error {
 	if kb != nil {
 		commentKnowledge = kb
 	}
-	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentKnowledge, commentReviewer(cfg, current, completer, logger), commentEchoes, mux, logger)
+	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentKnowledge, commentReviewer(cfg, current, completer, logger), commentEchoes, chats, mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -348,7 +351,7 @@ func openKnowledge(cfg config.Config, embedder embed.Embedder, logger *slog.Logg
 // comments in the background, when the Meta settings and a database are set.
 // It returns the admin queue, or nil (a nil interface) when off.
 func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Store, completer llm.Completer,
-	kb comments.Retriever, reviewer comments.Reviewer, echoes *commentecho.Echoes, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
+	kb comments.Retriever, reviewer comments.Reviewer, echoes *commentecho.Echoes, chats comments.ChatChecker, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
 	if !cfg.CommentsEnabled() {
 		logger.Info("page comments off: set META_APP_SECRET, META_VERIFY_TOKEN and META_PAGE_ID to collect Facebook comments")
 		return nil
@@ -376,19 +379,25 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 		worker.Sorter = jev // Jev sorts, the LLM writes (owner, 2026-11-13)
 		log.Info("comment sorter: jev", "skip_other_at", comments.SkipOtherAt)
 	}
-	go worker.Run(context.Background(), 20*time.Second)
 	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply, Echoes: echoes}
 	if graph != nil {
 		q.Sender, q.Public = graph, graph
 	}
+	if cfg.CommentAutoSend && q.CanSend() {
+		q.AutoSend, q.Chats = true, chats
+		worker.AutoSend = q // owner, 2026-11-14: Jev sends the safest replies itself
+	} else if cfg.CommentAutoSend {
+		log.Warn("comment auto-send off: it needs META_PAGE_TOKEN")
+	}
+	go worker.Run(context.Background(), 20*time.Second)
 	log.Info("page comments on", "path", comments.WebhookPath, "account_id", cfg.MetaAccountID, "sending", q.CanSend(),
-		"public_reply", q.PublicReply() != "")
+		"public_reply", q.PublicReply() != "", "auto_send", q.AutoSend)
 	return q
 }
 
 // commentReviewer is the shadow reviewer of drafted comment replies, or nil
 // (a nil interface) when COMMENT_REVIEWER=off. It records what it would do
-// and never sends.
+// and sends only through auto-send (COMMENT_AUTO_SEND=on).
 func commentReviewer(cfg config.Config, current settings.LLM, completer llm.Completer, logger *slog.Logger) comments.Reviewer {
 	switch cfg.CommentReviewer {
 	case "jev":

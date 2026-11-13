@@ -50,6 +50,11 @@ type Queue struct {
 	// Echoes, when set, gets each sent reply's message id, so the bot can
 	// add a note to the Chatwoot chat the reply lands in.
 	Echoes EchoRecorder
+	// AutoSend lets TryAutoSend send reviewed drafts without the owner
+	// (COMMENT_AUTO_SEND=on). Chats tells it who may be chatting already;
+	// auto-send stays off without it.
+	AutoSend bool
+	Chats    ChatChecker
 }
 
 // PublicReplier answers a comment in public (Graph).

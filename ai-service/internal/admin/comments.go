@@ -20,19 +20,22 @@ type CommentQueue interface {
 	Dismiss(ctx context.Context, accountID, id int64, version int, by string) error
 	ReviewStats(ctx context.Context, accountID int64) (comments.ReviewStats, error)
 	CanSend() bool
+	// AutoSending reports whether Jev sends some replies on its own.
+	AutoSending() bool
 	// PublicReply is the line posted under answered comments ("" = off).
 	PublicReply() string
 	ReplyPublicly(ctx context.Context, accountID, id int64) error
 }
 
 type commentsData struct {
-	Enabled bool
-	CanSend bool
-	Account int64
-	Items   []commentItem
-	Recent  []commentRow
-	Stats   comments.ReviewStats
-	Done    string // "sent", "sent-public", "sent-public-failed" or "dismissed" after a decision
+	Enabled  bool
+	CanSend  bool
+	AutoSend bool // Jev sends the safest replies itself (COMMENT_AUTO_SEND=on)
+	Account  int64
+	Items    []commentItem
+	Recent   []commentRow
+	Stats    comments.ReviewStats
+	Done     string // "sent", "sent-public", "sent-public-failed" or "dismissed" after a decision
 	// PublicReply is the line the "also reply under the comment" box posts.
 	PublicReply string
 	Error       string
@@ -206,6 +209,7 @@ func (h *Handler) renderComments(w http.ResponseWriter, r *http.Request, status 
 	lang := langOf(r)
 	if data.Enabled {
 		data.CanSend = h.Comments.CanSend()
+		data.AutoSend = h.Comments.AutoSending()
 		data.PublicReply = h.Comments.PublicReply()
 		if err := h.loadComments(r.Context(), &data, lang); err != nil {
 			h.Logger.Error("load page comments", "account_id", data.Account, "error", err)
@@ -257,7 +261,10 @@ func (h *Handler) loadComments(ctx context.Context, data *commentsData, lang str
 		}
 		row := commentRow{When: h.stampIn(lang, when), From: orUnknown(lang, c.FromName),
 			Status: tr(lang, statusLabels[c.Status]), Message: preview(c.Message), Reply: preview(c.Reply)}
-		if c.Review != nil && (c.Status == comments.StatusSent || c.Status == comments.StatusDismissed) {
+		switch {
+		case c.Status == comments.StatusSent && c.DecidedBy == comments.AutoSentBy:
+			row.Status = tr(lang, "Sent automatically")
+		case c.Review != nil && (c.Status == comments.StatusSent || c.Status == comments.StatusDismissed):
 			row.Shadow = tr(lang, agreementLabels[comments.Agreement(c)])
 		}
 		data.Recent = append(data.Recent, row)

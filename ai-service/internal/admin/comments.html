@@ -26,8 +26,10 @@
   {{if eq .Done "dismissed"}}<div class="alert ok" role="status">{{T "Dismissed. Nothing was sent."}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 
+  {{if .AutoSend}}<div class="alert ok" role="status"><strong>{{T "Auto-send is on."}}</strong> {{T "Jev sends the reply itself for likely buyers and questions that pass every check, unless the person may already be chatting with you or already got a private reply. Everything else waits here for you."}}{{if .Stats.AutoSent}} {{T "Sent automatically so far: %d." .Stats.AutoSent}}{{end}}</div>{{end}}
+
   {{if .Stats.Decided}}
-  <p class="hint">{{T "Auto-send test (it sends nothing yet): it made the same call as you on"}} <strong>{{T "%d of %d" .Stats.Agreed .Stats.Decided}}</strong> {{T "comments."}}{{if .Stats.TooLoose}} {{T "It would have sent %d that you dismissed or edited." .Stats.TooLoose}}{{end}}{{if .Stats.TooStrict}} {{T "It would have waited for you on %d that you sent unchanged." .Stats.TooStrict}}{{end}}</p>
+  <p class="hint">{{if .AutoSend}}{{T "On the comments you decided yourself, Jev made the same call as you on"}}{{else}}{{T "Auto-send test (it sends nothing yet): it made the same call as you on"}}{{end}} <strong>{{T "%d of %d" .Stats.Agreed .Stats.Decided}}</strong> {{T "comments."}}{{if .Stats.TooLoose}} {{T "It would have sent %d that you dismissed or edited." .Stats.TooLoose}}{{end}}{{if .Stats.TooStrict}} {{T "It would have waited for you on %d that you sent unchanged." .Stats.TooStrict}}{{end}}</p>
   {{end}}
 
   {{if not .Items}}

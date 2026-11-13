@@ -204,6 +204,9 @@ type ReviewStats struct {
 	TooLoose int
 	// TooStrict: the reviewer would have held a draft the owner sent unchanged.
 	TooStrict int
+	// AutoSent: replies auto-send sent. They are not owner decisions, so they
+	// are not in the counts above.
+	AutoSent int
 }
 
 // Agreement classifies one decided comment: "agreed", "too_loose" or
@@ -221,6 +224,10 @@ func Agreement(c Comment) string {
 
 func (s *ReviewStats) add(c Comment) {
 	if c.Review == nil || (c.Status != StatusSent && c.Status != StatusDismissed) {
+		return
+	}
+	if c.DecidedBy == AutoSentBy {
+		s.AutoSent++
 		return
 	}
 	s.Decided++

@@ -83,6 +83,11 @@ type Sender struct {
 type Conversation struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"` // open | resolved | pending | snoozed
+	// ContactInbox.SourceID is the customer's id in the channel: for
+	// Messenger, the page-scoped id Facebook also gives the comment's author.
+	ContactInbox struct {
+		SourceID string `json:"source_id"`
+	} `json:"contact_inbox"`
 }
 
 // Parse decodes a webhook body.
