@@ -2,6 +2,7 @@ package reviews
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -27,7 +28,7 @@ func (m *Memory) Get(_ context.Context, accountID int64) (Image, bool, error) {
 
 // Save implements Store.
 func (m *Memory) Save(_ context.Context, img Image) error {
-	ct, err := Check(img.Data, img.Caption)
+	ct, data, err := Prepare(img.Data, img.Caption)
 	if err != nil {
 		return err
 	}
@@ -37,7 +38,7 @@ func (m *Memory) Save(_ context.Context, img Image) error {
 		m.imgs = map[int64]Image{}
 	}
 	img.ContentType, img.Caption, img.UpdatedAt = ct, strings.TrimSpace(img.Caption), time.Now()
-	img.Data = append([]byte(nil), img.Data...)
+	img.Data = data
 	m.imgs[img.AccountID] = img
 	return nil
 }
@@ -56,4 +57,21 @@ func (m *Memory) Has(_ context.Context, accountID int64) (bool, error) {
 	defer m.mu.Unlock()
 	_, ok := m.imgs[accountID]
 	return ok, nil
+}
+
+// SetCaption implements Store.
+func (m *Memory) SetCaption(_ context.Context, accountID int64, caption string) error {
+	caption = strings.TrimSpace(caption)
+	if _, err := Check([]byte{0xff}, caption); errors.Is(err, ErrCaption) {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	img, ok := m.imgs[accountID]
+	if !ok {
+		return ErrEmpty
+	}
+	img.Caption, img.UpdatedAt = caption, time.Now()
+	m.imgs[accountID] = img
+	return nil
 }

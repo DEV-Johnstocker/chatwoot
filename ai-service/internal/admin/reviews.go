@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/reviews"
 )
@@ -50,9 +51,7 @@ func (h *Handler) loadReviewBox(r *http.Request, acct int64) reviewBox {
 	}
 	if ok {
 		box.Set, box.Caption = true, img.Caption
-		if thumb, err := reviews.Thumbnail(img.Data, 360); err == nil {
-			box.Preview = template.URL("data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(thumb)) // #nosec G203 -- our own JPEG bytes
-		}
+		box.Preview = h.reviewPreview(img)
 		box.Size = strconv.Itoa((len(img.Data)+1023)/1024) + " KB"
 	}
 	return box
@@ -85,8 +84,12 @@ func (h *Handler) submitReviewImage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/business?account="+strconv.FormatInt(acct, 10)+"&review=removed#reviews", http.StatusSeeOther)
 		return
 	}
-	data, caption, err := h.readReviewUpload(r, acct)
-	if err == nil {
+	caption := strings.TrimSpace(strings.ReplaceAll(r.FormValue("caption"), "\r\n", "\n"))
+	data, err := readReviewFile(r)
+	switch {
+	case errors.Is(err, http.ErrMissingFile):
+		err = h.Reviews.SetCaption(r.Context(), acct, caption) // only the caption changed
+	case err == nil:
 		err = h.Reviews.Save(r.Context(), reviews.Image{AccountID: acct, Caption: caption, Data: data})
 	}
 	if err != nil {
@@ -98,27 +101,14 @@ func (h *Handler) submitReviewImage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/business?account="+strconv.FormatInt(acct, 10)+"&review=saved#reviews", http.StatusSeeOther)
 }
 
-// readReviewUpload returns the uploaded file, or the saved image when only
-// the caption changed.
-func (h *Handler) readReviewUpload(r *http.Request, acct int64) ([]byte, string, error) {
-	caption := strings.TrimSpace(strings.ReplaceAll(r.FormValue("caption"), "\r\n", "\n"))
+// readReviewFile returns the uploaded file; http.ErrMissingFile when none.
+func readReviewFile(r *http.Request) ([]byte, error) {
 	file, _, err := r.FormFile("image")
-	if errors.Is(err, http.ErrMissingFile) {
-		img, ok, gerr := h.Reviews.Get(r.Context(), acct)
-		if gerr != nil {
-			return nil, "", gerr
-		}
-		if !ok {
-			return nil, "", reviews.ErrEmpty
-		}
-		return img.Data, caption, nil
-	}
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, reviews.MaxBytes+1))
-	return data, caption, err
+	return io.ReadAll(io.LimitReader(file, reviews.MaxBytes+1))
 }
 
 // reviewError is a message the owner can act on.
@@ -151,4 +141,25 @@ func (h *Handler) reviewFailed(w http.ResponseWriter, r *http.Request, acct int6
 	data.Reviews = h.loadReviewBox(r, acct)
 	data.Reviews.Done, data.Reviews.Error = "", msg
 	h.renderBusiness(w, r, http.StatusUnprocessableEntity, data)
+}
+
+// previewCache keeps one thumbnail per account, so a page view does not
+// decode the full image every time; a new upload changes UpdatedAt.
+type previewCache struct {
+	at  time.Time
+	uri template.URL
+}
+
+// reviewPreview is the image as a small JPEG data: URI ("" if it cannot be read).
+func (h *Handler) reviewPreview(img reviews.Image) template.URL {
+	if v, ok := h.previews.Load(img.AccountID); ok && v.(previewCache).at.Equal(img.UpdatedAt) {
+		return v.(previewCache).uri
+	}
+	thumb, err := reviews.Thumbnail(img.Data, 360)
+	if err != nil {
+		return ""
+	}
+	uri := template.URL("data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(thumb)) // #nosec G203 -- our own re-encoded JPEG
+	h.previews.Store(img.AccountID, previewCache{at: img.UpdatedAt, uri: uri})
+	return uri
 }

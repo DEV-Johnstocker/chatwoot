@@ -139,6 +139,11 @@ type Bot struct {
 	mu      sync.Mutex
 	pending map[convKey]*pendingReply // replies waiting for a burst to end
 	closed  bool                      // set by Close; no new waiting reply is queued
+
+	// reviewsSent remembers chats that got the review image, beyond the
+	// history's turn limit and 24 h expiry (a restart is covered by recall).
+	reviewsMu   sync.Mutex
+	reviewsSent map[convKey]time.Time
 }
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
@@ -362,7 +367,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		return
 	}
 	text, wantsReviews := takeReviewMarker(text)
-	sendReviews := wantsReviews && !reviewSentBefore(history) && b.hasReviewImage(ctx, log, acct)
+	sendReviews := wantsReviews && !b.reviewAlreadySent(acct, conv, history) && b.hasReviewImage(ctx, log, acct)
 	if !sendReviews {
 		stored, _ = takeReviewMarker(stored) // history keeps the marker only when the image went out
 	}

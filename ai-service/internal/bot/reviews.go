@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/reviews"
@@ -89,6 +90,41 @@ func (b *Bot) sendReviewImage(ctx context.Context, log *slog.Logger, acct, conv 
 		log.Error("send review image failed", "error", err)
 		return false
 	}
+	b.rememberReviewSent(acct, conv)
 	log.Info("review image sent", "bytes", len(img.Data))
 	return true
+}
+
+// reviewsRemembered bounds reviewsSent; the oldest entries go first.
+const reviewsRemembered = 20000
+
+// reviewAlreadySent reports whether this chat already got the review image.
+func (b *Bot) reviewAlreadySent(acct, conv int64, history []memory.Turn) bool {
+	if reviewSentBefore(history) {
+		return true
+	}
+	b.reviewsMu.Lock()
+	defer b.reviewsMu.Unlock()
+	_, ok := b.reviewsSent[convKey{acct, conv}]
+	return ok
+}
+
+// rememberReviewSent records that the chat got the review image.
+func (b *Bot) rememberReviewSent(acct, conv int64) {
+	b.reviewsMu.Lock()
+	defer b.reviewsMu.Unlock()
+	if b.reviewsSent == nil {
+		b.reviewsSent = map[convKey]time.Time{}
+	}
+	if len(b.reviewsSent) >= reviewsRemembered {
+		var oldest convKey
+		var at time.Time
+		for k, t := range b.reviewsSent {
+			if at.IsZero() || t.Before(at) {
+				oldest, at = k, t
+			}
+		}
+		delete(b.reviewsSent, oldest)
+	}
+	b.reviewsSent[convKey{acct, conv}] = time.Now()
 }

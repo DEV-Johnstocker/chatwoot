@@ -132,15 +132,29 @@ func TestReviewImage_NeedsLoginAndSameOrigin(t *testing.T) {
 	noAuth.Header.Del("Authorization")
 	crossSite := reviewPost(t, map[string]string{"account": "1", "action": "save"}, testPNG(t))
 	crossSite.Header.Set("Sec-Fetch-Site", "cross-site")
+	wrongPw := reviewPost(t, map[string]string{"account": "1", "action": "save"}, testPNG(t))
+	wrongPw.SetBasicAuth(Username, "wrong-password-123")
 
 	// Act
 	a := serve(mux, noAuth)
 	c := serve(mux, crossSite)
+	p := serve(mux, wrongPw)
 
 	// Assert
 	_, set, _ := rv.Get(context.Background(), 1)
-	if a.Code != http.StatusUnauthorized || c.Code != http.StatusForbidden || set {
-		t.Fatalf("no auth %d cross-site %d set %v", a.Code, c.Code, set)
+	if a.Code != http.StatusUnauthorized || c.Code != http.StatusForbidden || p.Code != http.StatusUnauthorized || set {
+		t.Fatalf("no auth %d cross-site %d wrong password %d set %v", a.Code, c.Code, p.Code, set)
+	}
+
+	// A cross-site remove must not delete a saved image either.
+	_ = rv.Save(context.Background(), reviews.Image{AccountID: 1, Data: testPNG(t)})
+	rm := reviewPost(t, map[string]string{"account": "1", "action": "remove"}, nil)
+	rm.Header.Set("Sec-Fetch-Site", "cross-site")
+	if code := serve(mux, rm).Code; code != http.StatusForbidden {
+		t.Fatalf("cross-site remove %d", code)
+	}
+	if _, still, _ := rv.Get(context.Background(), 1); !still {
+		t.Fatal("cross-site remove deleted the image")
 	}
 }
 

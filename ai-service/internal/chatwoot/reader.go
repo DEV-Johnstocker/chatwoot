@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
 
 // Reader reads a conversation's recent messages. Chatwoot does not let Agent
@@ -102,6 +104,11 @@ func toTurn(m listedMessage, skipID int64) (memory.Turn, bool) {
 		role = "assistant"
 	}
 	content := m.Content
+	if role == "assistant" && len(m.Attachments) > 0 && m.Sender != nil && m.Sender.Type == "agent_bot" {
+		// The bot's only attachment is the review image: keep it marked, so a
+		// recalled chat still knows the image went out (once per chat).
+		return memory.Turn{Role: role, Content: strings.TrimSpace(content + "\n" + profile.ReviewMarker)}, true
+	}
 	if content == "" {
 		if role == "assistant" || len(m.Attachments) == 0 {
 			return memory.Turn{}, false

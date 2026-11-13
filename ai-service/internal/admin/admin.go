@@ -87,9 +87,10 @@ type Handler struct {
 	// Profiles enables the business profile page; nil when no database is set.
 	Profiles profile.Store
 	// Reviews keeps each account's review image; nil hides the box.
-	Reviews reviews.Store
-	onceMu  sync.Mutex
-	once    map[string]time.Time
+	Reviews  reviews.Store
+	previews sync.Map // account → previewCache
+	onceMu   sync.Mutex
+	once     map[string]time.Time
 
 	// Places lists known accounts and inboxes for the dropdowns; nil shows
 	// only the current value.

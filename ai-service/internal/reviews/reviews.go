@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/jpeg" // register decoders for DecodeConfig
-	_ "image/png"
+	"image/jpeg"
+	"image/png"
 	"net/http"
 	"strings"
 	"time"
@@ -22,7 +22,7 @@ import (
 const (
 	MaxBytes        = 5 << 20 // Messenger takes images up to 8 MB; 5 MB keeps uploads quick
 	MaxCaptionRunes = 200
-	MaxSide         = 4096 // pixels; bounds decode memory (preview) and refuses decompression bombs
+	MaxSide         = 2048 // pixels; bounds decode memory (about 16 MB) and refuses decompression bombs
 )
 
 // Image is one account's review image.
@@ -80,6 +80,35 @@ type Store interface {
 	Save(ctx context.Context, img Image) error
 	// Delete removes it; deleting nothing is not an error.
 	Delete(ctx context.Context, accountID int64) error
+	// SetCaption changes only the caption; ErrEmpty when no image is set.
+	SetCaption(ctx context.Context, accountID int64, caption string) error
 	// Has reports whether the account has an image, without loading it.
 	Has(ctx context.Context, accountID int64) (bool, error)
+}
+
+// Prepare checks an upload and re-encodes it: hidden data (EXIF location,
+// bytes appended after the image) is dropped, and the whole image is proven
+// to decode, not just its header. It returns the type and the clean bytes.
+func Prepare(data []byte, caption string) (string, []byte, error) {
+	ct, err := Check(data, caption)
+	if err != nil {
+		return "", nil, err
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return "", nil, ErrType
+	}
+	var out bytes.Buffer
+	if ct == "image/png" {
+		err = (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(&out, img)
+	} else {
+		err = jpeg.Encode(&out, img, &jpeg.Options{Quality: 90})
+	}
+	if err != nil {
+		return "", nil, ErrType
+	}
+	if out.Len() > MaxBytes {
+		return "", nil, ErrTooLarge
+	}
+	return ct, out.Bytes(), nil
 }

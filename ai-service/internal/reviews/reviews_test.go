@@ -134,3 +134,36 @@ func TestStore_SaveGetReplaceDelete(t *testing.T) {
 		})
 	}
 }
+
+func TestPrepare_DropsHiddenTrailingBytes(t *testing.T) {
+	// Arrange: a real PNG with a payload glued after its end.
+	clean := pngBytes(t, 3, 3)
+	dirty := append(append([]byte(nil), clean...), []byte("SECRET-GPS-52.1,4.3")...)
+
+	// Act
+	ct, out, err := Prepare(dirty, "")
+
+	// Assert
+	if err != nil || ct != "image/png" || bytes.Contains(out, []byte("SECRET")) {
+		t.Fatalf("ct %q err %v kept payload %v", ct, err, bytes.Contains(out, []byte("SECRET")))
+	}
+}
+
+func TestStore_SetCaptionKeepsTheImage(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	s := &Memory{}
+	_ = s.Save(ctx, Image{AccountID: 1, Caption: "a", Data: jpegBytes(t)})
+	before, _, _ := s.Get(ctx, 1)
+
+	// Act
+	err := s.SetCaption(ctx, 1, " b ")
+	none := s.SetCaption(ctx, 2, "x")
+	long := s.SetCaption(ctx, 1, strings.Repeat("ก", MaxCaptionRunes+1))
+	after, _, _ := s.Get(ctx, 1)
+
+	// Assert
+	if err != nil || !errors.Is(none, ErrEmpty) || !errors.Is(long, ErrCaption) || after.Caption != "b" || !bytes.Equal(before.Data, after.Data) {
+		t.Fatalf("err %v none %v long %v caption %q same bytes %v", err, none, long, after.Caption, bytes.Equal(before.Data, after.Data))
+	}
+}

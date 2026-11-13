@@ -157,3 +157,18 @@ func TestAnswer_ShowsTheImageForTheJudge(t *testing.T) {
 		t.Fatalf("with %q without %q errs %v %v", a.Content, n.Content, err1, err2)
 	}
 }
+
+func TestReviews_OncePerChatSurvivesHistoryLoss(t *testing.T) {
+	// Arrange
+	b, cw, _, h := reviewBot(t, "[[REVIEWS]]", true)
+	b.Process(context.Background(), customerMsg("มีรีวิวไหม"))
+	h.Forget(1, 7) // the turn limit or the 24 h expiry dropped the chat
+
+	// Act
+	b.Process(context.Background(), customerMsg("ขอรีวิวอีกที"))
+
+	// Assert
+	if n := strings.Count(cw.joined(), "image:"); n != 1 {
+		t.Fatalf("images sent %d, want 1: %s", n, cw.joined())
+	}
+}
