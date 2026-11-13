@@ -389,7 +389,8 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 		worker.Sorter = jev // Jev sorts, the LLM writes (owner, 2026-11-13)
 		log.Info("comment sorter: jev", "skip_other_at", comments.SkipOtherAt)
 	}
-	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply, Echoes: echoes}
+	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply, Echoes: echoes,
+		Hours: &schedule.Postgres{Pool: db.Pool}}
 	if graph != nil {
 		q.Sender, q.Public = graph, graph
 	}

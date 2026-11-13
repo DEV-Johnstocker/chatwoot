@@ -22,13 +22,20 @@
   {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next customer message."}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
 
+  {{if .StateUnknown}}
+  <section class="card bot-state is-off" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <div><strong>{{T "Could not read the saved switch, so the bot keeps answering until the database is back."}}</strong></div>
+  </section>
+  {{else}}
   <section class="card bot-state {{if .ActiveNow}}is-on{{else}}is-off{{end}}" aria-live="polite">
     <span class="dot" aria-hidden="true"></span>
     <div>
       <strong>{{if .ActiveNow}}{{T "Right now the bot is answering."}}{{else}}{{T "Right now the bot is off. Your team gets every new chat."}}{{end}}</strong>
-      <span class="field-hint">{{if .Now}}{{T "Time now: %s (%s)." .Now .TimeZone}} {{end}}{{if .Updated}}{{T "Last changed %s." .Updated}}{{end}}</span>
+      <span class="field-hint">{{if .Error}}{{T "This is the saved setting; the form below was not saved."}} {{end}}{{if .Now}}{{T "Time now: %s (%s)." .Now .TimeZone}} {{end}}{{if .Updated}}{{T "Last changed %s." .Updated}}{{end}}</span>
     </div>
   </section>
+  {{end}}
 
   <form class="hours" method="post" action="/admin/hours" autocomplete="off">
     <input type="hidden" name="account" value="{{.AccountID}}">
@@ -40,14 +47,14 @@
         <label><input type="radio" name="mode" value="scheduled"{{if eq (printf "%s" .Mode) "scheduled"}} checked{{end}}>
           <span><strong>{{T "On during set hours"}}</strong><span class="field-hint">{{T "Answers only in the hours below; your team gets chats at other times."}}</span></span></label>
         <label><input type="radio" name="mode" value="off"{{if eq (printf "%s" .Mode) "off"}} checked{{end}}>
-          <span><strong>{{T "Off"}}</strong><span class="field-hint">{{T "Answers nothing; your team gets every new chat."}}</span></span></label>
+          <span><strong>{{T "Off"}}</strong><span class="field-hint">{{T "Answers nothing; your team gets every new chat. Automatic replies to Page comments stop too."}}</span></span></label>
       </fieldset>
     </section>
 
     <section class="card">
       <fieldset>
         <legend>{{T "Bot hours"}}</legend>
-        <p class="hint">{{T "Used only when the bot is on during set hours. An end time earlier than the start runs past midnight (for example 18:00 to 09:00 covers the night). The same start and end time means the whole day."}}</p>
+        <p class="hint">{{T "Used only when the bot is on during set hours. An end time earlier than the start runs past midnight (for example 18:00 to 09:00 covers the night). The same start and end time, or 00:00 to 23:59, means the whole day."}}</p>
         <div class="tz">
           <label for="time_zone">{{T "Time zone"}}</label>
           <select id="time_zone" name="time_zone">

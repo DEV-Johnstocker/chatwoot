@@ -56,6 +56,9 @@ type Queue struct {
 	// auto-send stays off without it.
 	AutoSend bool
 	Chats    ChatChecker
+	// Hours is the bot's main switch; while it is off nothing is auto-sent.
+	// nil: auto-send ignores it.
+	Hours BotSwitch
 
 	autoMu   sync.Mutex
 	autoSent map[int64][]time.Time // automatic replies of the last hour, per account

@@ -41,10 +41,13 @@ type hoursData struct {
 	Zones     []string
 	Days      []hourRow
 	ActiveNow bool
-	Now       string // the current time in the schedule's zone
-	Updated   string
-	Saved     bool
-	Error     string
+	// StateUnknown: after a failed save the saved switch could not be read.
+	StateUnknown bool
+	stateSet     bool   // ActiveNow already holds the saved state
+	Now          string // the current time in the schedule's zone
+	Updated      string
+	Saved        bool
+	Error        string
 }
 
 func (h *Handler) showHours(w http.ResponseWriter, r *http.Request) {
@@ -82,19 +85,33 @@ func (h *Handler) submitHours(w http.ResponseWriter, r *http.Request) {
 	}
 	s, err := hoursFromForm(acct, f.Get)
 	if err != nil {
-		h.renderHours(w, r, http.StatusUnprocessableEntity, s, hoursData{Enabled: true, Error: err.Error()})
+		h.renderRejected(w, r, http.StatusUnprocessableEntity, s, err.Error())
 		return
 	}
 	if err := h.Hours.Save(r.Context(), s); err != nil {
 		// The form was valid, so this is the database: keep its text in the log.
 		h.Logger.Error("save bot hours failed", "account_id", acct, "error", err)
-		h.renderHours(w, r, http.StatusInternalServerError, s,
-			hoursData{Enabled: true, Error: tr(langOf(r), "Could not save the bot switch. Check the database connection.")})
+		h.renderRejected(w, r, http.StatusInternalServerError, s,
+			tr(langOf(r), "Could not save the bot switch. Check the database connection."))
 		return
 	}
 	h.record(r, acct, "bot switch saved", hoursSummary(s), nil)
 	h.Logger.Info("bot switch saved", "account_id", acct, "mode", string(s.Mode), "remote_addr", r.RemoteAddr)
 	http.Redirect(w, r, "/admin/hours?account="+strconv.FormatInt(acct, 10)+"&done=saved", http.StatusSeeOther)
+}
+
+// renderRejected shows a form that was not saved: the fields keep what the
+// owner typed, but the status bar shows what is saved (and in force), never
+// the rejected form.
+func (h *Handler) renderRejected(w http.ResponseWriter, r *http.Request, status int, form schedule.Schedule, msg string) {
+	data := hoursData{Enabled: true, Error: msg}
+	saved, err := h.Hours.Get(r.Context(), form.AccountID)
+	if err != nil {
+		data.StateUnknown = true
+	} else {
+		data.ActiveNow, data.stateSet = saved.Active(time.Now()), true
+	}
+	h.renderHours(w, r, status, form, data)
 }
 
 // hoursFromForm reads the switch and the seven days. A day left unticked
@@ -108,6 +125,12 @@ func hoursFromForm(acct int64, get func(string) string) (schedule.Schedule, erro
 		d.From, e1 = schedule.ParseClock(get(fmt.Sprintf("day%d_from", i)))
 		d.To, e2 = schedule.ParseClock(get(fmt.Sprintf("day%d_to", i)))
 		if e1 != nil || e2 != nil {
+			if !d.On {
+				// An unticked day's times are unused: keep the usual ones.
+				d.From, d.To = schedule.Default(acct).Days[i].From, schedule.Default(acct).Days[i].To
+				s.Days[i] = d
+				continue
+			}
 			errs = append(errs, fmt.Sprintf("%s: times must look like 09:00", time.Weekday(i)))
 		}
 		s.Days[i] = d
@@ -149,7 +172,9 @@ func (h *Handler) renderHours(w http.ResponseWriter, r *http.Request, status int
 			From: schedule.Clock(d.From), To: schedule.Clock(d.To), Overnight: d.From > d.To})
 	}
 	now := time.Now()
-	data.ActiveNow = s.Active(now)
+	if !data.stateSet && !data.StateUnknown {
+		data.ActiveNow = s.Active(now)
+	}
 	if loc, err := time.LoadLocation(s.TimeZone); err == nil {
 		data.Now = tr(lang, now.In(loc).Weekday().String()) + " " + now.In(loc).Format("15:04")
 	}

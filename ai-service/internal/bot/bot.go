@@ -144,6 +144,7 @@ type Bot struct {
 	mu      sync.Mutex
 	pending map[convKey]*pendingReply // replies waiting for a burst to end
 	closed  bool                      // set by Close; no new waiting reply is queued
+	offSent map[convKey]time.Time     // chats passed to staff because the bot is off (hours.go)
 
 	// imagesSent remembers which images each chat got (images.go).
 	imagesMu   sync.Mutex
@@ -280,7 +281,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		defer b.finishTurn(tr)
 		if !b.botOn(ctx, log, acct) {
 			tr.Outcome = "handoff:" + ReasonBotOff
-			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonBotOff, nil)
+			b.handOffBotOff(ctx, log, acct, ev.Inbox.ID, conv)
 			return
 		}
 		p := profile.Profile{AccountID: acct}

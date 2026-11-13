@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,12 +23,19 @@ const (
 	ModeScheduled Mode = "scheduled" // the bot answers only inside Days
 )
 
+// ErrNoDays: "on during set hours" with no day ticked would never answer.
+var ErrNoDays = errors.New("tick at least one day, or choose Off")
+
+// endOfDay is an end time of 23:59, read as midnight.
+const endOfDay = 23*60 + 59
+
 // DefaultTimeZone is used when an account has not chosen one.
 const DefaultTimeZone = "Asia/Bangkok"
 
 // Day is the bot's hours on one weekday, in minutes after local midnight.
 // From == To means the whole day. From > To runs past midnight into the next
-// day (for example 18:00–09:00).
+// day (for example 18:00–09:00). An end of 23:59 runs to midnight, so
+// "00:00–23:59" covers the whole day as an owner means it.
 type Day struct {
 	On   bool `json:"on"`
 	From int  `json:"from"`
@@ -75,10 +83,15 @@ func (s Schedule) Validate() error {
 	if _, err := location(s.TimeZone); err != nil {
 		errs = append(errs, fmt.Errorf("time zone %q is not known", s.TimeZone))
 	}
+	anyDay := false
 	for i, d := range s.Days {
 		if d.From < 0 || d.From >= 24*60 || d.To < 0 || d.To >= 24*60 {
 			errs = append(errs, fmt.Errorf("%s: hours must be between 00:00 and 23:59", time.Weekday(i)))
 		}
+		anyDay = anyDay || d.On
+	}
+	if s.Mode == ModeScheduled && !anyDay {
+		errs = append(errs, ErrNoDays)
 	}
 	return errors.Join(errs...)
 }
@@ -104,7 +117,7 @@ func (s Schedule) Active(t time.Time) bool {
 		case today.From == today.To:
 			return true
 		case today.From < today.To:
-			if m >= today.From && m < today.To {
+			if m >= today.From && (m < today.To || today.To == endOfDay) {
 				return true
 			}
 		case m >= today.From: // runs past midnight; this is the evening part
@@ -123,17 +136,17 @@ func location(name string) (*time.Location, error) {
 	return time.LoadLocation(name)
 }
 
-// ParseClock reads "HH:MM" (24-hour) as minutes after midnight.
+var clockRe = regexp.MustCompile(`^([01][0-9]|2[0-3]):([0-5][0-9])$`)
+
+// ParseClock reads "HH:MM" (24-hour, two digits each, as a time input
+// sends it) as minutes after midnight.
 func ParseClock(s string) (int, error) {
-	h, m, ok := strings.Cut(strings.TrimSpace(s), ":")
-	if !ok {
+	m := clockRe.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
 		return 0, fmt.Errorf("time %q must look like 09:00", s)
 	}
-	hh, err1 := strconv.Atoi(h)
-	mm, err2 := strconv.Atoi(m)
-	if err1 != nil || err2 != nil || len(m) != 2 || hh < 0 || hh > 23 || mm < 0 || mm > 59 {
-		return 0, fmt.Errorf("time %q must look like 09:00", s)
-	}
+	hh, _ := strconv.Atoi(m[1])
+	mm, _ := strconv.Atoi(m[2])
 	return hh*60 + mm, nil
 }
 

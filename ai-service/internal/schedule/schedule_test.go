@@ -158,7 +158,7 @@ func TestValidate(t *testing.T) {
 
 func TestParseClock(t *testing.T) {
 	// Arrange
-	good := map[string]int{"00:00": 0, "09:30": 570, "23:59": 1439, " 7:05 ": 425}
+	good := map[string]int{"00:00": 0, "09:30": 570, "23:59": 1439, " 07:05 ": 425}
 	bad := []string{"", "9", "24:00", "12:60", "ab:cd", "9:5", "-1:00"}
 
 	// Act / Assert

@@ -22,9 +22,13 @@ type memHours struct {
 	saved   map[int64]schedule.Schedule
 	saves   int
 	saveErr error
+	getErr  error
 }
 
 func (m *memHours) Get(_ context.Context, acct int64) (schedule.Schedule, error) {
+	if m.getErr != nil {
+		return schedule.Schedule{}, m.getErr
+	}
 	if s, ok := m.saved[acct]; ok {
 		return s, nil
 	}

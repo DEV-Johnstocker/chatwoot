@@ -12,17 +12,6 @@ import (
 )
 
 // Regression tests from the QA run on the bot switch (2026-11-14).
-// knownBug marks a confirmed, unfixed bug: the test passes while the bug is
-// there and fails once it is fixed, so whoever fixes it removes the marker.
-
-func knownBug(t *testing.T, finding string, buggy bool) {
-	t.Helper()
-	if buggy {
-		t.Logf("known bug %s still present", finding)
-		return
-	}
-	t.Fatalf("known bug %s is fixed: turn this into a normal assertion", finding)
-}
 
 type flipHours struct {
 	mu sync.Mutex
@@ -44,7 +33,7 @@ func (f *flipHours) set(m schedule.Mode) {
 // QA-2: the owner switches the bot off while a reply waits out the delay.
 func TestQA_SwitchOffDuringReplyDelay(t *testing.T) {
 	// Arrange
-	b, _, l := batchingBot(t, 80*time.Millisecond)
+	b, cw, l := batchingBot(t, 80*time.Millisecond)
 	h := &flipHours{s: schedule.Default(1)}
 	b.opts.Hours = h
 
@@ -54,9 +43,14 @@ func TestQA_SwitchOffDuringReplyDelay(t *testing.T) {
 	h.set(schedule.ModeOff)
 	time.Sleep(250 * time.Millisecond)
 
-	// Assert: the bot should hand off instead of calling the model.
+	// Assert: the waiting reply is handed to staff, the model never called.
 	n, _ := l.snapshot()
-	knownBug(t, "QA-2 (reply after switch-off during the delay)", n > 0)
+	if n != 0 {
+		t.Errorf("model called %d times after the switch went off", n)
+	}
+	if got := cw.joined(); !strings.Contains(got, ReasonBotOff) || strings.Contains(got, "msg:") {
+		t.Errorf("calls = %q, want a bot-off handoff and no customer message", got)
+	}
 }
 
 // QA-5: two messages decided Reply while the chat is still pending.
@@ -70,8 +64,11 @@ func TestQA_TwoMessagesWhileOffOneNote(t *testing.T) {
 	b.Process(context.Background(), msgN(1, "hi"))
 	b.Process(context.Background(), msgN(2, "price?"))
 
-	// Assert: one private note per chat is the promise.
-	knownBug(t, "QA-5 (one note per message while pending)", strings.Count(cw.joined(), "note:") > 1)
+	// Assert: one private note and one handoff per chat.
+	got := cw.joined()
+	if strings.Count(got, "note:") != 1 || strings.Count(got, "| handoff") != 1 {
+		t.Errorf("calls = %q, want one note and one handoff", got)
+	}
 }
 
 // The promise checked end to end: once handed off (open), later messages
@@ -91,5 +88,62 @@ func TestQA_OpenChatWhileOffIsSilent(t *testing.T) {
 	// Assert
 	if got := cw.joined(); got != "" || l.got != nil {
 		t.Errorf("calls = %q, llm called = %v; want nothing", got, l.got != nil)
+	}
+}
+
+// QA-5: a different chat while off still gets its own note.
+func TestQA_EachChatWhileOffGetsOneNote(t *testing.T) {
+	// Arrange
+	off := schedule.Default(1)
+	off.Mode = schedule.ModeOff
+	b, cw, _ := botWithHours(fakeHours{s: off}, monday10)
+	other := msgN(2, "hello")
+	other.Event.Conversation.ID = 99
+
+	// Act
+	b.Process(context.Background(), msgN(1, "hi"))
+	b.Process(context.Background(), other)
+
+	// Assert
+	if n := strings.Count(cw.joined(), "note:"); n != 2 {
+		t.Errorf("notes = %d, want one per chat (2)", n)
+	}
+}
+
+// QA-5: after botOffNoteFor the same chat may be handed off again (a chat
+// reopened later is a new visit).
+func TestQA_BotOffNoteExpires(t *testing.T) {
+	// Arrange
+	off := schedule.Default(1)
+	off.Mode = schedule.ModeOff
+	now := monday10
+	b, cw, _ := botWithHours(fakeHours{s: off}, now)
+	b.opts.Now = func() time.Time { return now }
+
+	// Act
+	b.Process(context.Background(), msgN(1, "hi"))
+	now = now.Add(botOffNoteFor + time.Second)
+	b.Process(context.Background(), msgN(2, "back again"))
+
+	// Assert
+	if n := strings.Count(cw.joined(), "note:"); n != 2 {
+		t.Errorf("notes = %d, want 2", n)
+	}
+}
+
+// QA-2: a reply waiting while the bot stays on is still sent.
+func TestQA_ReplyDelayWhileOnStillReplies(t *testing.T) {
+	// Arrange
+	b, cw, l := batchingBot(t, 40*time.Millisecond)
+	b.opts.Hours = &flipHours{s: schedule.Default(1)}
+
+	// Act
+	_ = b.Enqueue(msgN(1, "price?"))
+	waitFor(t, func() bool { n, _ := l.snapshot(); return n > 0 })
+	time.Sleep(50 * time.Millisecond)
+
+	// Assert
+	if !strings.Contains(cw.joined(), "msg:") {
+		t.Errorf("calls = %q, want a reply", cw.joined())
 	}
 }

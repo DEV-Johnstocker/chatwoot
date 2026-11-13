@@ -7,16 +7,6 @@ import (
 )
 
 // Regression tests from the QA run on the bot switch (2026-11-14).
-// knownBug: passes while the bug is there, fails once fixed.
-func knownBug(t *testing.T, finding string, buggy bool) {
-	t.Helper()
-	if buggy {
-		t.Logf("known bug %s still present", finding)
-		return
-	}
-	t.Fatalf("known bug %s is fixed: turn this into a normal assertion", finding)
-}
-
 // QA-4: a failed save must not show the unsaved form as the live state.
 func TestQA_BannerAfterFailedSaveShowsSavedState(t *testing.T) {
 	// Arrange: saved state is on (default); the save of "off" fails.
@@ -26,8 +16,10 @@ func TestQA_BannerAfterFailedSaveShowsSavedState(t *testing.T) {
 	// Act
 	body := serve(mux, hpost(hoursForm("1", "off"))).Body.String()
 
-	// Assert
-	knownBug(t, "QA-4 (banner shows the unsaved form)", strings.Contains(body, "Right now the bot is off."))
+	// Assert: the bar shows the saved state (on), not the failed form (off).
+	if !strings.Contains(body, "Right now the bot is answering.") || !strings.Contains(body, "the form below was not saved") {
+		t.Error("status bar does not show the saved state after a failed save")
+	}
 }
 
 // QA-4b: same for a rejected form.
@@ -41,11 +33,13 @@ func TestQA_BannerAfterRejectedFormShowsSavedState(t *testing.T) {
 	body := serve(mux, hpost(v)).Body.String()
 
 	// Assert
-	knownBug(t, "QA-4 (banner shows the rejected form)", strings.Contains(body, "Right now the bot is off."))
+	if strings.Contains(body, "Right now the bot is off.") || !strings.Contains(body, "Right now the bot is answering.") {
+		t.Error("status bar shows the rejected form instead of the saved state")
+	}
 }
 
-// QA-7: "on during set hours" with no day ticked never answers; the owner gets no warning.
-func TestQA_ScheduledWithNoDaysIsAcceptedSilently(t *testing.T) {
+// QA-7: "on during set hours" with no day ticked would never answer: refused.
+func TestQA_ScheduledWithNoDaysIsRefused(t *testing.T) {
 	// Arrange
 	mux, mh := hoursEnv(t, true)
 	v := hoursForm("1", "scheduled")
@@ -57,5 +51,41 @@ func TestQA_ScheduledWithNoDaysIsAcceptedSilently(t *testing.T) {
 	res := serve(mux, hpost(v))
 
 	// Assert
-	knownBug(t, "QA-7 (no warning for a schedule with no days)", res.Code == 303 && mh.saves == 1)
+	if res.Code != 422 || mh.saves != 0 || !strings.Contains(res.Body.String(), "tick at least one day") {
+		t.Errorf("status %d, saves %d; want 422 with a hint and nothing saved", res.Code, mh.saves)
+	}
+}
+
+// QA-4: when the saved switch cannot be read either, say so.
+func TestQA_BannerWhenSavedStateUnreadable(t *testing.T) {
+	// Arrange
+	mux, mh := hoursEnv(t, true)
+	mh.saveErr = errors.New("db down")
+	mh.getErr = errors.New("db down")
+
+	// Act
+	body := serve(mux, hpost(hoursForm("1", "off"))).Body.String()
+
+	// Assert
+	if !strings.Contains(body, "Could not read the saved switch") || strings.Contains(body, "Right now the bot is off.") {
+		t.Error("want the unknown-state notice, not a guessed state")
+	}
+}
+
+// QA-9: an unticked day's blank times do not block the save.
+func TestQA_UntickedDayWithBlankTimesSaves(t *testing.T) {
+	// Arrange
+	mux, mh := hoursEnv(t, true)
+	v := hoursForm("1", "scheduled")
+	v.Del("day0_on")
+	v.Set("day0_from", "")
+	v.Set("day0_to", "")
+
+	// Act
+	res := serve(mux, hpost(v))
+
+	// Assert
+	if res.Code != 303 || mh.saved[1].Days[0].On || mh.saved[1].Days[0].From != 9*60 {
+		t.Errorf("status %d, day0 %+v", res.Code, mh.saved[1].Days[0])
+	}
 }

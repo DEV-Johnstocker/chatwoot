@@ -7,6 +7,8 @@ package comments
 import (
 	"context"
 	"time"
+
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 )
 
 // AutoSentBy is DecidedBy on a reply auto-send sent.
@@ -31,12 +33,30 @@ const (
 	HoldRepeatReply = "this person already got a private reply"
 	HoldIntentSplit = "the sorter and the reviewer read the comment differently"
 	HoldRateLimit   = "hourly auto-send limit reached"
+	HoldBotOff      = "the bot is switched off"
 )
+
+// BotSwitch reads an account's main bot switch (schedule.Store). Auto-send
+// sends to customers without the owner, so it follows the switch too.
+type BotSwitch interface {
+	Get(ctx context.Context, accountID int64) (schedule.Schedule, error)
+}
 
 // MaxAutoSendsPerHour caps automatic replies per account. A flood of
 // crafted comments then costs at most this many unreviewed messages an hour;
 // the rest wait for the owner.
 const MaxAutoSendsPerHour = 20
+
+// botOn reports whether the account's bot is on now. Unlike the chat bot,
+// auto-send holds when the switch cannot be read: the owner can still send
+// by hand, so failing closed costs a click, not a lost customer.
+func (q *Queue) botOn(ctx context.Context, accountID int64, now time.Time) bool {
+	if q.Hours == nil {
+		return true
+	}
+	s, err := q.Hours.Get(ctx, accountID)
+	return err == nil && s.Active(now)
+}
 
 // holdReason is "" when the comment may be sent automatically, or the
 // first rule that keeps it for the owner.
@@ -45,6 +65,8 @@ func (q *Queue) holdReason(ctx context.Context, c Comment) string {
 	switch {
 	case !q.AutoSend || q.Sender == nil || q.Chats == nil:
 		return HoldOff
+	case !q.botOn(ctx, c.AccountID, now):
+		return HoldBotOff
 	case c.Status != StatusWaiting:
 		return HoldNotWaiting
 	case c.Intent != IntentLead && c.Intent != IntentQuestion:
