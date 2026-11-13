@@ -19,13 +19,15 @@ import (
 // message." Jev sorts each comment first; the LLM only writes.
 
 type fixedSorter struct {
-	s     Sorting
-	err   error
-	calls int
+	s       Sorting
+	err     error
+	calls   int
+	profile profile.Profile
 }
 
-func (f *fixedSorter) Sort(_ context.Context, _ Comment, _ profile.Profile) (Sorting, error) {
+func (f *fixedSorter) Sort(_ context.Context, _ Comment, p profile.Profile) (Sorting, error) {
 	f.calls++
+	f.profile = p
 	return f.s, f.err
 }
 
@@ -211,5 +213,23 @@ func TestJevReviewer_SortStripsNULFromTheModelName(t *testing.T) {
 	// Assert
 	if err != nil || strings.ContainsRune(s.Model, 0) {
 		t.Fatalf("model %q err %v", s.Model, err)
+	}
+}
+
+func TestWorker_SorterNeverSeesTheBankAccount(t *testing.T) {
+	// Arrange: the sorter is a separate processor; a comment never needs the account.
+	ctx := context.Background()
+	store := &Memory{}
+	_, _ = store.Add(ctx, Comment{AccountID: 1, CommentID: "c1", Message: "โอนได้ไหม", CreatedAt: time.Now()})
+	sorter := &fixedSorter{s: Sorting{Intent: IntentLead, P: 0.9}}
+	w := sortingWorker(store, sorter, &recordingScorer{})
+	w.Profiles = oneProfile{profile.Profile{BusinessName: "Auto Cut", BankTransfer: "SCB 123-4-56789-0"}}
+
+	// Act
+	w.RunOnce(ctx)
+
+	// Assert
+	if sorter.calls != 1 || sorter.profile.BankTransfer != "" || sorter.profile.BusinessName != "Auto Cut" {
+		t.Fatalf("sorter got %+v after %d calls", sorter.profile, sorter.calls)
 	}
 }
