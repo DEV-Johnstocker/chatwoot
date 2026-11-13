@@ -12,6 +12,10 @@ import (
 // HandoffLabel marks every chat the bot passed to staff, so they can filter it.
 const HandoffLabel = "bot-handoff"
 
+// KBGapLabel marks a handoff made only because the bot lacked the answer, so
+// staff can list what to add to the knowledge base.
+const KBGapLabel = "kb-gap"
+
 // StaffDirectory answers who can take a chat and how busy they are
 // (chatwoot.Reader, with the AI Reader agent's token).
 type StaffDirectory interface {
@@ -60,10 +64,16 @@ func pickAssignee(staff []chatwoot.Staff, open map[int64]int, current int64) int
 // staff member before it opens, so Chatwoot's own turn-taking (which only
 // fills empty assignees) does not override it. Every step is best effort:
 // when one fails, Chatwoot's own assignment still runs when the chat opens.
-func (b *Bot) route(ctx context.Context, log *slog.Logger, acct, inbox, conv int64) {
+func (b *Bot) route(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, gap bool) {
 	if l, ok := b.opts.Chatwoot.(Labeler); ok {
-		if err := l.AddLabel(ctx, acct, conv, HandoffLabel); err != nil {
-			log.Warn("handoff label failed", "error", err)
+		labels := []string{HandoffLabel}
+		if gap {
+			labels = append(labels, KBGapLabel)
+		}
+		for _, label := range labels {
+			if err := l.AddLabel(ctx, acct, conv, label); err != nil {
+				log.Warn("handoff label failed", "error", err, "label", label)
+			}
 		}
 	}
 	a, ok := b.opts.Chatwoot.(Assigner)
