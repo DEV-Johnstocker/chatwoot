@@ -51,13 +51,15 @@ func (b *Bot) noteCommentLead(ctx context.Context, log *slog.Logger, acct, conv 
 // commentLeadNote is the staff note for a chat a private reply landed in.
 func commentLeadNote(lead commentecho.Lead) string {
 	var b strings.Builder
-	b.WriteString("💬 **แชทนี้มาจากการตอบคอมเมนต์ใน Facebook** (ส่งเป็นข้อความส่วนตัว)\n")
+	b.WriteString("💬 **แชทนี้มาจากการตอบคอมเมนต์ใน Facebook** (ส่งจากหน้าคอมเมนต์)\n")
 	if c := quoteLine(lead.Message); c != "" {
 		b.WriteString("คอมเมนต์ของลูกค้า: \"" + c + "\"\n")
 	}
-	b.WriteString("ถ้าเห็นแถบ \"You cannot reply due to 24 hour message window restriction\" ไม่ใช่ระบบเสีย: " +
-		"Facebook ให้ส่งได้ 1 ข้อความต่อคอมเมนต์ จนกว่าลูกค้าจะตอบกลับ\n")
-	b.WriteString("พอลูกค้าตอบแล้ว ตอบในแชทนี้ได้ตามปกติภายใน 24 ชั่วโมงหลังข้อความล่าสุดของลูกค้า")
+	// Chatwoot shows the banner when the customer has sent no chat message in
+	// the last 24 hours (Conversations::MessageWindowService); a comment does
+	// not count, so a private reply alone never opens the window.
+	b.WriteString("ถ้าเห็นแถบ \"24 hour message window\" แปลว่าลูกค้ายังไม่ได้ทักแชทมาใน 24 ชม.ล่าสุด (คอมเมนต์ไม่นับ) " +
+		"พอลูกค้าตอบกลับ ตอบในแชทนี้ได้ตามปกติ")
 	return b.String()
 }
 
