@@ -26,6 +26,9 @@ type Event struct {
 	Sender       Sender       `json:"sender"`
 	Conversation Conversation `json:"conversation"`
 	Attachments  []Attachment `json:"attachments"` // present only when the message has files
+	// SourceID is the channel's own id for the message: for Messenger, Meta's
+	// message id (an echo of a page's message carries the id Meta returned).
+	SourceID string `json:"source_id"`
 	// ContentAttributes carries Chatwoot's message flags; external_echo marks
 	// a reply sent outside Chatwoot (e.g. from the Messenger app).
 	ContentAttributes struct {

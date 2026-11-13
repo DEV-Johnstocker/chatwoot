@@ -19,9 +19,9 @@ import (
 
 type recordingSender struct{ sent []string }
 
-func (s *recordingSender) SendPrivateReply(_ context.Context, commentID, text string) error {
+func (s *recordingSender) SendPrivateReply(_ context.Context, commentID, text string) (string, error) {
 	s.sent = append(s.sent, commentID+"|"+text)
-	return nil
+	return "m_" + commentID, nil
 }
 
 type commentsEnv struct {

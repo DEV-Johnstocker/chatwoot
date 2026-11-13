@@ -20,6 +20,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/bot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/cfaccess"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/commentecho"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/comments"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/config"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
@@ -127,6 +128,9 @@ func run() error {
 		historyReader, staff = reader, reader
 		logger.Info("chat recall and workload assignment on")
 	}
+	// Private replies sent from the comment queue, until Meta's echo of each
+	// reaches its Chatwoot chat; the bot then adds the comment-lead note.
+	commentEchoes := &commentecho.Echoes{}
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
 		LLM:               completer,
@@ -140,6 +144,7 @@ func run() error {
 		NoteLLM:           rewriteLLM,
 		HistoryReader:     historyReader,
 		Staff:             staff,
+		CommentEchoes:     commentEchoes,
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),
@@ -173,7 +178,7 @@ func run() error {
 	if kb != nil {
 		commentKnowledge = kb
 	}
-	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentKnowledge, commentReviewer(cfg, current, completer, logger), mux, logger)
+	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentKnowledge, commentReviewer(cfg, current, completer, logger), commentEchoes, mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -343,7 +348,7 @@ func openKnowledge(cfg config.Config, embedder embed.Embedder, logger *slog.Logg
 // comments in the background, when the Meta settings and a database are set.
 // It returns the admin queue, or nil (a nil interface) when off.
 func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Store, completer llm.Completer,
-	kb comments.Retriever, reviewer comments.Reviewer, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
+	kb comments.Retriever, reviewer comments.Reviewer, echoes *commentecho.Echoes, mux *http.ServeMux, logger *slog.Logger) admin.CommentQueue {
 	if !cfg.CommentsEnabled() {
 		logger.Info("page comments off: set META_APP_SECRET, META_VERIFY_TOKEN and META_PAGE_ID to collect Facebook comments")
 		return nil
@@ -372,7 +377,7 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 		log.Info("comment sorter: jev", "skip_other_at", comments.SkipOtherAt)
 	}
 	go worker.Run(context.Background(), 20*time.Second)
-	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply}
+	q := &comments.Queue{Store: store, Posts: posts, PublicText: cfg.CommentPublicReply, Echoes: echoes}
 	if graph != nil {
 		q.Sender, q.Public = graph, graph
 	}

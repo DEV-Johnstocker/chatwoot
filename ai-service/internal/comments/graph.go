@@ -42,30 +42,41 @@ func (e *SendError) Error() string {
 // (too old or deleted); 551: this person isn't available right now.
 var permanentCodes = map[int]bool{10900: true, 10903: true, 551: true}
 
-// SendPrivateReply sends text to the person who wrote commentID.
-func (g *Graph) SendPrivateReply(ctx context.Context, commentID, text string) error {
-	return g.post(ctx, "/"+url.PathEscape(g.PageID)+"/messages", map[string]any{
+// SendPrivateReply sends text to the person who wrote commentID and returns
+// Meta's message id ("" if Meta sent none), which Chatwoot later stores as
+// the source_id of the echoed message.
+func (g *Graph) SendPrivateReply(ctx context.Context, commentID, text string) (string, error) {
+	raw, err := g.post(ctx, "/"+url.PathEscape(g.PageID)+"/messages", map[string]any{
 		"recipient": map[string]string{"comment_id": commentID},
 		"message":   map[string]string{"text": text},
 	}, "send private reply")
+	if err != nil {
+		return "", err
+	}
+	var sent struct {
+		MessageID string `json:"message_id"`
+	}
+	_ = json.Unmarshal(raw, &sent) // the reply went out either way; only the note needs the id
+	return sent.MessageID, nil
 }
 
 // PostPublicReply answers the comment in public, as the Page, under the
 // comment itself. It needs the pages_manage_engagement permission.
 func (g *Graph) PostPublicReply(ctx context.Context, commentID, text string) error {
-	return g.post(ctx, "/"+url.PathEscape(commentID)+"/comments", map[string]string{"message": text}, "post public reply")
+	_, err := g.post(ctx, "/"+url.PathEscape(commentID)+"/comments", map[string]string{"message": text}, "post public reply")
+	return err
 }
 
 // post sends one JSON request to the Graph API and turns Meta's refusals
-// into a SendError.
-func (g *Graph) post(ctx context.Context, path string, payload any, what string) error {
+// into a SendError. It returns the body of a successful answer.
+func (g *Graph) post(ctx context.Context, path string, payload any, what string) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// The token goes in a header, never the URL, so it cannot reach a log.
@@ -81,12 +92,12 @@ func (g *Graph) post(ctx context.Context, path string, payload any, what string)
 		if errors.As(err, &ue) {
 			err = ue.Err
 		}
-		return fmt.Errorf("%s via %s: %w", what, req.URL.Host, err)
+		return nil, fmt.Errorf("%s via %s: %w", what, req.URL.Host, err)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 	if res.StatusCode/100 == 2 {
-		return nil
+		return raw, nil
 	}
 	var e struct {
 		Error struct {
@@ -95,7 +106,7 @@ func (g *Graph) post(ctx context.Context, path string, payload any, what string)
 		} `json:"error"`
 	}
 	if json.Unmarshal(raw, &e) != nil || e.Error.Code == 0 {
-		return &SendError{Code: res.StatusCode, Message: http.StatusText(res.StatusCode)}
+		return nil, &SendError{Code: res.StatusCode, Message: http.StatusText(res.StatusCode)}
 	}
-	return &SendError{Code: e.Error.Code, Message: clip(e.Error.Message, 300), Permanent: permanentCodes[e.Error.Code]}
+	return nil, &SendError{Code: e.Error.Code, Message: clip(e.Error.Message, 300), Permanent: permanentCodes[e.Error.Code]}
 }

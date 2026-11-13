@@ -63,8 +63,10 @@ a chat.
   that user an **Agent** (never Administrator), a member **only** of the
   inboxes the bot answers, and **Offline** (it is never given chats, but an
   online status adds noise). Its token can act as an agent in those inboxes,
-  so treat it as a password. Create the `bot-handoff` label in Chatwoot
-  (Settings, Labels) so the handoff label shows in filters.
+  so treat it as a password. Create the `bot-handoff`, `kb-gap` and
+  `comment-lead` labels in Chatwoot (Settings, Labels) in every account the
+  bot serves. Chatwoot stores a label the bot adds either way, but shows it
+  on the chat and in filters only once the label exists there.
 - Tunnel: `CF_TUNNEL_TOKEN`.
 - GitHub Actions secrets (not Dokploy) for the nightly answer smoke check:
   `SMOKE_LLM_BASE_URL`, `SMOKE_LLM_API_KEY`, `SMOKE_LLM_MODEL`,

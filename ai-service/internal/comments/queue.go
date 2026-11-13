@@ -3,6 +3,7 @@ package comments
 import (
 	"context"
 	"errors"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/commentecho"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,9 +20,15 @@ var (
 	ErrNotRecorded = errors.New("the reply was sent but could not be recorded")
 )
 
-// Sender sends one private reply.
+// Sender sends one private reply and returns Meta's message id.
 type Sender interface {
-	SendPrivateReply(ctx context.Context, commentID, text string) error
+	SendPrivateReply(ctx context.Context, commentID, text string) (string, error)
+}
+
+// EchoRecorder remembers a sent private reply until Meta's echo of it
+// reaches Chatwoot (commentecho.Echoes).
+type EchoRecorder interface {
+	Put(messageID string, lead commentecho.Lead)
 }
 
 // Queue is what /admin/comments uses: it lists waiting comments and sends or
@@ -40,6 +47,9 @@ type Queue struct {
 	// sent, when the owner ticks it. Off when either is empty.
 	Public     PublicReplier
 	PublicText string
+	// Echoes, when set, gets each sent reply's message id, so the bot can
+	// add a note to the Chatwoot chat the reply lands in.
+	Echoes EchoRecorder
 }
 
 // PublicReplier answers a comment in public (Graph).
@@ -161,10 +171,13 @@ func (q *Queue) Send(ctx context.Context, accountID, id int64, version int, text
 	}
 	// The send and its record must finish even if the owner closes the page.
 	ctx = context.WithoutCancel(ctx)
-	sendErr := q.Sender.SendPrivateReply(ctx, c.CommentID, text)
+	messageID, sendErr := q.Sender.SendPrivateReply(ctx, c.CommentID, text)
 	var refused *SendError
 	switch {
 	case sendErr == nil:
+		if q.Echoes != nil {
+			q.Echoes.Put(messageID, commentecho.Lead{CommentID: c.CommentID, FromName: c.FromName, Message: c.Message, CommentedAt: c.CreatedAt})
+		}
 		if err := q.Store.Finish(ctx, id, StatusSent, text, by, ""); err != nil {
 			return errors.Join(ErrNotRecorded, err)
 		}
