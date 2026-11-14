@@ -493,3 +493,27 @@ func TestApproval_RejectedDeleteKeepsDocument(t *testing.T) {
 		t.Fatalf("err=%v docs=%d audit=%d", err, len(e.st.docs), len(e.audit.entries))
 	}
 }
+
+func TestApproval_DeleteOfSyncedDocumentRefused(t *testing.T) {
+	// Security review: synced documents come from a website or data file;
+	// like upsert_document, delete_document must not touch them.
+	for _, key := range []string{"web:https://shop.example/faq", "feed:abc:row-1"} {
+		t.Run(key, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+			e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindText, Title: "t", Content: "c", SourceKey: key}}
+
+			// Act
+			byKey := e.call(rw, "delete_document", map[string]any{"key": key})
+			byID := e.call(rw, "delete_document", map[string]any{"id": 5})
+
+			// Assert
+			if !isErr(byKey) || !isErr(byID) || !strings.Contains(text(byKey), "source") {
+				t.Fatalf("byKey=%v byID=%v", text(byKey), text(byID))
+			}
+			if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 0 || len(e.st.docs) != 1 {
+				t.Fatalf("waiting=%d docs=%d", n, len(e.st.docs))
+			}
+		})
+	}
+}

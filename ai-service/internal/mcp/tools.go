@@ -78,7 +78,8 @@ var tools = []tool{
 		Annotations: map[string]any{"destructiveHint": true, "idempotentHint": true, "openWorldHint": false}},
 	{Name: "delete_document", Title: "Delete a document", write: true,
 		Description: "Ask to delete a document by key or ID. The delete waits until the owner approves it on the admin page; until then customers still get answers from it. " +
-			"Sending an upsert_document for the same key replaces a waiting delete. A copy of the old text is kept in the change history.",
+			"Sending an upsert_document for the same key replaces a waiting delete. A copy of the old text is kept in the change history. " +
+			"Documents with web: or feed: keys come from a source and cannot be deleted here.",
 		InputSchema: obj(keyOrID), Annotations: map[string]any{"destructiveHint": true, "openWorldHint": false}},
 	{Name: "test_bot", Title: "Ask the support bot",
 		Description: "Ask the real support bot a customer question, without sending anything to customers. Returns the reply, whether it would hand off to staff and why, and the knowledge it used. history is earlier turns, oldest first.",
@@ -548,6 +549,9 @@ func (s *Server) deleteDocument(ctx context.Context, tok Token, key string, id i
 	if err != nil {
 		return nil, notFound(err)
 	}
+	if knowledge.SyncedKey(d.SourceKey) {
+		return nil, userError("documents with web: or feed: keys are kept in sync from a website or data file; remove the row or page at the source, or remove the source on the admin page")
+	}
 	base := fingerprint(d)
 	p := docProposal{upsertArgs: upsertArgs{Key: d.SourceKey, Title: d.Title}, Delete: true, ID: d.ID, Base: &base}
 	return s.propose(ctx, tok, pending.KindDocument, deleteTarget(d), p, nil)
@@ -572,7 +576,7 @@ func (s *Server) applyDelete(ctx context.Context, tok Token, p docProposal) erro
 	if err != nil {
 		return err
 	}
-	if p.Base == nil || d.SourceKey != p.Key {
+	if p.Base == nil || d.SourceKey != p.Key || knowledge.SyncedKey(d.SourceKey) {
 		return pending.ErrTargetChanged
 	}
 	if err := unchangedSince(p.Base, d, true); err != nil {
