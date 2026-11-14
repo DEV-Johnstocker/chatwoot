@@ -34,6 +34,7 @@ func (m *memProfiles) Save(_ context.Context, p profile.Profile) error {
 		return err
 	}
 	m.saves++
+	p.UpdatedAt = time.Now()
 	m.saved[p.AccountID] = p
 	return nil
 }

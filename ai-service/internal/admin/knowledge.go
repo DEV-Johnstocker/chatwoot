@@ -56,6 +56,7 @@ type docForm struct {
 	Question, Answer     string
 	DocTitle, DocContent string
 	From, Until          string // yyyy-mm-dd; Until is the last day the bot may use it
+	Version              string // the document's UpdatedAt (µs) when the page was opened
 }
 
 type pageView struct {
@@ -314,7 +315,7 @@ func (h *Handler) toDocViewIn(lang string, d knowledge.Document, now time.Time) 
 // formFromDoc fills the edit form. The stored end is exclusive (midnight
 // after the last day), so the form shows the day before.
 func (h *Handler) formFromDoc(d knowledge.Document) docForm {
-	f := docForm{ID: d.ID, Kind: string(d.Kind), Synced: knowledge.SyncedKey(d.SourceKey)}
+	f := docForm{ID: d.ID, Kind: string(d.Kind), Synced: knowledge.SyncedKey(d.SourceKey), Version: docVersion(d)}
 	if d.InboxID > 0 {
 		f.InboxID = strconv.FormatInt(d.InboxID, 10)
 	}
@@ -417,6 +418,15 @@ func noticeIn(lang string, q url.Values) string {
 	return ""
 }
 
+// formAccount parses the account of a form that changes data. Unlike
+// accountParam it never falls back to account 1: a typo or a script must not
+// write to the primary account (QA F-A-01).
+func formAccount(raw string) (int64, bool) {
+	n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	return n, err == nil && n >= 1
+}
+
+// accountParam is the account a page shows; 1 when absent or invalid.
 func accountParam(raw string) int64 {
 	n, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil || n < 1 {
@@ -445,7 +455,11 @@ func (h *Handler) submitKnowledge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pf := r.PostForm
-	acct := accountParam(pf.Get("account"))
+	acct, ok := formAccount(pf.Get("account"))
+	if !ok {
+		http.Error(w, "account must be a positive number", http.StatusBadRequest)
+		return
+	}
 	data := knowledgeData{AccountID: acct, Lib: parseLibrary(pf), docForm: docForm{
 		InboxID:  pf.Get("inbox"),
 		Question: pf.Get("question"), Answer: pf.Get("answer"),
@@ -522,8 +536,14 @@ func (h *Handler) submitKnowledge(w http.ResponseWriter, r *http.Request) {
 			doc.Title, doc.Content = data.Question, data.Answer
 		}
 		edit := data.docForm
-		edit.ID, edit.Kind = id, string(cur.Kind)
+		edit.ID, edit.Kind, edit.Version = id, string(cur.Kind), pf.Get("version")
 		data.Edit = &edit
+		if v := pf.Get("version"); v != "" && v != docVersion(cur) {
+			// Another tab or an approval changed it since this page opened:
+			// saving would silently undo that change (QA F-C-01).
+			fail("edit", errors.New("This document was changed after you opened this page. Your text is below; copy it, reload the page and apply your change again."))
+			return
+		}
 		if err := h.fillScope(&doc, data.docForm); err != nil {
 			fail("edit", err)
 			return
@@ -798,4 +818,9 @@ func (h *Handler) webAction(w http.ResponseWriter, r *http.Request, acct int64, 
 	}
 	outcome, _ := h.WebSync.Check(r.Context(), src)
 	http.Redirect(w, r, back+"&done=page&outcome="+string(outcome), http.StatusSeeOther)
+}
+
+// docVersion identifies the stored version of a document for stale-page checks.
+func docVersion(d knowledge.Document) string {
+	return strconv.FormatInt(d.UpdatedAt.UnixMicro(), 10)
 }

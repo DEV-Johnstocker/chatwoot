@@ -147,7 +147,11 @@ func (h *Handler) submitConnections(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	acct := accountParam(r.PostForm.Get("account"))
+	acct, ok := formAccount(r.PostForm.Get("account"))
+	if !ok {
+		http.Error(w, "account must be a positive number", http.StatusBadRequest)
+		return
+	}
 	d := connectionsData{AccountID: acct}
 	switch r.PostForm.Get("action") {
 	case "create":

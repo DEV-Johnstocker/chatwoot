@@ -58,6 +58,7 @@
       <input type="hidden" name="action" value="update">
       <input type="hidden" name="account" value="{{$.AccountID}}">
       <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="version" value="{{.Version}}">
       {{template "lib-fields" $.Lib}}
       {{if eq .Kind "faq"}}
       <label for="e-question">{{T "Question"}}</label>

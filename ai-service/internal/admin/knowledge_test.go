@@ -28,7 +28,7 @@ type memStore struct {
 }
 
 func (m *memStore) Insert(_ context.Context, d knowledge.Document, _ string, chunks []knowledge.Chunk) (int64, error) {
-	d.ID, d.Chunks = int64(len(m.docs)+1), len(chunks)
+	d.ID, d.Chunks, d.UpdatedAt = int64(len(m.docs)+1), len(chunks), time.Now()
 	m.docs = append(m.docs, d)
 	return d.ID, nil
 }
@@ -63,7 +63,7 @@ func (m *memStore) Get(_ context.Context, acct, id int64) (knowledge.Document, e
 func (m *memStore) Update(_ context.Context, d knowledge.Document, _ string, chunks []knowledge.Chunk) error {
 	for i, cur := range m.docs {
 		if cur.ID == d.ID && cur.AccountID == d.AccountID {
-			d.Chunks, d.UseCount = len(chunks), cur.UseCount
+			d.Chunks, d.UseCount, d.UpdatedAt = len(chunks), cur.UseCount, time.Now()
 			m.docs[i] = d
 			return nil
 		}

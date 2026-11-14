@@ -24,6 +24,7 @@
 
   <form class="biz" method="post" action="/admin/business" autocomplete="off">
     <input type="hidden" name="account" value="{{.Profile.AccountID}}">
+    <input type="hidden" name="version" value="{{.Version}}">
     <section class="card">
       <fieldset>
         <legend>{{T "Account %d" .Profile.AccountID}}{{if .Updated}} <span class="badge on">{{T "Updated %s" .Updated}}</span>{{end}}</legend>
