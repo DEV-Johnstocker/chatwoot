@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"errors"
 	"net/http/httptest"
 	"sync"
 	"sync/atomic"
@@ -117,8 +118,8 @@ func TestReserve_StopsAtLimitWithoutCountingOver(t *testing.T) {
 	_, d := l.Reserve("k", 2)
 
 	// Assert
-	if !a || !b || c || !d {
-		t.Fatalf("got %v %v %v %v, want true true false true", a, b, c, d)
+	if a != nil || b != nil || !errors.Is(c, ErrLimited) || d != nil {
+		t.Fatalf("got %v %v %v %v, want nil nil ErrLimited nil", a, b, c, d)
 	}
 }
 
@@ -134,7 +135,7 @@ func TestReserve_UndoGivesTheSlotBack(t *testing.T) {
 	_, over := l.Reserve("k", 1)
 
 	// Assert
-	if !again || over {
+	if again != nil || over == nil {
 		t.Fatalf("again=%v over=%v", again, over)
 	}
 }
@@ -146,11 +147,15 @@ func TestReserve_FailsClosedWhenTableIsFull(t *testing.T) {
 	l.Reserve("b", 5)
 
 	// Act
-	undo, ok := l.Reserve("c", 5)
+	undo, err := l.Reserve("c", 5)
+	_, known := l.Reserve("a", 5)
 
 	// Assert
-	if ok || undo != nil {
-		t.Fatal("a new key was admitted although it cannot be tracked")
+	if !errors.Is(err, ErrFull) || undo != nil {
+		t.Fatalf("err=%v: a new key must be reported as untracked", err)
+	}
+	if known != nil {
+		t.Fatalf("a tracked key was refused: %v", known)
 	}
 }
 
@@ -165,7 +170,7 @@ func TestReserve_ConcurrentCallsNeverExceedLimit(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, ok := l.Reserve("k", 10); ok {
+			if _, err := l.Reserve("k", 10); err == nil {
 				admitted.Add(1)
 			}
 		}()

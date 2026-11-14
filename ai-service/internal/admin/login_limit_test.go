@@ -171,19 +171,20 @@ func TestLoginLimit_IPv6CountsPerSlash64(t *testing.T) {
 	}
 }
 
-func TestLoginLimit_FullTableFailsClosed(t *testing.T) {
-	// Arrange
+func TestLoginLimit_FullTableStillAdmitsTheOwner(t *testing.T) {
+	// Arrange: an attacker filled the table with other addresses.
 	e := setup(t, nil)
 	e.h.loginFails.Max = 2
 	e.do(wrongPassword("203.0.113.1:1000"))
 	e.do(wrongPassword("203.0.113.2:1000"))
 
 	// Act
-	newcomer := e.do(wrongPassword("203.0.113.3:1000"))
+	owner := e.do(from(get(true), "198.51.100.30:1000"))
+	guess := e.do(wrongPassword("203.0.113.3:1000"))
 
 	// Assert
-	if newcomer.Code != http.StatusTooManyRequests {
-		t.Errorf("untracked address = %d, want 429", newcomer.Code)
+	if owner.Code != http.StatusOK || guess.Code != http.StatusUnauthorized {
+		t.Errorf("owner = %d (want 200), untracked guess = %d (want 401)", owner.Code, guess.Code)
 	}
 }
 
@@ -241,5 +242,25 @@ func TestLoginLimit_OwnerAddressGetsInDuringASpreadAttack(t *testing.T) {
 	// Assert
 	if owner.Code != http.StatusOK {
 		t.Fatalf("owner code %d, want 200", owner.Code)
+	}
+}
+
+func TestLoginLimit_FullTableGuessesStillHitTheAllAddressCap(t *testing.T) {
+	// Arrange: the per-address table is full, so new addresses are untracked.
+	e := setup(t, nil)
+	e.h.loginFails.Max = 1
+	e.do(wrongPassword("203.0.113.1:1000"))
+	compared := 0
+
+	// Act
+	for i := 0; i < 3*loginMaxFailsAll; i++ {
+		if e.do(wrongPassword("198.18.1."+strconv.Itoa(i%250+1)+":1000")).Code == http.StatusUnauthorized {
+			compared++
+		}
+	}
+
+	// Assert: one slot went to the first address; the rest share the cap.
+	if compared != loginMaxFailsAll-1 {
+		t.Fatalf("%d untracked guesses compared, want %d", compared, loginMaxFailsAll-1)
 	}
 }

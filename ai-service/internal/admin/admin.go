@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -511,8 +512,7 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 		}
 		user, pass, ok := r.BasicAuth()
 		// Each attempt is reserved before the password is compared, under the
-		// limiter's lock, so parallel guesses cannot pass the limit; an
-		// address the limiter cannot track is refused (fails closed). A right
+		// limiter's lock, so parallel guesses cannot pass the limit. A right
 		// password gives the attempt back.
 		var done func(good bool)
 		if ok {
@@ -544,14 +544,22 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 // password is compared. done reports the outcome: a right password gives
 // the attempts back and remembers the address. done is nil when the attempt
 // is refused; retry is then the Retry-After in seconds.
+//
+// When the per-address table is full (an attacker filled it with other
+// addresses), the address is not tracked: its password is still checked,
+// so the owner gets in, and a wrong one is bounded by the all-address cap
+// below, which is one key and always tracked.
 func (h *Handler) reserveLogin(key string) (done func(good bool), retry int) {
-	undoIP, ok := h.loginFails.Reserve(key, loginMaxFails)
-	if !ok {
+	undoIP, err := h.loginFails.Reserve(key, loginMaxFails)
+	switch {
+	case errors.Is(err, ratelimit.ErrFull):
+		undoIP = func() {}
+	case err != nil:
 		return nil, int(loginWindow.Seconds())
 	}
 	var undoAll func()
 	if !h.knownGood(key) {
-		if undoAll, ok = h.loginFailsAll.Reserve("all", loginMaxFailsAll); !ok {
+		if undoAll, err = h.loginFailsAll.Reserve("all", loginMaxFailsAll); err != nil {
 			undoIP() // this attempt was never checked
 			return nil, int(time.Minute.Seconds())
 		}
