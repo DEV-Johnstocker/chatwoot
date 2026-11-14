@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -146,13 +147,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request too large (max 1 MB)", http.StatusRequestEntityTooLarge)
 		return
 	}
-	var req rpcRequest
-	if err := json.Unmarshal(body, &req); err != nil || req.JSONRPC != "2.0" || req.Method == "" {
-		code, msg := codeInvalidRequest, "expected one JSON-RPC 2.0 request (batches are not supported)"
-		if err != nil && !json.Valid(body) {
-			code, msg = codeParse, "invalid JSON"
-		}
-		writeJSON(w, http.StatusOK, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: &rpcError{code, msg}})
+	req, rerr := parseRequest(body)
+	if rerr != nil {
+		writeJSON(w, http.StatusOK, rpcResponse{JSONRPC: "2.0", ID: json.RawMessage("null"), Error: rerr})
 		return
 	}
 	if len(req.ID) == 0 { // notification: nothing to answer
@@ -162,6 +159,80 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	result, rerr := s.dispatch(r.Context(), tok, req)
 	resp := rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: result, Error: rerr}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// parseRequest reads one JSON-RPC 2.0 request strictly (QA F-D-04): the
+// members are exactly jsonrpc "2.0", a non-empty method, an optional id
+// (a string or an integer; MCP forbids null) and optional params (an
+// object or array; null counts as absent), each once and spelled exactly.
+// Go's decoder alone would accept "JSONRPC", a duplicate method or an
+// object id.
+func parseRequest(body []byte) (rpcRequest, *rpcError) {
+	if !json.Valid(body) {
+		return rpcRequest{}, &rpcError{codeParse, "invalid JSON"}
+	}
+	invalid := &rpcError{codeInvalidRequest, "expected one JSON-RPC 2.0 request (batches are not supported)"}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return rpcRequest{}, invalid
+	}
+	var req rpcRequest
+	seen := map[string]bool{}
+	for dec.More() {
+		t, err := dec.Token()
+		key, ok := t.(string)
+		if err != nil || !ok || seen[key] {
+			return rpcRequest{}, invalid
+		}
+		seen[key] = true
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return rpcRequest{}, invalid
+		}
+		switch key {
+		case "jsonrpc":
+			if string(v) != `"2.0"` {
+				return rpcRequest{}, invalid
+			}
+			req.JSONRPC = "2.0"
+		case "id":
+			if !validID(v) {
+				return rpcRequest{}, invalid
+			}
+			req.ID = v
+		case "method":
+			if json.Unmarshal(v, &req.Method) != nil || req.Method == "" {
+				return rpcRequest{}, invalid
+			}
+		case "params":
+			switch {
+			case string(v) == "null": // sent by some clients for "no params"; same as leaving it out
+			case v[0] != '{' && v[0] != '[':
+				return rpcRequest{}, invalid
+			default:
+				req.Params = v
+			}
+		default:
+			return rpcRequest{}, invalid
+		}
+	}
+	if req.JSONRPC == "" || req.Method == "" {
+		return rpcRequest{}, invalid
+	}
+	return req, nil
+}
+
+// validID reports whether v is an id MCP allows: a string or an integer.
+func validID(v json.RawMessage) bool {
+	switch {
+	case len(v) == 0:
+		return false
+	case v[0] == '"':
+		return true
+	case v[0] == '-' || (v[0] >= '0' && v[0] <= '9'):
+		return !bytes.ContainsAny(v, ".eE")
+	}
+	return false
 }
 
 func (s *Server) authenticate(r *http.Request) (Token, error) {
