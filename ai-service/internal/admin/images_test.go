@@ -84,7 +84,7 @@ func TestImages_AddListEditRemove(t *testing.T) {
 	id := strconv.FormatInt(list[0].ID, 10)
 	edited := serve(mux, imagePost(t, map[string]string{"account": "1", "id": id, "action": "save", "name": "รีวิว AutoCut", "when": "ใหม่"}, nil))
 	afterEdit, _ := im.Get(ctx, 1, list[0].ID)
-	removed := serve(mux, imagePost(t, map[string]string{"account": "1", "id": id, "action": "remove"}, nil))
+	removed := serve(mux, imagePost(t, map[string]string{"account": "1", "id": id, "action": "remove", "confirm": "yes"}, nil))
 	after, _ := im.List(ctx, 1)
 
 	// Assert

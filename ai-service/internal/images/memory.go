@@ -134,6 +134,7 @@ func (m *Memory) Delete(_ context.Context, accountID, id int64) error {
 	defer m.mu.Unlock()
 	if img, ok := m.rows[id]; ok && img.AccountID == accountID {
 		delete(m.rows, id)
+		return nil
 	}
-	return nil
+	return ErrNotFound
 }

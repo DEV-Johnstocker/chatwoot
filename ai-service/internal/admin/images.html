@@ -52,10 +52,19 @@
             <input id="img-file-{{.ID}}" name="image" type="file" accept="image/jpeg,image/png">
             <p class="field-hint">{{.Size}}</p></div>
           <div class="card-foot">
-            <button type="submit" name="action" value="remove" class="danger small">{{T "Remove"}}</button>
             <button type="submit" name="action" value="save" class="primary small">{{T "Save"}}</button>
           </div>
         </form>
+        <details class="img-remove">
+          <summary>{{T "Remove this image…"}}</summary>
+          <form method="post" action="/admin/images" enctype="multipart/form-data" class="img-remove-form">
+            <input type="hidden" name="account" value="{{$.Account}}">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <input type="hidden" name="confirm" value="yes">
+            <p class="field-hint">{{T "The bot stops sending it at once. This cannot be undone."}}</p>
+            <button type="submit" name="action" value="remove" class="danger small">{{T "Yes, remove it"}}</button>
+          </form>
+        </details>
       </details>
     </section>
     {{end}}

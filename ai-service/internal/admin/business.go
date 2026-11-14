@@ -20,6 +20,7 @@ type businessData struct {
 	Saved   bool
 	Error   string
 	Limits  struct{ Name, Field, Rules, Bank int }
+	Version string // the stored profile's UpdatedAt (µs) when the page opened
 }
 
 func (h *Handler) showBusiness(w http.ResponseWriter, r *http.Request) {
@@ -65,12 +66,30 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 		},
 	}.Normalize()
 	old, oldErr := h.Profiles.Get(r.Context(), p.AccountID)
-	if err := h.Profiles.Save(r.Context(), p); err != nil {
-		h.Logger.Warn("save business profile failed", "account_id", p.AccountID, "error", err)
-		h.renderBusiness(w, r, http.StatusUnprocessableEntity, businessData{Enabled: true, Profile: p, Error: err.Error()})
+	// A form without a version (a page opened before this check existed, or a
+	// script) is not checked.
+	if v := f.Get("version"); oldErr == nil && v != "" && v != profileVersion(old) {
+		// Saved from another tab after this page opened: saving would put the
+		// old text of every field back without a word (QA F-C-02).
+		p.UpdatedAt = old.UpdatedAt
+		h.renderBusiness(w, r, http.StatusConflict, businessData{Enabled: true, Profile: p, Version: f.Get("version"),
+			Error: tr(langOf(r), "Not saved: the profile was changed in another tab or by an approval after you opened this page. Your text is below; copy what you need, reload the page and apply your change again.")})
 		return
 	}
-	h.record(r, p.AccountID, "business profile saved", p.BusinessName, nil)
+	if err := h.Profiles.Save(r.Context(), p); err != nil {
+		h.Logger.Warn("save business profile failed", "account_id", p.AccountID, "error", err)
+		h.renderBusiness(w, r, http.StatusUnprocessableEntity, businessData{Enabled: true, Profile: p, Version: f.Get("version"), Error: err.Error()})
+		return
+	}
+	var before any
+	if oldErr == nil {
+		// The history keeps the replaced profile, so a lost edit can be found
+		// again; the bank account only masked, as in "bank account changed".
+		kept := old
+		kept.BankTransfer = maskBank(old.BankTransfer)
+		before = kept
+	}
+	h.record(r, p.AccountID, "business profile saved", p.BusinessName, before)
 	if oldErr != nil {
 		h.Logger.Warn("bank account change not checked: previous profile unreadable", "account_id", p.AccountID, "error", oldErr)
 		h.record(r, p.AccountID, "bank account saved (previous unknown)", maskBank(p.BankTransfer), nil)
@@ -83,7 +102,19 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/business?account="+strconv.FormatInt(p.AccountID, 10)+"&done=saved", http.StatusSeeOther)
 }
 
+// profileVersion identifies the stored profile for stale-page checks; "0"
+// for a profile never saved.
+func profileVersion(p profile.Profile) string {
+	if p.UpdatedAt.IsZero() {
+		return "0"
+	}
+	return strconv.FormatInt(p.UpdatedAt.UnixMicro(), 10)
+}
+
 func (h *Handler) renderBusiness(w http.ResponseWriter, r *http.Request, status int, data businessData) {
+	if data.Version == "" {
+		data.Version = profileVersion(data.Profile)
+	}
 	data.Limits.Name, data.Limits.Field, data.Limits.Rules, data.Limits.Bank = profile.MaxNameRunes, profile.MaxFieldRunes, profile.MaxRulesRunes, profile.MaxBankRunes
 	if !data.Profile.UpdatedAt.IsZero() {
 		data.Updated = h.whenIn(langOf(r), data.Profile.UpdatedAt)

@@ -127,8 +127,14 @@ func (s *Postgres) Update(ctx context.Context, m Meta, data []byte) error {
 
 // Delete implements Store.
 func (s *Postgres) Delete(ctx context.Context, accountID, id int64) error {
-	_, err := s.Pool.Exec(ctx, `DELETE FROM bot_images WHERE account_id = $1 AND id = $2`, accountID, id)
-	return err
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM bot_images WHERE account_id = $1 AND id = $2`, accountID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // nameTaken turns a unique violation into ErrName.

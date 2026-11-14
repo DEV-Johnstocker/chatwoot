@@ -98,9 +98,20 @@ func (h *Handler) submitImage(w http.ResponseWriter, r *http.Request) {
 	meta := images.Meta{ID: id, AccountID: acct, Name: r.FormValue("name"), When: r.FormValue("when"), Caption: r.FormValue("caption")}
 	data, ferr := readImageFile(r)
 	done, action := "", r.FormValue("action")
+	var before any
 	switch {
 	case action == "remove" && id > 0:
-		err, done = h.Images.Delete(r.Context(), acct, id), "removed"
+		if r.FormValue("confirm") != "yes" {
+			// Only the separate, confirmed Remove form deletes (QA F-C-06).
+			http.Error(w, "confirm the removal first", http.StatusBadRequest)
+			return
+		}
+		var cur images.Image
+		if cur, err = h.Images.Get(r.Context(), acct, id); err == nil {
+			err, before = h.Images.Delete(r.Context(), acct, id), removedCopy(cur.Meta)
+			meta.Name = cur.Name
+		}
+		done = "removed"
 	case action == "add":
 		if errors.Is(ferr, http.ErrMissingFile) {
 			err = images.ErrEmpty
@@ -125,7 +136,7 @@ func (h *Handler) submitImage(w http.ResponseWriter, r *http.Request) {
 		h.imageFailed(w, r, acct, imageError(langOf(r), err))
 		return
 	}
-	h.record(r, acct, "bot image "+done, strings.TrimSpace(meta.Name), nil)
+	h.record(r, acct, "bot image "+done, strings.TrimSpace(meta.Name), before)
 	http.Redirect(w, r, "/admin/images?account="+strconv.FormatInt(acct, 10)+"&done="+done, http.StatusSeeOther)
 }
 
@@ -194,4 +205,10 @@ func (h *Handler) imagePreview(r *http.Request, m images.Meta) template.URL {
 	uri := template.URL("data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(thumb)) // #nosec G203 -- our own re-encoded JPEG
 	h.previews.Store(m.ID, previewCache{at: m.UpdatedAt, uri: uri})
 	return uri
+}
+
+// removedCopy is what the history keeps of a removed picture: its texts, not
+// the image itself.
+func removedCopy(m images.Meta) map[string]any {
+	return map[string]any{"id": m.ID, "name": m.Name, "when": m.When, "caption": m.Caption}
 }
