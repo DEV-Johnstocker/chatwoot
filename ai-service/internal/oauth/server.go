@@ -317,10 +317,12 @@ func (s *Server) render(w http.ResponseWriter, status int, d pageData) {
 	}
 }
 
-// passwordModeTrusted refuses, with the admin password, an app that returns
-// to an unknown host, as Access sign-ins already do (QA 7a): anyone can
-// register a client with any https return address, so a phishing link would
-// otherwise send the code to the attacker once the owner types the password.
+// passwordModeTrusted refuses an app that returns to an unknown host: with
+// the admin password as with Access sign-ins (QA 7a), and before any
+// redirect, deny included. Anyone can register a client with any https
+// return address, so a phishing link would otherwise send the code to the
+// attacker once the owner types the password. It runs before the password
+// check, so a refused app costs no guess.
 func passwordModeTrusted(d *pageData) bool {
 	if d.Trusted {
 		return true
@@ -403,6 +405,12 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusBadRequest, d)
 		return
 	}
+	// Even a "deny" redirects, so an unknown return host is refused first:
+	// otherwise an auto-submitted deny makes this page an open redirect.
+	if !passwordModeTrusted(&d) {
+		s.render(w, http.StatusForbidden, d)
+		return
+	}
 	redirect, _ := url.Parse(a.RedirectURI)
 	q := redirect.Query()
 	q.Set("iss", s.Issuer())
@@ -444,10 +452,6 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 		}
 		approver, acct = d.Email, m.AccountID
 	} else {
-		if !passwordModeTrusted(&d) { // before the password: a refused app costs no guess
-			s.render(w, http.StatusForbidden, d)
-			return
-		}
 		if !s.login.Allow("login:"+ratelimit.ClientIP(r), 5) || !s.login.Allow("login", 20) ||
 			s.failedDay.Reached("failed:"+ratelimit.ClientIP(r), maxFailedPerDay) || s.failedAll.Reached("all", maxFailedAllPerDay) {
 			d.Error = "Too many attempts. Wait a minute and try again."
