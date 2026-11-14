@@ -317,11 +317,23 @@ func (s *Server) render(w http.ResponseWriter, status int, d pageData) {
 	}
 }
 
+// passwordModeTrusted refuses, with the admin password, an app that returns
+// to an unknown host, as Access sign-ins already do (QA 7a): anyone can
+// register a client with any https return address, so a phishing link would
+// otherwise send the code to the attacker once the owner types the password.
+func passwordModeTrusted(d *pageData) bool {
+	if d.Trusted {
+		return true
+	}
+	d.Error, d.Valid = d.ReturnHost+" is not Claude, ChatGPT or an app on this computer. Use an access token for other tools (admin page, Connect AI tools).", false
+	return false
+}
+
 // identify returns the Access-verified person and their accounts, or an
 // error message for the page. Without Access it returns no email.
 func (s *Server) identify(r *http.Request, d *pageData) bool {
 	if s.Access == nil {
-		return true
+		return passwordModeTrusted(d)
 	}
 	id, err := s.Access.Verify(r.Context(), r.Header.Get(cfaccess.Header))
 	if err != nil {
@@ -432,6 +444,10 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 		}
 		approver, acct = d.Email, m.AccountID
 	} else {
+		if !passwordModeTrusted(&d) { // before the password: a refused app costs no guess
+			s.render(w, http.StatusForbidden, d)
+			return
+		}
 		if !s.login.Allow("login:"+ratelimit.ClientIP(r), 5) || !s.login.Allow("login", 20) ||
 			s.failedDay.Reached("failed:"+ratelimit.ClientIP(r), maxFailedPerDay) || s.failedAll.Reached("all", maxFailedAllPerDay) {
 			d.Error = "Too many attempts. Wait a minute and try again."
