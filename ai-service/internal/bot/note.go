@@ -95,6 +95,11 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 	if b.opts.NoteLLM == nil {
 		return reason, false
 	}
+	if reason == ReasonLLMError {
+		// The chat model just failed: the note model (same provider) would only
+		// add up to noteTimeout before staff see the chat, so the note stays plain.
+		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false
+	}
 	ctx, cancel := context.WithTimeout(ctx, noteTimeout)
 	defer cancel()
 	res, err := b.opts.NoteLLM.Complete(ctx, []llm.Message{

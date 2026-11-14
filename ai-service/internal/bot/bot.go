@@ -151,6 +151,10 @@ type Bot struct {
 	imagesSent map[imageKey]time.Time
 }
 
+// handoffBudget bounds the handoff after a failed turn. It runs on a fresh
+// context: the turn's own may already be spent by a model that timed out.
+const handoffBudget = 15 * time.Second
+
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
 func New(opts Options, workers, queueSize int) *Bot {
 	if opts.Logger == nil {
@@ -359,7 +363,9 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	if err != nil {
 		log.Error("llm completion failed", "error", err, "latency_ms", latency.Milliseconds())
 		tr.Outcome, tr.Output = "handoff:"+ReasonLLMError, b.opts.FailureMessage
-		b.handoff(ctx, log, acct, inbox, conv, b.opts.FailureMessage, ReasonLLMError, images)
+		hctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), handoffBudget)
+		defer cancel()
+		b.handoff(hctx, log, acct, inbox, conv, b.opts.FailureMessage, ReasonLLMError, images)
 		return
 	}
 
