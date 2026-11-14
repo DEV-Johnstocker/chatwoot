@@ -314,3 +314,56 @@ func TestApprovals_SourceProposalInThai(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovals_DeleteProposalShowsWhatWillBeRemoved(t *testing.T) {
+	// Arrange: an AI app asks to delete the delivery document (QA F-D-02).
+	e := newApprovalsEnv(t, true)
+	e.propose(t, 2, pending.KindDocument, "delivery", map[string]any{"key": "delivery", "title": "Delivery", "delete": true, "id": 1})
+
+	// Act
+	body := serve(e.mux, approvalsGet("account=2")).Body.String()
+
+	// Assert
+	for _, want := range []string{"Delete document", "Knowledge: delivery", "Old delivery answer", "After approval",
+		"The document is deleted and the bot stops using it."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(body, "New document") || strings.Contains(body, "Unchanged") || strings.Contains(body, `class="code diff-new"`) {
+		t.Error("a delete shows as a new or unchanged document")
+	}
+}
+
+func TestApprovals_DeleteProposalInThai(t *testing.T) {
+	// Arrange
+	e := newApprovalsEnv(t, true)
+	e.propose(t, 2, pending.KindDocument, "delivery", map[string]any{"key": "delivery", "title": "Delivery", "delete": true, "id": 1})
+	r := approvalsGet("account=2")
+	r.Header.Set("Accept-Language", "th")
+
+	// Act
+	body := serve(e.mux, r).Body.String()
+
+	// Assert
+	for _, english := range []string{"Delete document", "The document is deleted and the bot stops using it."} {
+		if strings.Contains(body, english) {
+			t.Errorf("page still says %q", english)
+		}
+	}
+}
+
+func TestApprovals_DocumentChangedSinceProposalIsExplained(t *testing.T) {
+	// Arrange: the owner edited the document after the app proposed (QA F-C-07).
+	e := newApprovalsEnv(t, true)
+	e.propose(t, 2, pending.KindDocument, "delivery", map[string]any{"key": "delivery", "title": "Delivery", "content": "Older AI text"})
+	e.approver.err = pending.ErrTargetChanged
+
+	// Act
+	res := serve(e.mux, approvalsPost(url.Values{"account": {"2"}, "id": {"1"}, "version": {"1"}, "decision": {"approve"}}))
+
+	// Assert
+	if res.Code != http.StatusConflict || !strings.Contains(res.Body.String(), "changed since the app proposed this") {
+		t.Fatalf("status %d body %s", res.Code, res.Body.String())
+	}
+}

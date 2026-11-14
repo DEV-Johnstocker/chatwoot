@@ -33,12 +33,12 @@
       <h2 id="change-{{.ID}}">{{.Heading}}{{with .Badge}} <span class="badge scheduled">{{.}}</span>{{end}}</h2>
       <p class="hint">{{T "From"}} <strong>{{.From}}</strong> {{T "(AI app)"}} · {{.When}}</p>
     </div>
-    {{$new := .New}}
+    {{$new := .New}}{{$del := .Delete}}
     {{range .Fields}}
     <div class="diff">
       <h3 class="sub">{{.Label}}{{if .Same}} <span class="badge">{{T "Unchanged"}}</span>{{end}}</h3>
-      {{if .Same}}
-      <pre class="code diff-now">{{.Current}}</pre>
+      {{if or .Same $del}}
+      <pre class="code diff-now">{{if .Current}}{{.Current}}{{else}}{{T "(empty)"}}{{end}}</pre>
       {{else if $new}}
       <pre class="code diff-new">{{.Proposed}}</pre>
       {{else}}

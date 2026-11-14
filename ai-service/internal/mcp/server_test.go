@@ -324,6 +324,7 @@ func TestServer_DeleteKeepsAuditCopyAndStaysInAccount(t *testing.T) {
 	// Act
 	otherAcct := e.call(other, "delete_document", map[string]any{"key": "promo"})
 	deleted := e.call(rw, "delete_document", map[string]any{"key": "promo"})
+	approveAll(t, e.srv)
 
 	// Assert
 	if !isErr(otherAcct) {
@@ -440,17 +441,16 @@ func TestServer_NoAuditCopyNoChange(t *testing.T) {
 	upd := e.call(rw, "upsert_document", map[string]any{"key": "price", "title": "ราคา", "content": "1 บาท"})
 	list, _ := e.srv.Pending.List(context.Background(), 1)
 	approveErr := e.srv.Approve(context.Background(), 1, list[0].ID, list[0].Version, "owner@example.com")
-	del := e.call(rw, "delete_document", map[string]any{"key": "price"})
+	del := e.call(rw, "delete_document", map[string]any{"key": "price"}) // replaces the waiting edit of the same key
+	list, _ = e.srv.Pending.List(context.Background(), 1)
+	deleteErr := e.srv.Approve(context.Background(), 1, list[0].ID, list[0].Version, "owner@example.com")
 
 	// Assert
-	if isErr(upd) || approveErr == nil || !isErr(del) || len(e.st.docs) != 1 || e.st.docs[0].Content != "3,900" {
-		t.Fatalf("upd=%v approve=%v del=%v docs=%+v", text(upd), approveErr, text(del), e.st.docs)
+	if isErr(upd) || approveErr == nil || isErr(del) || deleteErr == nil || len(e.st.docs) != 1 || e.st.docs[0].Content != "3,900" {
+		t.Fatalf("upd=%v approve=%v del=%v deleteErr=%v docs=%+v", text(upd), approveErr, text(del), deleteErr, e.st.docs)
 	}
 	if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 1 {
 		t.Errorf("a failed approval dropped the change: waiting=%d", n)
-	}
-	if strings.Contains(text(del), "deadline") {
-		t.Error("internal error details reached the client")
 	}
 }
 
