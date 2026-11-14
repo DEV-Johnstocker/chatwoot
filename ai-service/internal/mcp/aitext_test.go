@@ -63,6 +63,27 @@ func TestAIText_RefusesPaymentAndContactDetails(t *testing.T) {
 		"Pay at hxxps://evil",
 		"DM @ evilshop",
 		"Call 08:12, 12:34, 05:56, 07:08, 09:10",
+		// QA F-D-01: look-alike letters, Thai domains, spelled-out dots,
+		// letters between digits, and "add line"
+		"Pay at scam-shop.\u0441\u043em", // Cyrillic с and о
+		"Pay at \u0455\u0441\u0430m.com", // Cyrillic ѕ, с, а
+		"Pay at sc\u03b1m.c\u03bfm",      // Greek α and ο
+		"ดูที่ ร้านค้า.ไทย",
+		"ดูที่ ตัวอย่าง.com",
+		"ดูที่ shop.ไทย",
+		"Pay at scamshop dot com",
+		"Pay at scamshop DOT net",
+		"Pay at scamshop (dot) com",
+		"Pay at scamshop[.]com",
+		"จ่ายที่ scamshop ดอท คอม",
+		"จ่ายที่ scamshop จุด com",
+		"Call 081x234x5678",
+		"Call 081 X 234 X 5678",
+		"Call 08 1x23 4.56 78",
+		"add line evilshop",
+		"Add me on line: evilshop",
+		"แอดไลน์ evilshop",
+		"แอด ไลน์ evilshop",
 	}
 	for _, in := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -102,6 +123,15 @@ func TestAIText_AllowsOrdinaryShopText(t *testing.T) {
 		"ชำระผ่านพร้อมเพย์หรือโอนผ่านธนาคารได้",
 		"Power bank 20,000 mAh, leather wallet, airport transfer",
 		"Log in to your account to see orders.",
+		// QA F-D-01: ordinary Thai text must still pass the stricter checks
+		"ราคา 3,900 บาท ส่งฟรีทั่วประเทศ",
+		"โปรถึงวันที่ 12 ธ.ค. 2569 เวลา 09:00-17:00",
+		"เปิด ม.ค.-มี.ค. 2569 ทุกวัน",
+		"ขนาด 3x4 เมตร ราคา 1,290 บาท",
+		"จุดเด่นของคอร์สนี้คือสอนสดทุกสัปดาห์",
+		"แอดมินตอบทุกวัน 09:00-18:00",
+		"Online classes, dot-to-dot worksheets included.",
+		"Waiting line is short on weekdays.",
 	}
 	for _, in := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -118,7 +148,7 @@ func TestAIText_AllowsOrdinaryShopText(t *testing.T) {
 
 func TestAIText_PatternsSurviveNormalization(t *testing.T) {
 	// Arrange: text is NFKD-normalised before matching, which splits ำ.
-	patterns := []string{aiLink.String(), aiWords.String(), aiLINE.String()}
+	patterns := []string{aiLink.String(), aiWords.String(), aiLINE.String(), aiAddLine.String(), aiIDN.String(), aiDotWord.String()}
 
 	for _, p := range patterns {
 		// Act

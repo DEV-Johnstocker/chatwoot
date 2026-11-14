@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 )
 
@@ -317,5 +318,202 @@ func TestApproval_InstructionsSayEditsWait(t *testing.T) {
 	// Assert
 	if !strings.Contains(s, "wait for the owner's approval") || strings.Contains(s, "Every change reaches real customers at once") {
 		t.Fatalf("instructions do not match the approval flow: %s", s)
+	}
+}
+
+// --- QA F-C-07: an older proposal must not overwrite a newer owner edit ---
+
+func TestApproval_DocumentEditedSinceProposalIsRefused(t *testing.T) {
+	// Arrange: the app proposes a price; then the owner edits the same document on /admin.
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindFAQ, Title: "ราคา", Content: "3,900 บาท", SourceKey: "price"}}
+	e.call(rw, "upsert_document", map[string]any{"key": "price", "title": "ราคา", "content": "4,900 บาท"})
+	e.st.docs[0].Content = "5,900 บาท" // the owner's newer edit
+	list, _ := e.srv.Pending.List(context.Background(), 1)
+
+	// Act
+	err := e.srv.Approve(context.Background(), 1, list[0].ID, list[0].Version, "owner@example.com")
+
+	// Assert
+	if !errors.Is(err, pending.ErrTargetChanged) || !strings.Contains(err.Error(), "changed since this proposal") {
+		t.Fatalf("err = %v, want ErrTargetChanged", err)
+	}
+	if e.st.docs[0].Content != "5,900 บาท" || len(e.audit.entries) != 0 {
+		t.Fatalf("the owner's edit was overwritten: docs=%+v audit=%d", e.st.docs, len(e.audit.entries))
+	}
+	if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 1 {
+		t.Fatalf("the refused change should still wait for a reject: waiting=%d", n)
+	}
+}
+
+func TestApproval_DocumentAddedSinceProposalIsRefused(t *testing.T) {
+	// Arrange: the app proposes a new key; the owner adds a document with that key first.
+	e := newEnv()
+	e.call(rw, "upsert_document", map[string]any{"key": "promo", "title": "โปร", "content": "ลด 10%"})
+	e.st.docs = []knowledge.Document{{ID: 9, AccountID: 1, Kind: knowledge.KindText, Title: "โปร", Content: "ลด 20%", SourceKey: "promo"}}
+	list, _ := e.srv.Pending.List(context.Background(), 1)
+
+	// Act
+	err := e.srv.Approve(context.Background(), 1, list[0].ID, list[0].Version, "owner@example.com")
+
+	// Assert
+	if !errors.Is(err, pending.ErrTargetChanged) || e.st.docs[0].Content != "ลด 20%" {
+		t.Fatalf("err=%v docs=%+v", err, e.st.docs)
+	}
+}
+
+func TestApproval_ReproposedAfterOwnerEditApplies(t *testing.T) {
+	// Arrange: the app proposes again after the owner's edit, so it saw the newer text.
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindFAQ, Title: "ราคา", Content: "3,900 บาท", SourceKey: "price"}}
+	e.call(rw, "upsert_document", map[string]any{"key": "price", "title": "ราคา", "content": "4,900 บาท"})
+	e.st.docs[0].Content = "5,900 บาท"
+	e.call(rw, "upsert_document", map[string]any{"key": "price", "title": "ราคา", "content": "6,900 บาท"})
+
+	// Act
+	approveAll(t, e.srv)
+
+	// Assert
+	if e.st.docs[0].Content != "6,900 บาท" {
+		t.Fatalf("docs = %+v", e.st.docs)
+	}
+}
+
+func TestApproval_ProposalWithoutBaseStillApplies(t *testing.T) {
+	// Arrange: a proposal stored before this check existed has no base.
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindFAQ, Title: "ราคา", Content: "3,900 บาท", SourceKey: "price"}}
+	_, err := e.srv.Pending.Propose(context.Background(), pending.Change{AccountID: 1, Kind: pending.KindDocument, Target: "price",
+		Proposed: []byte(`{"key":"price","title":"ราคา","content":"4,900 บาท"}`), Actor: "claude", TokenID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	approveAll(t, e.srv)
+
+	// Assert
+	if e.st.docs[0].Content != "4,900 บาท" {
+		t.Fatalf("docs = %+v", e.st.docs)
+	}
+}
+
+// --- QA F-D-02: deletes wait for the owner like every other edit ---
+
+func TestApproval_DeleteWaitsThenApplies(t *testing.T) {
+	// Arrange
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindFAQ, Title: "old promo", Content: "2,900", SourceKey: "promo"}}
+
+	// Act
+	waiting := e.call(rw, "delete_document", map[string]any{"key": "promo"})
+	docsBefore, auditBefore := len(e.st.docs), len(e.audit.entries)
+	approveAll(t, e.srv)
+
+	// Assert
+	if isErr(waiting) || !strings.Contains(text(waiting), "waiting for approval") {
+		t.Fatalf("res = %v", text(waiting))
+	}
+	if docsBefore != 1 || auditBefore != 0 {
+		t.Fatalf("deleted before approval: docs=%d audit=%d", docsBefore, auditBefore)
+	}
+	if len(e.st.docs) != 0 || len(e.audit.entries) != 1 || e.audit.entries[0].Action != "delete" ||
+		e.audit.entries[0].Before.(map[string]any)["content"] != "2,900" || e.audit.entries[0].Actor != "mcp:claude" {
+		t.Fatalf("docs=%+v audit=%+v", e.st.docs, e.audit.entries)
+	}
+}
+
+func TestApproval_DeleteByIDOfDocumentWithoutKey(t *testing.T) {
+	// Arrange: a document added by hand on /admin has no key.
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 7, AccountID: 1, Kind: knowledge.KindText, Title: "hand-made", Content: "x"}}
+
+	// Act
+	waiting := e.call(rw, "delete_document", map[string]any{"id": 7})
+	before := len(e.st.docs)
+	approveAll(t, e.srv)
+
+	// Assert
+	if isErr(waiting) || before != 1 || len(e.st.docs) != 0 {
+		t.Fatalf("res=%v before=%d after=%d", text(waiting), before, len(e.st.docs))
+	}
+}
+
+func TestApproval_ManyDeletesCannotEmptyTheKnowledgeBase(t *testing.T) {
+	// Arrange: a write token tries to delete every document.
+	e := newEnv()
+	for i := int64(1); i <= 20; i++ {
+		e.st.docs = append(e.st.docs, knowledge.Document{ID: i, AccountID: 1, Kind: knowledge.KindText, Title: "t", Content: "c",
+			SourceKey: "doc-" + strconv.FormatInt(i, 10)})
+	}
+
+	// Act
+	for i := 1; i <= 20; i++ {
+		e.call(rw, "delete_document", map[string]any{"key": "doc-" + strconv.Itoa(i)})
+	}
+
+	// Assert
+	if len(e.st.docs) != 20 || len(e.audit.entries) != 0 {
+		t.Fatalf("docs=%d audit=%d, want nothing deleted before approval", len(e.st.docs), len(e.audit.entries))
+	}
+	if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 20 {
+		t.Fatalf("waiting = %d", n)
+	}
+}
+
+func TestApproval_DeleteOfEditedDocumentIsRefused(t *testing.T) {
+	// Arrange: the app asks to delete; then the owner rewrites the document.
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindFAQ, Title: "promo", Content: "2,900", SourceKey: "promo"}}
+	e.call(rw, "delete_document", map[string]any{"key": "promo"})
+	e.st.docs[0].Content = "new owner text"
+	list, _ := e.srv.Pending.List(context.Background(), 1)
+
+	// Act
+	err := e.srv.Approve(context.Background(), 1, list[0].ID, list[0].Version, "owner@example.com")
+
+	// Assert
+	if !errors.Is(err, pending.ErrTargetChanged) || len(e.st.docs) != 1 || len(e.audit.entries) != 0 {
+		t.Fatalf("err=%v docs=%d audit=%d", err, len(e.st.docs), len(e.audit.entries))
+	}
+}
+
+func TestApproval_RejectedDeleteKeepsDocument(t *testing.T) {
+	// Arrange
+	e := newEnv()
+	e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindFAQ, Title: "promo", Content: "2,900", SourceKey: "promo"}}
+	e.call(rw, "delete_document", map[string]any{"key": "promo"})
+	list, _ := e.srv.Pending.List(context.Background(), 1)
+
+	// Act
+	err := e.srv.Reject(context.Background(), 1, list[0].ID, list[0].Version, "owner@example.com")
+
+	// Assert
+	if err != nil || len(e.st.docs) != 1 || len(e.audit.entries) != 0 {
+		t.Fatalf("err=%v docs=%d audit=%d", err, len(e.st.docs), len(e.audit.entries))
+	}
+}
+
+func TestApproval_DeleteOfSyncedDocumentRefused(t *testing.T) {
+	// Security review: synced documents come from a website or data file;
+	// like upsert_document, delete_document must not touch them.
+	for _, key := range []string{"web:https://shop.example/faq", "feed:abc:row-1"} {
+		t.Run(key, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+			e.st.docs = []knowledge.Document{{ID: 5, AccountID: 1, Kind: knowledge.KindText, Title: "t", Content: "c", SourceKey: key}}
+
+			// Act
+			byKey := e.call(rw, "delete_document", map[string]any{"key": key})
+			byID := e.call(rw, "delete_document", map[string]any{"id": 5})
+
+			// Assert
+			if !isErr(byKey) || !isErr(byID) || !strings.Contains(text(byKey), "source") {
+				t.Fatalf("byKey=%v byID=%v", text(byKey), text(byID))
+			}
+			if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 0 || len(e.st.docs) != 1 {
+				t.Fatalf("waiting=%d docs=%d", n, len(e.st.docs))
+			}
+		})
 	}
 }

@@ -1,7 +1,10 @@
 package ratelimit
 
 import (
+	"errors"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -99,5 +102,105 @@ func TestReached_DoesNotCount(t *testing.T) {
 	// Assert
 	if before || !after || l.keys["failed"].n != 2 {
 		t.Fatalf("before=%v after=%v n=%d", before, after, l.keys["failed"].n)
+	}
+}
+
+func TestReserve_StopsAtLimitWithoutCountingOver(t *testing.T) {
+	// Arrange
+	now := time.Unix(1000, 0)
+	l := &Limiter{now: func() time.Time { return now }}
+
+	// Act
+	_, a := l.Reserve("k", 2)
+	_, b := l.Reserve("k", 2)
+	_, c := l.Reserve("k", 2)
+	now = now.Add(Window)
+	_, d := l.Reserve("k", 2)
+
+	// Assert
+	if a != nil || b != nil || !errors.Is(c, ErrLimited) || d != nil {
+		t.Fatalf("got %v %v %v %v, want nil nil ErrLimited nil", a, b, c, d)
+	}
+}
+
+func TestReserve_UndoGivesTheSlotBack(t *testing.T) {
+	// Arrange
+	l := &Limiter{}
+	undo, _ := l.Reserve("k", 1)
+
+	// Act
+	undo()
+	undo() // a second undo must not go below zero
+	_, again := l.Reserve("k", 1)
+	_, over := l.Reserve("k", 1)
+
+	// Assert
+	if again != nil || over == nil {
+		t.Fatalf("again=%v over=%v", again, over)
+	}
+}
+
+func TestReserve_FailsClosedWhenTableIsFull(t *testing.T) {
+	// Arrange
+	l := &Limiter{Max: 2}
+	l.Reserve("a", 5)
+	l.Reserve("b", 5)
+
+	// Act
+	undo, err := l.Reserve("c", 5)
+	_, known := l.Reserve("a", 5)
+
+	// Assert
+	if !errors.Is(err, ErrFull) || undo != nil {
+		t.Fatalf("err=%v: a new key must be reported as untracked", err)
+	}
+	if known != nil {
+		t.Fatalf("a tracked key was refused: %v", known)
+	}
+}
+
+func TestReserve_ConcurrentCallsNeverExceedLimit(t *testing.T) {
+	// Arrange
+	l := &Limiter{}
+	var wg sync.WaitGroup
+	var admitted atomic.Int32
+
+	// Act
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := l.Reserve("k", 10); err == nil {
+				admitted.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// Assert
+	if admitted.Load() != 10 {
+		t.Fatalf("admitted %d, want exactly 10", admitted.Load())
+	}
+}
+
+func TestPrefixKey_GroupsIPv6By64(t *testing.T) {
+	cases := map[string]string{
+		"203.0.113.5":          "203.0.113.5",
+		"2001:db8:1:2:aaaa::1": "2001:db8:1:2::/64",
+		"2001:db8:1:2:ffff::9": "2001:db8:1:2::/64",
+		"2001:db8:1:3::1":      "2001:db8:1:3::/64",
+		"::ffff:203.0.113.5":   "203.0.113.5",
+		"not-an-ip":            "not-an-ip",
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			// Act
+			got := PrefixKey(in)
+
+			// Assert
+			if got != want {
+				t.Fatalf("PrefixKey(%q) = %q, want %q", in, got, want)
+			}
+		})
 	}
 }

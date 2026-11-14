@@ -5,6 +5,7 @@
 package ratelimit
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"strings"
@@ -51,6 +52,52 @@ type entry struct {
 func (l *Limiter) Allow(key string, limit int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	e := l.entryLocked(key)
+	if e == nil {
+		return false
+	}
+	e.n++
+	return e.n <= limit
+}
+
+// Errors from Reserve.
+var (
+	ErrLimited = errors.New("limit reached")
+	// ErrFull means the table is full of live keys, so key is not tracked
+	// and nothing was counted; the caller decides whether to fail closed.
+	ErrFull = errors.New("too many keys to track")
+)
+
+// Reserve counts one call for key only if it is still under limit, in one
+// step, so concurrent callers can never pass more than limit between them.
+// undo gives the slot back (e.g. the attempt turned out fine); calling it
+// more than once is harmless. On error nothing was counted and undo is nil.
+func (l *Limiter) Reserve(key string, limit int) (undo func(), err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e := l.entryLocked(key)
+	switch {
+	case e == nil:
+		return nil, ErrFull
+	case e.n >= limit:
+		return nil, ErrLimited
+	}
+	e.n++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			if l.keys[key] == e && e.n > 0 {
+				e.n--
+			}
+		})
+	}, nil
+}
+
+// entryLocked returns key's entry for the current window, starting a new
+// one if needed; nil if the table is full of live keys. l.mu must be held.
+func (l *Limiter) entryLocked(key string) *entry {
 	now := time.Now()
 	if l.now != nil {
 		now = l.now()
@@ -68,14 +115,27 @@ func (l *Limiter) Allow(key string, limit int) bool {
 				}
 			}
 			if len(l.keys) >= l.max() {
-				return false
+				return nil
 			}
 		}
 		e = &entry{start: now}
 		l.keys[key] = e
 	}
-	e.n++
-	return e.n <= limit
+	return e
+}
+
+// PrefixKey is the rate-limit key of an address: an IPv4 address as is, an
+// IPv6 address as its /64 network, since one subscriber usually holds a
+// whole /64 and could otherwise rotate addresses to reset a limit.
+func PrefixKey(addr string) string {
+	ip := net.ParseIP(addr)
+	switch {
+	case ip == nil:
+		return addr
+	case ip.To4() != nil:
+		return ip.To4().String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 // Reached reports whether key has already used limit calls in the current

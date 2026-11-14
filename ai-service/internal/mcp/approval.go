@@ -85,7 +85,7 @@ func (s *Server) Approve(ctx context.Context, accountID, id int64, version int, 
 	}
 	if c.Kind == pending.KindDocument {
 		s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: "AI change approved",
-			Summary: c.Actor + ": knowledge " + c.Target})
+			Summary: c.Actor + ": " + documentWhat(c)})
 	}
 	return nil
 }
@@ -102,7 +102,7 @@ func (s *Server) Reject(ctx context.Context, accountID, id int64, version int, a
 	what := "business profile"
 	switch c.Kind {
 	case pending.KindDocument:
-		what = "knowledge " + c.Target
+		what = documentWhat(c)
 	case pending.KindSource:
 		what = "new source " + hostPath(c.Target)
 	}
@@ -113,6 +113,15 @@ func (s *Server) Reject(ctx context.Context, accountID, id int64, version int, a
 	s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: "AI change rejected",
 		Summary: c.Actor + ": " + what, Before: before})
 	return nil
+}
+
+// documentWhat names a document change for the history.
+func documentWhat(c pending.Change) string {
+	var p docProposal
+	if json.Unmarshal(c.Proposed, &p) == nil && p.Delete {
+		return "delete knowledge " + c.Target
+	}
+	return "knowledge " + c.Target
 }
 
 // record adds an owner decision to the change history; a failure is logged,

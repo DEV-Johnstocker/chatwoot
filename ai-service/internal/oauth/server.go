@@ -317,11 +317,25 @@ func (s *Server) render(w http.ResponseWriter, status int, d pageData) {
 	}
 }
 
+// passwordModeTrusted refuses an app that returns to an unknown host: with
+// the admin password as with Access sign-ins (QA 7a), and before any
+// redirect, deny included. Anyone can register a client with any https
+// return address, so a phishing link would otherwise send the code to the
+// attacker once the owner types the password. It runs before the password
+// check, so a refused app costs no guess.
+func passwordModeTrusted(d *pageData) bool {
+	if d.Trusted {
+		return true
+	}
+	d.Error, d.Valid = d.ReturnHost+" is not Claude, ChatGPT or an app on this computer. Use an access token for other tools (admin page, Connect AI tools).", false
+	return false
+}
+
 // identify returns the Access-verified person and their accounts, or an
 // error message for the page. Without Access it returns no email.
 func (s *Server) identify(r *http.Request, d *pageData) bool {
 	if s.Access == nil {
-		return true
+		return passwordModeTrusted(d)
 	}
 	id, err := s.Access.Verify(r.Context(), r.Header.Get(cfaccess.Header))
 	if err != nil {
@@ -389,6 +403,12 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 	d.setReturn()
 	if problem != "" {
 		s.render(w, http.StatusBadRequest, d)
+		return
+	}
+	// Even a "deny" redirects, so an unknown return host is refused first:
+	// otherwise an auto-submitted deny makes this page an open redirect.
+	if !passwordModeTrusted(&d) {
+		s.render(w, http.StatusForbidden, d)
 		return
 	}
 	redirect, _ := url.Parse(a.RedirectURI)

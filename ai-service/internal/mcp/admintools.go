@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/audit"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
@@ -257,7 +258,7 @@ func (s *Server) updateProfile(ctx context.Context, tok Token, a profileArgs) (a
 	// An AI app may rewrite a field but not wipe it: clearing the name, about,
 	// tone or rules stays with the owner on /admin.
 	for _, f := range given {
-		if profileField(next, f) == "" {
+		if blank(profileField(next, f)) {
 			return nil, userError(f + " cannot be empty; send the full new text, or clear it on the admin page")
 		}
 	}
@@ -323,6 +324,22 @@ func checkDetails(p profile.Profile, given []string) error {
 		}
 	}
 	return nil
+}
+
+// blank reports whether s shows nothing: only spaces, invisible characters
+// (zero-width, joiners, soft hyphens, direction marks) and blank fillers
+// (Hangul fillers, the blank Braille pattern). Combining marks alone count
+// as blank too: they need a letter to show.
+func blank(s string) bool {
+	for _, r := range s {
+		switch {
+		case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0' || r == '\u2800':
+		case unicode.IsSpace(r), unicode.In(r, unicode.Cf, unicode.Mn, unicode.Me, unicode.Variation_Selector, unicode.Other_Default_Ignorable_Code_Point):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func profileField(p profile.Profile, name string) string {
