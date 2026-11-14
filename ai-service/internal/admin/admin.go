@@ -551,14 +551,18 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 // below, which is one key and always tracked.
 func (h *Handler) reserveLogin(key string) (done func(good bool), retry int) {
 	undoIP, err := h.loginFails.Reserve(key, loginMaxFails)
+	tracked := err == nil
 	switch {
 	case errors.Is(err, ratelimit.ErrFull):
 		undoIP = func() {}
 	case err != nil:
 		return nil, int(loginWindow.Seconds())
 	}
+	// Only a tracked known address skips the all-address cap: an untracked
+	// one has no per-address limit, so it must always pay into the cap
+	// (someone behind the owner's NAT could otherwise guess freely).
 	var undoAll func()
-	if !h.knownGood(key) {
+	if !tracked || !h.knownGood(key) {
 		if undoAll, err = h.loginFailsAll.Reserve("all", loginMaxFailsAll); err != nil {
 			undoIP() // this attempt was never checked
 			return nil, int(time.Minute.Seconds())
