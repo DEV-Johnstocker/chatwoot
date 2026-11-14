@@ -151,11 +151,16 @@ type Bot struct {
 	imagesMu   sync.Mutex
 	imagesSent map[imageKey]time.Time
 
+	enqueueWait   time.Duration // how long Enqueue waits for room in a full queue
 	sendRetryWait time.Duration // pause before the one retry of a failed reply
 }
 
-// defaultSendRetryWait is the pause before resending a failed reply.
-const defaultSendRetryWait = time.Second
+// Defaults for the waits above. enqueueWait stays well under Chatwoot's 5 s
+// webhook timeout, so a short burst is absorbed instead of answered with 429.
+const (
+	defaultEnqueueWait   = 2 * time.Second
+	defaultSendRetryWait = time.Second
+)
 
 // handoffBudget bounds the handoff after a failed turn. It runs on a fresh
 // context: the turn's own may already be spent by a model that timed out.
@@ -170,7 +175,7 @@ func New(opts Options, workers, queueSize int) *Bot {
 		opts.Timeout = 2 * time.Minute
 	}
 	per := max(queueSize/workers, 1)
-	b := &Bot{opts: opts, queues: make([]chan Job, workers), sendRetryWait: defaultSendRetryWait}
+	b := &Bot{opts: opts, queues: make([]chan Job, workers), enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait}
 	for i := range b.queues {
 		b.queues[i] = make(chan Job, per)
 	}
@@ -181,15 +186,34 @@ func New(opts Options, workers, queueSize int) *Bot {
 // Chatwoot to retry (HTTP 429).
 var ErrQueueFull = errors.New("queue full")
 
-// Enqueue hands a job to its conversation's worker without blocking.
+// Enqueue hands a job to its conversation's worker. When that worker's
+// queue is full it waits up to enqueueWait for room before giving up.
 func (b *Bot) Enqueue(j Job) error {
-	q := b.queues[b.shard(j.Event.Account.ID, j.Event.ConversationID())]
+	if b.tryEnqueue(j) == nil {
+		return nil
+	}
+	t := time.NewTimer(b.enqueueWait)
+	defer t.Stop()
 	select {
-	case q <- j:
+	case b.queue(j) <- j:
+		return nil
+	case <-t.C:
+		return ErrQueueFull
+	}
+}
+
+// tryEnqueue hands a job to its worker without blocking.
+func (b *Bot) tryEnqueue(j Job) error {
+	select {
+	case b.queue(j) <- j:
 		return nil
 	default:
 		return ErrQueueFull
 	}
+}
+
+func (b *Bot) queue(j Job) chan Job {
+	return b.queues[b.shard(j.Event.Account.ID, j.Event.ConversationID())]
 }
 
 // Start launches the workers. They stop when ctx is cancelled or Close is called.

@@ -76,7 +76,7 @@ func (b *Bot) queueWaiting(log *slog.Logger, key convKey, job Job, try int) {
 	if b.closed || p == nil || p.seq != job.flush {
 		return
 	}
-	err := b.Enqueue(job)
+	err := b.tryEnqueue(job) // never block while holding b.mu
 	if err == nil {
 		return
 	}
