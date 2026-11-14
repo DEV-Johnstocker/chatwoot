@@ -151,6 +151,11 @@ type Bot struct {
 	imagesMu   sync.Mutex
 	imagesSent map[imageKey]time.Time
 
+	// sendMu lets Close wait for every Enqueue in flight before it closes the
+	// queues; done wakes an Enqueue that is waiting for room.
+	sendMu sync.RWMutex
+	done   chan struct{}
+
 	enqueueWait   time.Duration // how long Enqueue waits for room in a full queue
 	sendRetryWait time.Duration // pause before the one retry of a failed reply
 }
@@ -175,7 +180,8 @@ func New(opts Options, workers, queueSize int) *Bot {
 		opts.Timeout = 2 * time.Minute
 	}
 	per := max(queueSize/workers, 1)
-	b := &Bot{opts: opts, queues: make([]chan Job, workers), enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait}
+	b := &Bot{opts: opts, queues: make([]chan Job, workers), done: make(chan struct{}),
+		enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait}
 	for i := range b.queues {
 		b.queues[i] = make(chan Job, per)
 	}
@@ -188,7 +194,15 @@ var ErrQueueFull = errors.New("queue full")
 
 // Enqueue hands a job to its conversation's worker. When that worker's
 // queue is full it waits up to enqueueWait for room before giving up.
+// After Close it returns ErrQueueFull, so Chatwoot retries elsewhere.
 func (b *Bot) Enqueue(j Job) error {
+	b.sendMu.RLock()
+	defer b.sendMu.RUnlock()
+	select {
+	case <-b.done:
+		return ErrQueueFull
+	default:
+	}
 	if b.tryEnqueue(j) == nil {
 		return nil
 	}
@@ -198,6 +212,8 @@ func (b *Bot) Enqueue(j Job) error {
 	case b.queue(j) <- j:
 		return nil
 	case <-t.C:
+		return ErrQueueFull
+	case <-b.done:
 		return ErrQueueFull
 	}
 }
@@ -239,6 +255,7 @@ func (b *Bot) Start(ctx context.Context) {
 
 // Close stops accepting work, drains queued jobs and waits for workers.
 func (b *Bot) Close() {
+	close(b.done) // wakes any Enqueue waiting for room
 	b.mu.Lock()
 	b.closed = true
 	for key, p := range b.pending { // a waiting reply must not reach a closed queue
@@ -246,9 +263,11 @@ func (b *Bot) Close() {
 		delete(b.pending, key)
 	}
 	b.mu.Unlock()
+	b.sendMu.Lock() // no Enqueue is between its checks and its send
 	for _, q := range b.queues {
 		close(q)
 	}
+	b.sendMu.Unlock()
 	b.wg.Wait()
 }
 

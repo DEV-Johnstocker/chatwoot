@@ -47,3 +47,31 @@ func TestEnqueueGivesUpWhenTheQueueStaysFull(t *testing.T) {
 		t.Errorf("waited %v, want about the enqueue wait", waited)
 	}
 }
+
+func TestCloseWhileEnqueueWaitsDoesNotPanic(t *testing.T) {
+	// Arrange: the queue is full and a webhook handler is waiting for room
+	// when shutdown closes the bot.
+	b, _ := newBot(&fakeChatwoot{}, &fakeLLM{})
+	b = New(b.opts, 1, 1)
+	b.enqueueWait = 5 * time.Second
+	_ = b.Enqueue(customerMsg("first"))
+	result := make(chan error, 1)
+	go func() { result <- b.Enqueue(customerMsg("second")) }()
+	time.Sleep(20 * time.Millisecond)
+
+	// Act
+	b.Close()
+
+	// Assert
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrQueueFull) {
+			t.Errorf("err = %v, want ErrQueueFull", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a waiting Enqueue must return when the bot closes")
+	}
+	if err := b.Enqueue(customerMsg("after close")); !errors.Is(err, ErrQueueFull) {
+		t.Errorf("Enqueue after Close = %v, want ErrQueueFull", err)
+	}
+}
