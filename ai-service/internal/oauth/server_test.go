@@ -720,3 +720,37 @@ func TestConsentPage_ProntoBrand(t *testing.T) {
 		t.Error("old blue accent still on consent page")
 	}
 }
+
+func TestDenyToUnknownReturnHostDoesNotRedirect(t *testing.T) {
+	// Security review: an auto-submitted "deny" must not turn the consent
+	// page into an open redirect to an unknown host, in either mode.
+	for name, e := range map[string]*env{"password": newEnv(), "access": accessEnv()} {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			client := e.register(t, "https://evil.example/cb")
+			f := authForm(client, map[string]string{"redirect_uri": "https://evil.example/cb", "decision": "deny", "password": ""})
+
+			// Act
+			rec := e.approveAs("", f)
+
+			// Assert
+			if rec.Code != http.StatusForbidden || rec.Header().Get("Location") != "" || len(e.store.codes) != 0 {
+				t.Fatalf("code=%d loc=%q", rec.Code, rec.Header().Get("Location"))
+			}
+		})
+	}
+}
+
+func TestDenyToKnownAppStillRedirects(t *testing.T) {
+	// Arrange
+	e := newEnv()
+	client := e.register(t, redirect)
+
+	// Act
+	rec := e.approve(authForm(client, map[string]string{"decision": "deny", "password": ""}))
+
+	// Assert
+	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "error=access_denied") {
+		t.Fatalf("code=%d loc=%q", rec.Code, rec.Header().Get("Location"))
+	}
+}
