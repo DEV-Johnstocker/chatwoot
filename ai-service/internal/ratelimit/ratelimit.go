@@ -140,16 +140,6 @@ func (l *Limiter) Reached(key string, limit int) bool {
 	return e != nil && now.Sub(e.start) < l.period() && e.n >= limit
 }
 
-// Refund takes back one call counted for key in the current window, for a
-// call reserved with Allow that turned out not to count (a right password).
-func (l *Limiter) Refund(key string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if e := l.keys[key]; e != nil && e.n > 0 {
-		e.n--
-	}
-}
-
 func (l *Limiter) period() time.Duration {
 	if l.Period > 0 {
 		return l.Period
