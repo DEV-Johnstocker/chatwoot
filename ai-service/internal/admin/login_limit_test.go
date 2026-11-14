@@ -264,3 +264,29 @@ func TestLoginLimit_FullTableGuessesStillHitTheAllAddressCap(t *testing.T) {
 		t.Fatalf("%d untracked guesses compared, want %d", compared, loginMaxFailsAll-1)
 	}
 }
+
+func TestLoginLimit_KnownGoodUntrackedAddressIsStillCapped(t *testing.T) {
+	// Arrange: the owner's address (shared by an attacker behind the same
+	// NAT) signed in before, and the per-address table is full.
+	e := setup(t, nil)
+	e.h.rememberGood("203.0.113.50")
+	e.h.loginFails.Max = 1
+	e.do(wrongPassword("203.0.113.1:1000"))
+	compared := 0
+
+	// Act
+	for i := 0; i < 3*loginMaxFailsAll; i++ {
+		if e.do(wrongPassword("203.0.113.50:1000")).Code == http.StatusUnauthorized {
+			compared++
+		}
+	}
+	owner := e.do(from(get(true), "203.0.113.50:1000"))
+
+	// Assert
+	if compared != loginMaxFailsAll-1 {
+		t.Fatalf("%d guesses compared from an untracked known address, want %d", compared, loginMaxFailsAll-1)
+	}
+	if owner.Code != http.StatusTooManyRequests {
+		t.Fatalf("owner code %d: the cap is shared while the table is full, want 429", owner.Code)
+	}
+}
