@@ -199,19 +199,3 @@ func TestPrefixKey_GroupsIPv6By64(t *testing.T) {
 		})
 	}
 }
-
-func TestRefund_GivesBackOneReservedCall(t *testing.T) {
-	// Arrange
-	var l Limiter
-	l.Allow("k", 2)
-	l.Allow("k", 2)
-
-	// Act
-	l.Refund("k")
-	l.Refund("missing") // no entry: nothing happens
-
-	// Assert
-	if !l.Allow("k", 2) || l.Allow("k", 2) {
-		t.Error("after one refund exactly one more call must fit")
-	}
-}

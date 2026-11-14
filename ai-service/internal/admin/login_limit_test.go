@@ -149,8 +149,8 @@ func TestLoginLimit_ConcurrentGuessesStayWithinTheLimit(t *testing.T) {
 			checked++
 		}
 	}
-	if checked > loginMaxFails {
-		t.Errorf("%d guesses reached the password check, want at most %d", checked, loginMaxFails)
+	if checked != loginMaxFails {
+		t.Errorf("%d guesses reached the password check, want exactly %d", checked, loginMaxFails)
 	}
 }
 
@@ -203,69 +203,12 @@ func TestLoginLimit_RightPasswordsDoNotUseTheAllowance(t *testing.T) {
 	}
 }
 
-func TestLoginLimit_ConcurrentGuessesNeverExceedTheLimit(t *testing.T) {
-	// Arrange: many wrong passwords from one IP at the same moment.
-	e := setup(t, nil)
-	var wg sync.WaitGroup
-	var compared atomic.Int32 // a 401 means the password was compared
-
-	// Act
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if e.do(wrongPassword("203.0.113.5:1000")).Code == http.StatusUnauthorized {
-				compared.Add(1)
-			}
-		}()
-	}
-	wg.Wait()
-
-	// Assert
-	if compared.Load() != loginMaxFails {
-		t.Fatalf("%d passwords compared, want exactly %d", compared.Load(), loginMaxFails)
-	}
-}
-
-func TestLoginLimit_FailsClosedWhenItCannotTrack(t *testing.T) {
-	// Arrange: the table of addresses is full.
-	e := setup(t, nil)
-	e.h.loginFails.Max = 2
-	e.do(wrongPassword("203.0.113.5:1000"))
-	e.do(wrongPassword("203.0.113.6:1000"))
-
-	// Act
-	rec := e.do(wrongPassword("203.0.113.7:1000"))
-
-	// Assert
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("code %d, want 429 (an untracked address must not guess freely)", rec.Code)
-	}
-}
-
-func TestLoginLimit_IPv6CountedPer64(t *testing.T) {
-	// Arrange: one /64 rotates its address on every guess.
-	e := setup(t, nil)
-	for i := 0; i <= loginMaxFails; i++ {
-		e.do(wrongPassword("[2001:db8:1:2::" + strconv.FormatInt(int64(i+1), 16) + "]:1000"))
-	}
-
-	// Act
-	same := e.do(from(get(true), "[2001:db8:1:2::ffff]:1000"))
-	other := e.do(from(get(true), "[2001:db8:1:3::1]:1000"))
-
-	// Assert
-	if same.Code != http.StatusTooManyRequests || other.Code != http.StatusOK {
-		t.Fatalf("same /64=%d other /64=%d, want 429 and 200", same.Code, other.Code)
-	}
-}
-
 func TestLoginLimit_GuessesFromManyAddressesAreSlowedForEveryone(t *testing.T) {
 	// Arrange: wrong passwords spread over many addresses, one each.
 	e := setup(t, nil)
 	compared := 0
 	for i := 0; i < 3*loginMaxFailsAll; i++ {
-		if e.do(wrongPassword("198.18." + strconv.Itoa(i/250) + "." + strconv.Itoa(i%250+1) + ":1000")).Code == http.StatusUnauthorized {
+		if e.do(wrongPassword("198.18."+strconv.Itoa(i/250)+"."+strconv.Itoa(i%250+1)+":1000")).Code == http.StatusUnauthorized {
 			compared++
 		}
 	}
@@ -298,21 +241,5 @@ func TestLoginLimit_OwnerAddressGetsInDuringASpreadAttack(t *testing.T) {
 	// Assert
 	if owner.Code != http.StatusOK {
 		t.Fatalf("owner code %d, want 200", owner.Code)
-	}
-}
-
-func TestLoginLimit_RightPasswordDoesNotUseUpTheLimit(t *testing.T) {
-	// Arrange: the browser sends the password with every page.
-	e := setup(t, nil)
-	for i := 0; i < 5*loginMaxFails; i++ {
-		e.do(from(get(true), "203.0.113.5:1000"))
-	}
-
-	// Act
-	rec := e.do(from(get(true), "203.0.113.5:1000"))
-
-	// Assert
-	if rec.Code != http.StatusOK {
-		t.Fatalf("code %d, want 200", rec.Code)
 	}
 }

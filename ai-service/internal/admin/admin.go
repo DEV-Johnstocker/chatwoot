@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -136,16 +135,29 @@ type Handler struct {
 	// ProbeEmbedding embeds one word with an embeddings provider. Nil uses a real call.
 	ProbeEmbedding func(ctx context.Context, p settings.Provider) error
 
-	// loginFails counts wrong passwords per client IP (QA F-A-02).
-	loginFails ratelimit.Limiter
+	// loginFails counts password attempts per client IP (an IPv6 /64), and
+	// loginFailsAll across all addresses (QA F-A-02). goodIPs are addresses
+	// that signed in with the right password recently.
+	loginFails, loginFailsAll ratelimit.Limiter
+	goodMu                    sync.Mutex
+	goodIPs                   map[string]time.Time
 }
 
-// After loginMaxFails wrong passwords from one client IP within loginWindow,
-// that IP gets 429 until the window ends, even with the right password, so
-// guessing gets no answer. Other IPs are not affected.
+// Wrong /admin passwords are slowed down twice over:
+//   - per address: after loginMaxFails within loginWindow, that address gets
+//     429 until the window ends, even with the right password, so guessing
+//     gets no answer;
+//   - across all addresses: at most loginMaxFailsAll wrong passwords a minute
+//     are checked; beyond that, addresses that have not signed in correctly
+//     within goodIPTTL get 429 for the rest of the minute. It is a slowdown,
+//     not a lock: it ends with each minute, and the owner's known addresses
+//     and Cloudflare Access sign-ins pass.
 const (
-	loginMaxFails = 10
-	loginWindow   = 10 * time.Minute
+	loginMaxFails    = 10
+	loginWindow      = 10 * time.Minute
+	loginMaxFailsAll = 30
+	goodIPTTL        = 24 * time.Hour
+	maxGoodIPs       = 256
 )
 
 // Routes registers the admin endpoints on mux.
@@ -478,6 +490,7 @@ func (h *Handler) isOwner(email string) bool {
 func (h *Handler) requireAuth(next http.Handler) http.Handler {
 	want := sha256.Sum256([]byte(h.Password))
 	h.loginFails.Period = loginWindow // set while routes are registered, before serving
+	h.loginFailsAll.Period = time.Minute
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h.AdminAccess != nil {
 			if tok := r.Header.Get(cfaccess.Header); tok != "" {
@@ -497,17 +510,25 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 			}
 		}
 		user, pass, ok := r.BasicAuth()
-		key := loginKey(ratelimit.ClientIP(r))
-		// Reserve the attempt before checking the password, under the
-		// limiter's lock, so parallel guesses cannot pass the limit; a full
-		// table refuses too (fails closed). A right password gives it back.
-		if ok && !h.loginFails.Allow(key, loginMaxFails) {
-			w.Header().Set("Retry-After", strconv.Itoa(int(loginWindow.Seconds())))
-			http.Error(w, "too many wrong passwords from your address; wait 10 minutes", http.StatusTooManyRequests)
-			return
+		// Each attempt is reserved before the password is compared, under the
+		// limiter's lock, so parallel guesses cannot pass the limit; an
+		// address the limiter cannot track is refused (fails closed). A right
+		// password gives the attempt back.
+		var done func(good bool)
+		if ok {
+			var retry int
+			if done, retry = h.reserveLogin(ratelimit.PrefixKey(ratelimit.ClientIP(r))); done == nil {
+				w.Header().Set("Retry-After", strconv.Itoa(retry))
+				http.Error(w, "too many wrong passwords; wait and try again", http.StatusTooManyRequests)
+				return
+			}
 		}
 		got := sha256.Sum256([]byte(pass))
-		if !ok || user != Username || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		good := ok && user == Username && subtle.ConstantTimeCompare(got[:], want[:]) == 1
+		if done != nil {
+			done(good)
+		}
+		if !good {
 			if ok {
 				h.Logger.Warn("admin login failed", "remote_addr", r.RemoteAddr)
 			}
@@ -515,19 +536,64 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
-		h.loginFails.Refund(key)
 		next.ServeHTTP(w, r)
 	})
 }
 
-// loginKey groups IPv6 addresses by their /64, the block one customer line
-// usually gets, so rotating addresses inside it does not reset the count.
-func loginKey(ip string) string {
-	p := net.ParseIP(ip)
-	if p == nil || p.To4() != nil {
-		return ip
+// reserveLogin takes one password attempt for the address key before the
+// password is compared. done reports the outcome: a right password gives
+// the attempts back and remembers the address. done is nil when the attempt
+// is refused; retry is then the Retry-After in seconds.
+func (h *Handler) reserveLogin(key string) (done func(good bool), retry int) {
+	undoIP, ok := h.loginFails.Reserve(key, loginMaxFails)
+	if !ok {
+		return nil, int(loginWindow.Seconds())
 	}
-	return p.Mask(net.CIDRMask(64, 128)).String() + "/64"
+	var undoAll func()
+	if !h.knownGood(key) {
+		if undoAll, ok = h.loginFailsAll.Reserve("all", loginMaxFailsAll); !ok {
+			undoIP() // this attempt was never checked
+			return nil, int(time.Minute.Seconds())
+		}
+	}
+	return func(good bool) {
+		if !good {
+			return
+		}
+		undoIP()
+		if undoAll != nil {
+			undoAll()
+		}
+		h.rememberGood(key)
+	}, 0
+}
+
+// knownGood reports whether key signed in with the right password within goodIPTTL.
+func (h *Handler) knownGood(key string) bool {
+	h.goodMu.Lock()
+	defer h.goodMu.Unlock()
+	at, ok := h.goodIPs[key]
+	return ok && time.Since(at) < goodIPTTL
+}
+
+// rememberGood records a right password from key. Only right passwords add
+// to the list, and it keeps at most maxGoodIPs (the oldest goes first).
+func (h *Handler) rememberGood(key string) {
+	h.goodMu.Lock()
+	defer h.goodMu.Unlock()
+	if h.goodIPs == nil {
+		h.goodIPs = map[string]time.Time{}
+	}
+	if _, ok := h.goodIPs[key]; !ok && len(h.goodIPs) >= maxGoodIPs {
+		oldest := ""
+		for k, at := range h.goodIPs {
+			if oldest == "" || at.Before(h.goodIPs[oldest]) {
+				oldest = k
+			}
+		}
+		delete(h.goodIPs, oldest)
+	}
+	h.goodIPs[key] = time.Now()
 }
 
 // csp allows only our own script file (no inline scripts, no eval) and
