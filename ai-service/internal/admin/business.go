@@ -73,7 +73,7 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 		// old text of every field back without a word (QA F-C-02).
 		p.UpdatedAt = old.UpdatedAt
 		h.renderBusiness(w, r, http.StatusConflict, businessData{Enabled: true, Profile: p, Version: f.Get("version"),
-			Error: tr(langOf(r), "Not saved: the profile was changed in another tab or by an approval after you opened this page. Your text is below; copy what you need, reload the page and apply your change again.")})
+			Error: tr(langOf(r), "The profile was changed in another tab or by an approval after you opened this page. Your text is below; copy what you need, reload the page and apply your change again.")})
 		return
 	}
 	if err := h.Profiles.Save(r.Context(), p); err != nil {

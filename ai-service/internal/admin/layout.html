@@ -168,9 +168,10 @@
   .img-edit { color: var(--accent); font-weight: 600; font-size: .875rem; min-height: 32px; display: flex; align-items: center; }
   .img-card details[open] .img-edit { display: none; }
   .img-card summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
-  .img-card .img-remove { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .img-card .img-remove { display: block; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
   .img-card .img-remove > summary { display: inline-flex; flex-direction: row; color: var(--err-text); font-size: .875rem; text-decoration: underline; }
-  .img-card .img-remove-form { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .img-card .img-remove-form { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
+  .img-card .img-remove-form .field-hint { flex: 1 1 200px; }
   .img-card .img-remove-form .field-hint { margin: 0; }
   /* An open card takes the whole row: picture left, fields right, two columns. */
   .img-card:has(details[open]) { grid-column: 1 / -1; }
