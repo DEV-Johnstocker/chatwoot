@@ -18,6 +18,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -32,6 +33,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/oauth"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratelimit"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
@@ -132,7 +134,18 @@ type Handler struct {
 	Probe func(ctx context.Context, p settings.Provider) (llm.Result, error)
 	// ProbeEmbedding embeds one word with an embeddings provider. Nil uses a real call.
 	ProbeEmbedding func(ctx context.Context, p settings.Provider) error
+
+	// loginFails counts wrong passwords per client IP (QA F-A-02).
+	loginFails ratelimit.Limiter
 }
+
+// After loginMaxFails wrong passwords from one client IP within loginWindow,
+// that IP gets 429 until the window ends, even with the right password, so
+// guessing gets no answer. Other IPs are not affected.
+const (
+	loginMaxFails = 10
+	loginWindow   = 10 * time.Minute
+)
 
 // Routes registers the admin endpoints on mux.
 func (h *Handler) Routes(mux *http.ServeMux) {
@@ -463,6 +476,7 @@ func (h *Handler) isOwner(email string) bool {
 // token, or a signed-in person who is not an owner, is refused.
 func (h *Handler) requireAuth(next http.Handler) http.Handler {
 	want := sha256.Sum256([]byte(h.Password))
+	h.loginFails.Period = loginWindow // set while routes are registered, before serving
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h.AdminAccess != nil {
 			if tok := r.Header.Get(cfaccess.Header); tok != "" {
@@ -482,9 +496,16 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 			}
 		}
 		user, pass, ok := r.BasicAuth()
+		ip := ratelimit.ClientIP(r)
+		if ok && h.loginFails.Reached(ip, loginMaxFails) {
+			w.Header().Set("Retry-After", strconv.Itoa(int(loginWindow.Seconds())))
+			http.Error(w, "too many wrong passwords from your address; wait 10 minutes", http.StatusTooManyRequests)
+			return
+		}
 		got := sha256.Sum256([]byte(pass))
 		if !ok || user != Username || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 			if ok {
+				h.loginFails.Allow(ip, loginMaxFails)
 				h.Logger.Warn("admin login failed", "remote_addr", r.RemoteAddr)
 			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="Pronto AI admin", charset="UTF-8"`)
