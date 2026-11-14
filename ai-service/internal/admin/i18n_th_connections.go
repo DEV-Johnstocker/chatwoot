@@ -68,13 +68,13 @@ func init() {
 		"also: suggest a new or changed document (by its key, for example":                           "ทำได้เพิ่ม: เสนอเอกสารใหม่หรือแก้เอกสาร (ตามคีย์ เช่น",
 		") or a change to the business name, about, tone and rules. These wait for your approval on": ") หรือเสนอแก้ชื่อธุรกิจ คำอธิบาย น้ำเสียง และกฎ ทั้งหมดนี้จะรอคุณอนุมัติในหน้า",
 		"; customers keep seeing the current text until you approve.":                                " ลูกค้าจะยังเห็นข้อความเดิมจนกว่าคุณจะอนุมัติ",
-		"Deleting a document, and syncing or rescheduling a website page or data file, take effect at once (a data file syncs in the background). Deletes and schedule changes show under Recent changes on Home as the AI tool; what a sync changes shows as “website sync”. The history is kept for 180 days by default.": "การลบเอกสาร และการซิงก์หรือเปลี่ยนรอบซิงก์หน้าเว็บไซต์หรือไฟล์ข้อมูล มีผลทันที (ไฟล์ข้อมูลจะซิงก์อยู่เบื้องหลัง) การลบและการเปลี่ยนรอบจะแสดงในการเปลี่ยนแปลงล่าสุดที่หน้าแรกในชื่อเครื่องมือ AI ส่วนสิ่งที่ซิงก์เปลี่ยนจะแสดงเป็น “website sync” โดยปกติจะเก็บประวัติไว้ 180 วัน",
+		"Deleting a document waits for your approval on the AI approvals page, like other edits. Syncing or rescheduling a website page or data file takes effect at once (a data file syncs in the background). Approved deletes and schedule changes show under Recent changes on Home; what a sync changes shows as “website sync”. The history is kept for 180 days by default.": "การลบเอกสารจะรอคุณอนุมัติที่หน้าอนุมัติการแก้ไขจาก AI เหมือนการแก้ไขอื่น ส่วนการซิงก์หรือเปลี่ยนรอบซิงก์หน้าเว็บไซต์หรือไฟล์ข้อมูลมีผลทันที (ไฟล์ข้อมูลจะซิงก์อยู่เบื้องหลัง) การลบที่อนุมัติแล้วและการเปลี่ยนรอบจะแสดงในการเปลี่ยนแปลงล่าสุดที่หน้าแรก ส่วนสิ่งที่ซิงก์เปลี่ยนจะแสดงเป็น “website sync” โดยปกติจะเก็บประวัติไว้ 180 วัน",
 
 		// New token form
 		"New token":                       "โทเคนใหม่",
 		"Claude Code on my Mac":           "Claude Code บน Mac ของฉัน",
 		"Safe for reviewing and testing.": "ปลอดภัยสำหรับการตรวจและทดสอบ",
-		"Edits wait for your approval. Deletes and syncs apply at once.": "การแก้ไขจะรอคุณอนุมัติ การลบและการซิงก์มีผลทันที",
+		"Edits and deletes wait for your approval. Syncs apply at once.": "การแก้ไขและการลบจะรอคุณอนุมัติ การซิงก์มีผลทันที",
 		"Expires after": "หมดอายุหลัง",
 		"%d days":       "%d วัน",
 		"1 year":        "1 ปี",
