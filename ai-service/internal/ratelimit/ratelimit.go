@@ -51,6 +51,42 @@ type entry struct {
 func (l *Limiter) Allow(key string, limit int) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	e := l.entryLocked(key)
+	if e == nil {
+		return false
+	}
+	e.n++
+	return e.n <= limit
+}
+
+// Reserve counts one call for key only if it is still under limit, in one
+// step, so concurrent callers can never pass more than limit between them.
+// undo gives the slot back (e.g. the attempt turned out fine); calling it
+// more than once is harmless. When the table is full and key is new, Reserve
+// refuses (fails closed) and undo is nil.
+func (l *Limiter) Reserve(key string, limit int) (undo func(), ok bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e := l.entryLocked(key)
+	if e == nil || e.n >= limit {
+		return nil, false
+	}
+	e.n++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			if l.keys[key] == e && e.n > 0 {
+				e.n--
+			}
+		})
+	}, true
+}
+
+// entryLocked returns key's entry for the current window, starting a new
+// one if needed; nil if the table is full of live keys. l.mu must be held.
+func (l *Limiter) entryLocked(key string) *entry {
 	now := time.Now()
 	if l.now != nil {
 		now = l.now()
@@ -68,14 +104,27 @@ func (l *Limiter) Allow(key string, limit int) bool {
 				}
 			}
 			if len(l.keys) >= l.max() {
-				return false
+				return nil
 			}
 		}
 		e = &entry{start: now}
 		l.keys[key] = e
 	}
-	e.n++
-	return e.n <= limit
+	return e
+}
+
+// PrefixKey is the rate-limit key of an address: an IPv4 address as is, an
+// IPv6 address as its /64 network, since one subscriber usually holds a
+// whole /64 and could otherwise rotate addresses to reset a limit.
+func PrefixKey(addr string) string {
+	ip := net.ParseIP(addr)
+	switch {
+	case ip == nil:
+		return addr
+	case ip.To4() != nil:
+		return ip.To4().String()
+	}
+	return ip.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 // Reached reports whether key has already used limit calls in the current
@@ -89,6 +138,16 @@ func (l *Limiter) Reached(key string, limit int) bool {
 	}
 	e := l.keys[key]
 	return e != nil && now.Sub(e.start) < l.period() && e.n >= limit
+}
+
+// Refund takes back one call counted for key in the current window, for a
+// call reserved with Allow that turned out not to count (a right password).
+func (l *Limiter) Refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if e := l.keys[key]; e != nil && e.n > 0 {
+		e.n--
+	}
 }
 
 func (l *Limiter) period() time.Duration {

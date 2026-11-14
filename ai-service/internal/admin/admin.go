@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -496,8 +497,11 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 			}
 		}
 		user, pass, ok := r.BasicAuth()
-		ip := ratelimit.ClientIP(r)
-		if ok && h.loginFails.Reached(ip, loginMaxFails) {
+		key := loginKey(ratelimit.ClientIP(r))
+		// Reserve the attempt before checking the password, under the
+		// limiter's lock, so parallel guesses cannot pass the limit; a full
+		// table refuses too (fails closed). A right password gives it back.
+		if ok && !h.loginFails.Allow(key, loginMaxFails) {
 			w.Header().Set("Retry-After", strconv.Itoa(int(loginWindow.Seconds())))
 			http.Error(w, "too many wrong passwords from your address; wait 10 minutes", http.StatusTooManyRequests)
 			return
@@ -505,15 +509,25 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 		got := sha256.Sum256([]byte(pass))
 		if !ok || user != Username || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 			if ok {
-				h.loginFails.Allow(ip, loginMaxFails)
 				h.Logger.Warn("admin login failed", "remote_addr", r.RemoteAddr)
 			}
 			w.Header().Set("WWW-Authenticate", `Basic realm="Pronto AI admin", charset="UTF-8"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
+		h.loginFails.Refund(key)
 		next.ServeHTTP(w, r)
 	})
+}
+
+// loginKey groups IPv6 addresses by their /64, the block one customer line
+// usually gets, so rotating addresses inside it does not reset the count.
+func loginKey(ip string) string {
+	p := net.ParseIP(ip)
+	if p == nil || p.To4() != nil {
+		return ip
+	}
+	return p.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }
 
 // csp allows only our own script file (no inline scripts, no eval) and
