@@ -437,6 +437,56 @@ func TestUnknownAppGetsWarning(t *testing.T) {
 	if strings.Contains(k, "Unknown app") || !strings.Contains(u, "Unknown app") || !strings.Contains(u, "evil.example") {
 		t.Fatal("unknown-app warning wrong")
 	}
+	if !strings.Contains(u, "Use an access token for other tools") {
+		t.Fatal("the page does not say an unknown app cannot be approved")
+	}
+}
+
+func TestPasswordMode_UnknownReturnHostRefused(t *testing.T) {
+	// QA 7a: with the admin password (no Cloudflare Access), an app returning
+	// to an unknown host is refused, as it already was for Access sign-ins.
+	// Anyone can register a client, so a registered URI proves nothing.
+	cases := map[string]string{
+		"unknown https host": "https://evil.example/cb",
+		"look-alike host":    "https://claude.ai.evil.example/cb",
+	}
+	for name, uri := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+			client := e.register(t, uri)
+
+			// Act
+			page := e.do(httptest.NewRequest(http.MethodGet, "/oauth/authorize?"+authForm(client, map[string]string{"redirect_uri": uri}).Encode(), nil))
+			rec := e.approve(authForm(client, map[string]string{"redirect_uri": uri}))
+
+			// Assert
+			if page.Code != http.StatusForbidden || rec.Code != http.StatusForbidden {
+				t.Fatalf("page=%d approve=%d, want 403", page.Code, rec.Code)
+			}
+			if rec.Header().Get("Location") != "" || len(e.store.codes) != 0 || len(e.store.issued) != 0 {
+				t.Fatalf("a refused approval redirected or issued: loc=%q codes=%d", rec.Header().Get("Location"), len(e.store.codes))
+			}
+		})
+	}
+}
+
+func TestPasswordMode_KnownAndLocalAppsStillApproved(t *testing.T) {
+	for _, uri := range []string{redirect, "http://localhost:6274/oauth/callback", "http://127.0.0.1:33418/cb"} {
+		t.Run(uri, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+			client := e.register(t, uri)
+
+			// Act
+			rec := e.approve(authForm(client, map[string]string{"redirect_uri": uri}))
+
+			// Assert
+			if rec.Code != http.StatusSeeOther || len(e.store.codes) != 1 {
+				t.Fatalf("code=%d codes=%d", rec.Code, len(e.store.codes))
+			}
+		})
+	}
 }
 
 func TestDailyFailedPasswordLockIsPerAddress(t *testing.T) {
