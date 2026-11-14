@@ -60,6 +60,7 @@ const (
 	ReasonAIRequest     = "ai-handoff:ai-request"    // the model decided a person is needed
 	ReasonStaffReplied  = "ai-handoff:staff-replied" // someone else answered while the bot owned the chat
 	ReasonNumberHeld    = "ai-handoff:number-held"   // the reply had an account-like number found in no business data
+	ReasonSendFailed    = "ai-handoff:send-failed"   // Chatwoot would not take the reply, even on a retry
 )
 
 // MaxInputRunes caps one customer message before it reaches the model, so a
@@ -149,7 +150,12 @@ type Bot struct {
 	// imagesSent remembers which images each chat got (images.go).
 	imagesMu   sync.Mutex
 	imagesSent map[imageKey]time.Time
+
+	sendRetryWait time.Duration // pause before the one retry of a failed reply
 }
+
+// defaultSendRetryWait is the pause before resending a failed reply.
+const defaultSendRetryWait = time.Second
 
 // handoffBudget bounds the handoff after a failed turn. It runs on a fresh
 // context: the turn's own may already be spent by a model that timed out.
@@ -164,7 +170,7 @@ func New(opts Options, workers, queueSize int) *Bot {
 		opts.Timeout = 2 * time.Minute
 	}
 	per := max(queueSize/workers, 1)
-	b := &Bot{opts: opts, queues: make([]chan Job, workers)}
+	b := &Bot{opts: opts, queues: make([]chan Job, workers), sendRetryWait: defaultSendRetryWait}
 	for i := range b.queues {
 		b.queues[i] = make(chan Job, per)
 	}
@@ -404,8 +410,12 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		text = b.opts.HandoffMessage // only markers the bot cannot honour: never send nothing
 	}
 	if text != "" {
-		if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
-			log.Error("send reply failed", "error", err)
+		if err := b.sendReply(ctx, log, acct, conv, text); err != nil {
+			log.Error("send reply failed, handing off", "error", err)
+			tr.Outcome = "handoff:" + ReasonSendFailed
+			hctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), handoffBudget)
+			defer cancel()
+			b.handoff(hctx, log, acct, inbox, conv, "", ReasonSendFailed, nil)
 			return
 		}
 	}
@@ -431,6 +441,24 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		"history_turns", len(history),
 		"reply_chars", len([]rune(res.Content)),
 	)
+}
+
+// sendReply sends the reply, retrying once after sendRetryWait: a Chatwoot
+// restart or a brief 5xx should not cost the customer their answer.
+func (b *Bot) sendReply(ctx context.Context, log *slog.Logger, acct, conv int64, text string) error {
+	err := b.opts.Chatwoot.SendMessage(ctx, acct, conv, text)
+	if err == nil {
+		return nil
+	}
+	log.Warn("send reply failed, retrying once", "error", err)
+	t := time.NewTimer(b.sendRetryWait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return err
+	case <-t.C:
+	}
+	return b.opts.Chatwoot.SendMessage(ctx, acct, conv, text)
 }
 
 // Answer runs the reply pipeline without Chatwoot: business profile, knowledge
