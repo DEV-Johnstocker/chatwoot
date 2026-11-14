@@ -5,6 +5,7 @@
 package ratelimit
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"strings"
@@ -59,17 +60,27 @@ func (l *Limiter) Allow(key string, limit int) bool {
 	return e.n <= limit
 }
 
+// Errors from Reserve.
+var (
+	ErrLimited = errors.New("limit reached")
+	// ErrFull means the table is full of live keys, so key is not tracked
+	// and nothing was counted; the caller decides whether to fail closed.
+	ErrFull = errors.New("too many keys to track")
+)
+
 // Reserve counts one call for key only if it is still under limit, in one
 // step, so concurrent callers can never pass more than limit between them.
 // undo gives the slot back (e.g. the attempt turned out fine); calling it
-// more than once is harmless. When the table is full and key is new, Reserve
-// refuses (fails closed) and undo is nil.
-func (l *Limiter) Reserve(key string, limit int) (undo func(), ok bool) {
+// more than once is harmless. On error nothing was counted and undo is nil.
+func (l *Limiter) Reserve(key string, limit int) (undo func(), err error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	e := l.entryLocked(key)
-	if e == nil || e.n >= limit {
-		return nil, false
+	switch {
+	case e == nil:
+		return nil, ErrFull
+	case e.n >= limit:
+		return nil, ErrLimited
 	}
 	e.n++
 	var once sync.Once
@@ -81,7 +92,7 @@ func (l *Limiter) Reserve(key string, limit int) (undo func(), ok bool) {
 				e.n--
 			}
 		})
-	}, true
+	}, nil
 }
 
 // entryLocked returns key's entry for the current window, starting a new
