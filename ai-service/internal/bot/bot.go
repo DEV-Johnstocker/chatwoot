@@ -8,12 +8,14 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"math"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
 	ownerimages "github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
@@ -487,11 +489,12 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 }
 
 // sendReply sends the reply, retrying once after sendRetryWait: a Chatwoot
-// restart or a brief 5xx should not cost the customer their answer.
+// restart or a brief 5xx should not cost the customer their answer. A 4xx
+// will fail the same way again, so it is not retried.
 func (b *Bot) sendReply(ctx context.Context, log *slog.Logger, acct, conv int64, text string) error {
 	err := b.opts.Chatwoot.SendMessage(ctx, acct, conv, text)
-	if err == nil {
-		return nil
+	if err == nil || !retryable(err) {
+		return err
 	}
 	log.Warn("send reply failed, retrying once", "error", err)
 	t := time.NewTimer(b.sendRetryWait)
@@ -502,6 +505,16 @@ func (b *Bot) sendReply(ctx context.Context, log *slog.Logger, acct, conv int64,
 	case <-t.C:
 	}
 	return b.opts.Chatwoot.SendMessage(ctx, acct, conv, text)
+}
+
+// retryable is a network error or a Chatwoot 5xx or 429. A 5xx after
+// Chatwoot saved the message can double-send; one duplicate beats no answer.
+func retryable(err error) bool {
+	var apiErr *chatwoot.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= 500 || apiErr.Status == http.StatusTooManyRequests
+	}
+	return true
 }
 
 // Answer runs the reply pipeline without Chatwoot: business profile, knowledge
