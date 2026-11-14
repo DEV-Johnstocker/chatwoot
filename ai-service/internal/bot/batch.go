@@ -33,6 +33,19 @@ type pendingReply struct {
 	images []string // photos from every message in the burst
 	texts  []string // what each message said, for the reply's trace
 	seq    uint64   // bumped by each new message; only the latest timer replies
+	first  time.Time
+}
+
+// maxBurstWaits caps a burst at this many ReplyDelays from its first
+// message, so a customer who never pauses for a full delay still gets an
+// answer.
+const maxBurstWaits = 3
+
+// burstWait is how long to wait after a message: ReplyDelay, cut short
+// when the burst would run past its cap.
+func (b *Bot) burstWait(first time.Time) time.Duration {
+	left := maxBurstWaits*b.opts.ReplyDelay - time.Since(first)
+	return max(min(b.opts.ReplyDelay, left), 0)
 }
 
 // deferReply (re)starts the conversation's wait and keeps its photos.
@@ -48,7 +61,7 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID, text st
 	}
 	p := b.pending[key]
 	if p == nil {
-		p = &pendingReply{}
+		p = &pendingReply{first: time.Now()}
 		b.pending[key] = p
 	} else {
 		p.timer.Stop()
@@ -63,7 +76,7 @@ func (b *Bot) deferReply(log *slog.Logger, ev webhook.Event, deliveryID, text st
 	}
 	p.seq++
 	job := Job{Event: ev, Decision: webhook.Reply, DeliveryID: deliveryID, flush: p.seq}
-	p.timer = time.AfterFunc(b.opts.ReplyDelay, func() { b.queueWaiting(log, key, job, 0) })
+	p.timer = time.AfterFunc(b.burstWait(p.first), func() { b.queueWaiting(log, key, job, 0) })
 }
 
 // queueWaiting hands a burst's reply to its worker. It holds b.mu so Close
@@ -76,7 +89,7 @@ func (b *Bot) queueWaiting(log *slog.Logger, key convKey, job Job, try int) {
 	if b.closed || p == nil || p.seq != job.flush {
 		return
 	}
-	err := b.Enqueue(job)
+	err := b.tryEnqueue(job) // never block while holding b.mu
 	if err == nil {
 		return
 	}

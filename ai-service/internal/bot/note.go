@@ -74,6 +74,7 @@ var reasonLabels = map[string]string{
 	ReasonStaffReplied:  "แอดมินตอบลูกค้าโดยตรง บอทหยุดตอบแชทนี้แล้ว (ปิดแชทเมื่อเสร็จ บอทจะกลับมาตอบ)",
 	ReasonBotOff:        "บอทปิดอยู่ หรือข้อความเข้ามานอกเวลาทำงานของบอท แชทนี้ส่งให้ทีมงานตอบ",
 	ReasonNumberHeld:    "คำตอบของบอทมีเลขบัญชี เบอร์ หรือเลขยาวที่ไม่ได้มาจากโปรไฟล์ธุรกิจ ระบบจึงไม่ส่งให้ลูกค้า",
+	ReasonSendFailed:    "ส่งคำตอบของบอทให้ลูกค้าไม่สำเร็จ (ลองซ้ำแล้ว) ลูกค้ายังไม่ได้รับคำตอบ",
 }
 
 // Card and Thai ID numbers never belong in a note, even if a model copies them.
@@ -94,6 +95,11 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 	}
 	if b.opts.NoteLLM == nil {
 		return reason, false
+	}
+	if reason == ReasonLLMError || reason == ReasonSendFailed {
+		// The model or Chatwoot just failed: another model call would only add
+		// up to noteTimeout before staff see the chat, so the note stays plain.
+		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false
 	}
 	ctx, cancel := context.WithTimeout(ctx, noteTimeout)
 	defer cancel()

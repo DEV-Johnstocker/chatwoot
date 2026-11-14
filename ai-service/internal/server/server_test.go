@@ -256,3 +256,78 @@ func TestWebhook_StaleOrMalformedRecordsNothing(t *testing.T) {
 		t.Errorf("stale=%d malformed=%d recorded=%v jobs=%d, want 401, 400 and nothing recorded", staleCode, badCode, p.got, len(q.jobs))
 	}
 }
+
+const resolvedEvent = `{"event":"conversation_resolved","id":7,"status":"resolved","updated_at":%s,
+"account":{"id":1},"inbox":{"id":3},"conversation":{"id":7,"status":"resolved"}}`
+
+func TestWebhook_RepeatResolveIsNotADuplicate(t *testing.T) {
+	// Arrange: the chat is resolved, reopened and resolved again later.
+	q := &fakeQueue{}
+	h := newHandler(q)
+
+	// Act
+	first := do(h, signedRequest(fmt.Sprintf(resolvedEvent, "1800000000.125")))
+	second := do(h, signedRequest(fmt.Sprintf(resolvedEvent, "1800000600.5")))
+
+	// Assert
+	if first != http.StatusAccepted || second != http.StatusAccepted || len(q.jobs) != 2 {
+		t.Errorf("first=%d second=%d jobs=%d, want both resolves to clear the memory", first, second, len(q.jobs))
+	}
+}
+
+func TestWebhook_RedeliveredResolveIsADuplicate(t *testing.T) {
+	// Arrange
+	q := &fakeQueue{}
+	h := newHandler(q)
+	body := fmt.Sprintf(resolvedEvent, "1800000000.125")
+
+	// Act
+	first := do(h, signedRequest(body))
+	second := do(h, signedRequest(body))
+
+	// Assert
+	if first != http.StatusAccepted || second != http.StatusOK || len(q.jobs) != 1 {
+		t.Errorf("first=%d second=%d jobs=%d, want the redelivery dropped", first, second, len(q.jobs))
+	}
+}
+
+const updatedEvent = `{"event":"conversation_updated","id":7,"status":"open","updated_at":%s,
+"account":{"id":1},"inbox":{"id":3},"conversation":{"id":7,"status":"open"}}`
+
+func TestWebhook_LabelUpdatesWithTheSameStatusStillDedupe(t *testing.T) {
+	// Arrange: each label or assignment change has a new updated_at.
+	q := &fakeQueue{}
+	h := newHandler(q)
+
+	// Act
+	first := do(h, signedRequest(fmt.Sprintf(updatedEvent, "1800000000.125")))
+	second := do(h, signedRequest(fmt.Sprintf(updatedEvent, "1800000001.5")))
+
+	// Assert
+	if first != http.StatusAccepted || second != http.StatusOK || len(q.jobs) != 1 {
+		t.Errorf("first=%d second=%d jobs=%d, want one pause job", first, second, len(q.jobs))
+	}
+}
+
+func TestDedupeKey_IgnoresAnOddUpdatedAt(t *testing.T) {
+	cases := map[string]string{
+		"huge string": `"` + strings.Repeat("x", 5000) + `"`,
+		"object":      `{"a":1}`,
+		"long number": strings.Repeat("9", 5000),
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			ev := webhook.Event{Event: "conversation_resolved", ID: 7, Status: "resolved",
+				Account: webhook.Account{ID: 1}, UpdatedAt: []byte(raw)}
+
+			// Act
+			key := dedupeKey(ev)
+
+			// Assert
+			if len(key) > 80 || strings.Contains(key, "x") || strings.Contains(key, "{") {
+				t.Errorf("key must hold only a short number or nothing, got %d bytes: %.80q", len(key), key)
+			}
+		})
+	}
+}

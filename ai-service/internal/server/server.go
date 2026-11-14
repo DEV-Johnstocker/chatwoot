@@ -2,12 +2,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/bot"
@@ -127,7 +129,33 @@ func dedupeKey(ev webhook.Event) string {
 	if ev.Event == "message_created" {
 		return fmt.Sprintf("msg:%d:%d", ev.Account.ID, ev.ID)
 	}
-	return fmt.Sprintf("%s:%d:%d:%s", ev.Event, ev.Account.ID, ev.ID, ev.Status)
+	key := fmt.Sprintf("%s:%d:%d:%s", ev.Event, ev.Account.ID, ev.ID, ev.Status)
+	if ev.Event == "conversation_resolved" || ev.Event == "conversation_status_changed" {
+		// updated_at tells a redelivery (same value) from the chat being
+		// resolved again later (new value), which must clear the memory again.
+		// conversation_updated keeps the plain key: every label or assignment
+		// has a new updated_at, and each would become another Pause job.
+		key += ":" + stamp(ev.UpdatedAt)
+	}
+	return key
+}
+
+// maxStampBytes bounds updated_at in a dedupe key (Chatwoot sends seconds
+// as a float, about 17 bytes).
+const maxStampBytes = 32
+
+// stamp is updated_at when it is a short number, else "": the value comes
+// from the payload and ends up in the dedupe map and the logs.
+func stamp(raw []byte) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || len(raw) > maxStampBytes {
+		return ""
+	}
+	f, err := strconv.ParseFloat(string(raw), 64)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
 // recordPlace saves the account and inbox names for the admin lists. It runs

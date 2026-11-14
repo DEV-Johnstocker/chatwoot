@@ -8,12 +8,14 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"math"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
 	ownerimages "github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
@@ -60,6 +62,7 @@ const (
 	ReasonAIRequest     = "ai-handoff:ai-request"    // the model decided a person is needed
 	ReasonStaffReplied  = "ai-handoff:staff-replied" // someone else answered while the bot owned the chat
 	ReasonNumberHeld    = "ai-handoff:number-held"   // the reply had an account-like number found in no business data
+	ReasonSendFailed    = "ai-handoff:send-failed"   // Chatwoot would not take the reply, even on a retry
 )
 
 // MaxInputRunes caps one customer message before it reaches the model, so a
@@ -149,7 +152,26 @@ type Bot struct {
 	// imagesSent remembers which images each chat got (images.go).
 	imagesMu   sync.Mutex
 	imagesSent map[imageKey]time.Time
+
+	// sendMu lets Close wait for every Enqueue in flight before it closes the
+	// queues; done wakes an Enqueue that is waiting for room.
+	sendMu sync.RWMutex
+	done   chan struct{}
+
+	enqueueWait   time.Duration // how long Enqueue waits for room in a full queue
+	sendRetryWait time.Duration // pause before the one retry of a failed reply
 }
+
+// Defaults for the waits above. enqueueWait stays well under Chatwoot's 5 s
+// webhook timeout, so a short burst is absorbed instead of answered with 429.
+const (
+	defaultEnqueueWait   = 2 * time.Second
+	defaultSendRetryWait = time.Second
+)
+
+// handoffBudget bounds the handoff after a failed turn. It runs on a fresh
+// context: the turn's own may already be spent by a model that timed out.
+const handoffBudget = 15 * time.Second
 
 // New creates a Bot with `workers` workers, each with a buffer of queueSize/workers.
 func New(opts Options, workers, queueSize int) *Bot {
@@ -160,7 +182,8 @@ func New(opts Options, workers, queueSize int) *Bot {
 		opts.Timeout = 2 * time.Minute
 	}
 	per := max(queueSize/workers, 1)
-	b := &Bot{opts: opts, queues: make([]chan Job, workers)}
+	b := &Bot{opts: opts, queues: make([]chan Job, workers), done: make(chan struct{}),
+		enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait}
 	for i := range b.queues {
 		b.queues[i] = make(chan Job, per)
 	}
@@ -171,15 +194,44 @@ func New(opts Options, workers, queueSize int) *Bot {
 // Chatwoot to retry (HTTP 429).
 var ErrQueueFull = errors.New("queue full")
 
-// Enqueue hands a job to its conversation's worker without blocking.
+// Enqueue hands a job to its conversation's worker. When that worker's
+// queue is full it waits up to enqueueWait for room before giving up.
+// After Close it returns ErrQueueFull, so Chatwoot retries elsewhere.
 func (b *Bot) Enqueue(j Job) error {
-	q := b.queues[b.shard(j.Event.Account.ID, j.Event.ConversationID())]
+	b.sendMu.RLock()
+	defer b.sendMu.RUnlock()
 	select {
-	case q <- j:
+	case <-b.done:
+		return ErrQueueFull
+	default:
+	}
+	if b.tryEnqueue(j) == nil {
+		return nil
+	}
+	t := time.NewTimer(b.enqueueWait)
+	defer t.Stop()
+	select {
+	case b.queue(j) <- j:
+		return nil
+	case <-t.C:
+		return ErrQueueFull
+	case <-b.done:
+		return ErrQueueFull
+	}
+}
+
+// tryEnqueue hands a job to its worker without blocking.
+func (b *Bot) tryEnqueue(j Job) error {
+	select {
+	case b.queue(j) <- j:
 		return nil
 	default:
 		return ErrQueueFull
 	}
+}
+
+func (b *Bot) queue(j Job) chan Job {
+	return b.queues[b.shard(j.Event.Account.ID, j.Event.ConversationID())]
 }
 
 // Start launches the workers. They stop when ctx is cancelled or Close is called.
@@ -205,6 +257,7 @@ func (b *Bot) Start(ctx context.Context) {
 
 // Close stops accepting work, drains queued jobs and waits for workers.
 func (b *Bot) Close() {
+	close(b.done) // wakes any Enqueue waiting for room
 	b.mu.Lock()
 	b.closed = true
 	for key, p := range b.pending { // a waiting reply must not reach a closed queue
@@ -212,9 +265,11 @@ func (b *Bot) Close() {
 		delete(b.pending, key)
 	}
 	b.mu.Unlock()
+	b.sendMu.Lock() // no Enqueue is between its checks and its send
 	for _, q := range b.queues {
 		close(q)
 	}
+	b.sendMu.Unlock()
 	b.wg.Wait()
 }
 
@@ -359,7 +414,9 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	if err != nil {
 		log.Error("llm completion failed", "error", err, "latency_ms", latency.Milliseconds())
 		tr.Outcome, tr.Output = "handoff:"+ReasonLLMError, b.opts.FailureMessage
-		b.handoff(ctx, log, acct, inbox, conv, b.opts.FailureMessage, ReasonLLMError, images)
+		hctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), handoffBudget)
+		defer cancel()
+		b.handoff(hctx, log, acct, inbox, conv, b.opts.FailureMessage, ReasonLLMError, images)
 		return
 	}
 
@@ -398,8 +455,12 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		text = b.opts.HandoffMessage // only markers the bot cannot honour: never send nothing
 	}
 	if text != "" {
-		if err := cw.SendMessage(ctx, acct, conv, text); err != nil {
-			log.Error("send reply failed", "error", err)
+		if err := b.sendReply(ctx, log, acct, conv, text); err != nil {
+			log.Error("send reply failed, handing off", "error", err)
+			tr.Outcome = "handoff:" + ReasonSendFailed
+			hctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), handoffBudget)
+			defer cancel()
+			b.handoff(hctx, log, acct, inbox, conv, "", ReasonSendFailed, nil)
 			return
 		}
 	}
@@ -425,6 +486,35 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		"history_turns", len(history),
 		"reply_chars", len([]rune(res.Content)),
 	)
+}
+
+// sendReply sends the reply, retrying once after sendRetryWait: a Chatwoot
+// restart or a brief 5xx should not cost the customer their answer. A 4xx
+// will fail the same way again, so it is not retried.
+func (b *Bot) sendReply(ctx context.Context, log *slog.Logger, acct, conv int64, text string) error {
+	err := b.opts.Chatwoot.SendMessage(ctx, acct, conv, text)
+	if err == nil || !retryable(err) {
+		return err
+	}
+	log.Warn("send reply failed, retrying once", "error", err)
+	t := time.NewTimer(b.sendRetryWait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return err
+	case <-t.C:
+	}
+	return b.opts.Chatwoot.SendMessage(ctx, acct, conv, text)
+}
+
+// retryable is a network error or a Chatwoot 5xx or 429. A 5xx after
+// Chatwoot saved the message can double-send; one duplicate beats no answer.
+func retryable(err error) bool {
+	var apiErr *chatwoot.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= 500 || apiErr.Status == http.StatusTooManyRequests
+	}
+	return true
 }
 
 // Answer runs the reply pipeline without Chatwoot: business profile, knowledge
