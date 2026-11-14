@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -127,7 +128,9 @@ func dedupeKey(ev webhook.Event) string {
 	if ev.Event == "message_created" {
 		return fmt.Sprintf("msg:%d:%d", ev.Account.ID, ev.ID)
 	}
-	return fmt.Sprintf("%s:%d:%d:%s", ev.Event, ev.Account.ID, ev.ID, ev.Status)
+	// updated_at tells a redelivery (same value) from the chat being resolved
+	// again later (new value), which must clear the memory again.
+	return fmt.Sprintf("%s:%d:%d:%s:%s", ev.Event, ev.Account.ID, ev.ID, ev.Status, bytes.TrimSpace(ev.UpdatedAt))
 }
 
 // recordPlace saves the account and inbox names for the admin lists. It runs

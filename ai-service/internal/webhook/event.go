@@ -15,17 +15,21 @@ import (
 // Message events carry message fields at the top level; conversation events
 // (conversation_resolved, ...) carry conversation fields at the top level.
 type Event struct {
-	Event        string       `json:"event"`
-	ID           int64        `json:"id"` // message id (message events) or conversation display id
-	Content      string       `json:"content"`
-	MessageType  string       `json:"message_type"` // incoming | outgoing | activity | template
-	Private      bool         `json:"private"`
-	Status       string       `json:"status"` // conversation events only
-	Account      Account      `json:"account"`
-	Inbox        Inbox        `json:"inbox"`
-	Sender       Sender       `json:"sender"`
-	Conversation Conversation `json:"conversation"`
-	Attachments  []Attachment `json:"attachments"` // present only when the message has files
+	Event       string `json:"event"`
+	ID          int64  `json:"id"` // message id (message events) or conversation display id
+	Content     string `json:"content"`
+	MessageType string `json:"message_type"` // incoming | outgoing | activity | template
+	Private     bool   `json:"private"`
+	Status      string `json:"status"` // conversation events only
+	// UpdatedAt is the conversation's updated_at on conversation events (a
+	// float of seconds). A redelivery repeats it; a later status change does
+	// not. Kept raw so a message event's own fields never fail to parse.
+	UpdatedAt    json.RawMessage `json:"updated_at"`
+	Account      Account         `json:"account"`
+	Inbox        Inbox           `json:"inbox"`
+	Sender       Sender          `json:"sender"`
+	Conversation Conversation    `json:"conversation"`
+	Attachments  []Attachment    `json:"attachments"` // present only when the message has files
 	// SourceID is the channel's own id for the message: for Messenger, Meta's
 	// message id (an echo of a page's message carries the id Meta returned).
 	SourceID string `json:"source_id"`

@@ -256,3 +256,37 @@ func TestWebhook_StaleOrMalformedRecordsNothing(t *testing.T) {
 		t.Errorf("stale=%d malformed=%d recorded=%v jobs=%d, want 401, 400 and nothing recorded", staleCode, badCode, p.got, len(q.jobs))
 	}
 }
+
+const resolvedEvent = `{"event":"conversation_resolved","id":7,"status":"resolved","updated_at":%s,
+"account":{"id":1},"inbox":{"id":3},"conversation":{"id":7,"status":"resolved"}}`
+
+func TestWebhook_RepeatResolveIsNotADuplicate(t *testing.T) {
+	// Arrange: the chat is resolved, reopened and resolved again later.
+	q := &fakeQueue{}
+	h := newHandler(q)
+
+	// Act
+	first := do(h, signedRequest(fmt.Sprintf(resolvedEvent, "1800000000.125")))
+	second := do(h, signedRequest(fmt.Sprintf(resolvedEvent, "1800000600.5")))
+
+	// Assert
+	if first != http.StatusAccepted || second != http.StatusAccepted || len(q.jobs) != 2 {
+		t.Errorf("first=%d second=%d jobs=%d, want both resolves to clear the memory", first, second, len(q.jobs))
+	}
+}
+
+func TestWebhook_RedeliveredResolveIsADuplicate(t *testing.T) {
+	// Arrange
+	q := &fakeQueue{}
+	h := newHandler(q)
+	body := fmt.Sprintf(resolvedEvent, "1800000000.125")
+
+	// Act
+	first := do(h, signedRequest(body))
+	second := do(h, signedRequest(body))
+
+	// Assert
+	if first != http.StatusAccepted || second != http.StatusOK || len(q.jobs) != 1 {
+		t.Errorf("first=%d second=%d jobs=%d, want the redelivery dropped", first, second, len(q.jobs))
+	}
+}
