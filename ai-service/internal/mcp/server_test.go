@@ -638,3 +638,131 @@ func TestServer_UpsertRefusesSyncedKeys(t *testing.T) {
 		t.Errorf("docs=%d audit=%d, want nothing written", len(e.st.docs), len(e.audit.entries))
 	}
 }
+
+// sendRaw posts body as-is with a read-write token and returns the HTTP code and decoded answer.
+func (e *env) sendRaw(body string) (int, map[string]any) {
+	r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	r.Header.Set("Authorization", "Bearer "+rw)
+	rec := httptest.NewRecorder()
+	e.srv.ServeHTTP(rec, r)
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return rec.Code, out
+}
+
+func TestServer_LooseJSONRPCIsInvalidRequest(t *testing.T) {
+	// QA F-D-04: only a well-formed JSON-RPC 2.0 request is served.
+	cases := map[string]string{
+		"jsonrpc missing":        `{"id":1,"method":"ping"}`,
+		"jsonrpc 1.0":            `{"jsonrpc":"1.0","id":1,"method":"ping"}`,
+		"jsonrpc a number":       `{"jsonrpc":2,"id":1,"method":"ping"}`,
+		"keys in another case":   `{"JSONRPC":"2.0","ID":1,"METHOD":"ping"}`,
+		"method in another case": `{"jsonrpc":"2.0","id":1,"Method":"ping"}`,
+		"duplicate method":       `{"jsonrpc":"2.0","id":1,"method":"ping","method":"tools/list"}`,
+		"unknown member":         `{"jsonrpc":"2.0","id":1,"method":"ping","extra":true}`,
+		"id an object":           `{"jsonrpc":"2.0","id":{},"method":"ping"}`,
+		"id an array":            `{"jsonrpc":"2.0","id":[1],"method":"ping"}`,
+		"id a boolean":           `{"jsonrpc":"2.0","id":true,"method":"ping"}`,
+		"id null":                `{"jsonrpc":"2.0","id":null,"method":"ping"}`,
+		"id a fraction":          `{"jsonrpc":"2.0","id":1.5,"method":"ping"}`,
+		"method not a string":    `{"jsonrpc":"2.0","id":1,"method":7}`,
+		"method empty":           `{"jsonrpc":"2.0","id":1,"method":""}`,
+		"params a string":        `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":"x"}`,
+		"params a number":        `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":3}`,
+		"not an object":          `"ping"`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+
+			// Act
+			code, out := e.sendRaw(body)
+
+			// Assert
+			errObj, _ := out["error"].(map[string]any)
+			if code != http.StatusOK || errObj == nil || errObj["code"].(float64) != codeInvalidRequest || out["result"] != nil {
+				t.Fatalf("code=%d out=%v, want Invalid Request", code, out)
+			}
+			if out["id"] != nil || out["jsonrpc"] != "2.0" {
+				t.Fatalf("id=%v jsonrpc=%v, want null and 2.0", out["id"], out["jsonrpc"])
+			}
+		})
+	}
+}
+
+func TestServer_WellFormedRequestsStillServed(t *testing.T) {
+	// Real MCP clients: string or number ids, params as an object, or no params.
+	cases := map[string]string{
+		"number id":         `{"jsonrpc":"2.0","id":1,"method":"ping"}`,
+		"string id":         `{"jsonrpc":"2.0","id":"abc-1","method":"ping"}`,
+		"params object":     `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`,
+		"params with _meta": `{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{"_meta":{"progressToken":1}}}`,
+		"members reordered": `{"method":"ping","id":4,"jsonrpc":"2.0"}`,
+		"params null":       `{"jsonrpc":"2.0","id":5,"method":"tools/list","params":null}`,
+		"initialize":        `{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"claude-ai","version":"0.1.0"}}}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+
+			// Act
+			code, out := e.sendRaw(body)
+
+			// Assert
+			if code != http.StatusOK || out["error"] != nil || out["result"] == nil {
+				t.Fatalf("code=%d out=%v", code, out)
+			}
+		})
+	}
+}
+
+func TestServer_NotificationGetsNoAnswer(t *testing.T) {
+	// Arrange
+	e := newEnv()
+
+	// Act
+	code, out := e.sendRaw(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+
+	// Assert
+	if code != http.StatusAccepted || out != nil {
+		t.Fatalf("code=%d out=%v", code, out)
+	}
+}
+
+func TestServer_ArgumentErrorsDoNotShowGoTypes(t *testing.T) {
+	cases := map[string]struct {
+		tool string
+		args string
+		want string
+	}{
+		"string for a number":  {"get_document", `{"id":"5"}`, "id must be a number"},
+		"number for a string":  {"get_document", `{"key":5}`, "key must be a string"},
+		"object for a boolean": {"upsert_document", `{"key":"k","title":"t","content":"c","allow_duplicate":{}}`, "allow_duplicate must be true or false"},
+		"unknown field":        {"get_document", `{"key":"k","account_id":2}`, `unknown field "account_id"`},
+		"broken arguments":     {"get_document", `[1,2]`, "arguments must be an object"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			e := newEnv()
+			body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"` + c.tool + `","arguments":` + c.args + `}}`
+
+			// Act
+			_, out := e.sendRaw(body)
+
+			// Assert
+			res, _ := out["result"].(map[string]any)
+			msg := text(res)
+			if !isErr(res) || !strings.Contains(msg, c.want) {
+				t.Fatalf("message = %q, want %q", msg, c.want)
+			}
+			for _, leak := range []string{"Go struct", "Go value", "int64", "json:", "main.", "mcp."} {
+				if strings.Contains(msg, leak) {
+					t.Fatalf("message %q shows %q", msg, leak)
+				}
+			}
+		})
+	}
+}

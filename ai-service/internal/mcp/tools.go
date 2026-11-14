@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -95,6 +96,51 @@ var tools = []tool{
 // allTools is every tool, knowledge first.
 func allTools() []tool { return append(append([]tool{}, tools...), adminTools...) }
 
+// argError describes bad tool arguments in JSON terms: which field and what
+// it must be. Go's own messages name Go types and structs (QA F-D-04).
+func argError(err error) error {
+	var te *json.UnmarshalTypeError
+	if errors.As(err, &te) {
+		if te.Field == "" {
+			return userError("invalid arguments: arguments must be an object")
+		}
+		return userError("invalid arguments: " + clipName(te.Field) + " must be " + jsonKind(te.Type))
+	}
+	if name, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+		return userError("invalid arguments: unknown field " + clipName(name))
+	}
+	return userError("invalid arguments: not valid JSON")
+}
+
+// jsonKind names what a Go type holds as JSON.
+func jsonKind(t reflect.Type) string {
+	if t == nil {
+		return "of another type"
+	}
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		return "a number"
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "true or false"
+	case reflect.Slice, reflect.Array:
+		return "a list"
+	case reflect.Struct, reflect.Map:
+		return "an object"
+	}
+	return "of another type"
+}
+
+// clipName keeps a field name the app sent short in the answer.
+func clipName(s string) string {
+	if r := []rune(s); len(r) > 64 {
+		return string(r[:64]) + "…"
+	}
+	return s
+}
+
 func (s *Server) toolList(tok Token) []tool {
 	var out []tool
 	for _, t := range allTools() {
@@ -126,7 +172,7 @@ func (s *Server) callTool(ctx context.Context, tok Token, name string, raw json.
 	dec.DisallowUnknownFields()
 	decode := func(v any) error {
 		if err := dec.Decode(v); err != nil {
-			return userError("invalid arguments: " + err.Error())
+			return argError(err)
 		}
 		if dec.More() {
 			return userError("invalid arguments: trailing data")
