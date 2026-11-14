@@ -36,7 +36,8 @@ type approvalItem struct {
 	From    string
 	When    string
 	New     bool   // nothing exists yet: show only the proposed values
-	Badge   string // "New document" or "New source"
+	Delete  bool   // a delete: show only the current values
+	Badge   string // "New document", "Delete document" or "New source"
 	Fields  []fieldDiff
 }
 
@@ -91,6 +92,9 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, pending.ErrChanged):
 		h.renderApprovals(w, r, http.StatusConflict, approvalsData{Account: acct,
 			Error: "The app changed this after you opened it. Nothing was applied; check the new version below."})
+	case errors.Is(err, pending.ErrTargetChanged):
+		h.renderApprovals(w, r, http.StatusConflict, approvalsData{Account: acct,
+			Error: "Not applied: the document changed since the app proposed this, and approving would overwrite the newer version. Reject it, or ask the app to propose the change again."})
 	case errors.Is(err, pending.ErrNotFound):
 		h.renderApprovals(w, r, http.StatusNotFound, approvalsData{Account: acct,
 			Error: "That change is no longer waiting. It may have been approved or rejected already."})
@@ -131,6 +135,11 @@ func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([
 			it.Heading = tr(lang, "Business profile")
 			it.Fields, err = h.profileDiff(ctx, lang, acct, c.Proposed)
 		case pending.KindDocument:
+			if it.Delete = isDelete(c.Proposed); it.Delete {
+				it.Heading, it.Fields, err = h.deleteDiff(ctx, lang, acct, c.Target, c.Proposed)
+				it.Badge = tr(lang, "Delete document")
+				break
+			}
 			it.Heading, it.New, it.Fields, err = h.documentDiff(ctx, lang, acct, c.Target, c.Proposed)
 			if it.New {
 				it.Badge = tr(lang, "New document")
@@ -143,7 +152,7 @@ func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([
 			return nil, err
 		}
 		for i := range it.Fields {
-			it.Fields[i].Same = !it.New && it.Fields[i].Current == it.Fields[i].Proposed
+			it.Fields[i].Same = !it.New && !it.Delete && it.Fields[i].Current == it.Fields[i].Proposed
 		}
 		items = append(items, it)
 	}
@@ -184,6 +193,38 @@ func sourceDiff(lang string, raw []byte) (string, []fieldDiff, error) {
 	fields = append(fields, fieldDiff{Label: tr(lang, "After approval"),
 		Proposed: tr(lang, "It is loaded at once and the bot answers from it. It is checked for changes on a schedule, and you can remove it on the Knowledge base page.")})
 	return tr(lang, "New source: %s", where), fields, nil
+}
+
+// isDelete reports whether a document change asks to delete the document.
+func isDelete(raw []byte) bool {
+	var d struct {
+		Delete bool `json:"delete"`
+	}
+	return json.Unmarshal(raw, &d) == nil && d.Delete
+}
+
+// deleteDiff shows the document a delete removes, as customers see it now.
+func (h *Handler) deleteDiff(ctx context.Context, lang string, acct int64, target string, raw []byte) (string, []fieldDiff, error) {
+	var d struct {
+		ID    int64  `json:"id"`
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return "", nil, err
+	}
+	cur := knowledge.Document{Title: d.Title}
+	if h.Knowledge != nil {
+		got, err := h.Knowledge.Get(ctx, acct, d.ID)
+		switch {
+		case err == nil:
+			cur = got
+		case !errors.Is(err, knowledge.ErrNotFound):
+			return "", nil, err
+		}
+	}
+	fields := []fieldDiff{{Label: tr(lang, "Title"), Current: cur.Title}, {Label: tr(lang, "Text"), Current: cur.Content},
+		{Label: tr(lang, "After approval"), Current: tr(lang, "The document is deleted and the bot stops using it. A copy stays in the change history.")}}
+	return tr(lang, "Knowledge: %s", target), fields, nil
 }
 
 func (h *Handler) profileDiff(ctx context.Context, lang string, acct int64, raw []byte) ([]fieldDiff, error) {

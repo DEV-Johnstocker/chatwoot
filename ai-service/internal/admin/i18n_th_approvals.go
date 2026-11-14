@@ -13,6 +13,7 @@ func init() {
 		"Rejected. Nothing changed.":                       "ปฏิเสธแล้ว ไม่มีอะไรเปลี่ยน",
 		"Nothing is waiting for approval.":                 "ไม่มีรายการรออนุมัติ",
 		"New document":                                     "เอกสารใหม่",
+		"Delete document":                                  "ลบเอกสาร",
 		"(AI app)":                                         "(แอป AI)",
 		"Unchanged":                                        "ไม่เปลี่ยน",
 		"Now":                                              "ตอนนี้",
@@ -47,11 +48,13 @@ func init() {
 		"from %s to %s": "ตั้งแต่ %s ถึง %s",
 		"now":           "ตอนนี้",
 		"no end":        "ไม่มีวันสิ้นสุด",
+		"The document is deleted and the bot stops using it. A copy stays in the change history.": "เอกสารจะถูกลบและบอตจะเลิกใช้ สำเนาจะเก็บไว้ในประวัติการเปลี่ยนแปลง",
 
 		// Errors
-		"The app changed this after you opened it. Nothing was applied; check the new version below.":     "แอปแก้รายการนี้หลังจากคุณเปิดหน้า ยังไม่มีอะไรถูกนำไปใช้ ตรวจเวอร์ชันใหม่ด้านล่าง",
-		"That change is no longer waiting. It may have been approved or rejected already.":                "รายการนี้ไม่ได้รออยู่แล้ว อาจถูกอนุมัติหรือปฏิเสธไปแล้ว",
-		"Not applied. The change still waits; try again, and check the service logs if it keeps failing.": "ยังไม่ได้นำไปใช้ รายการยังรออยู่ ลองอีกครั้ง ถ้ายังไม่ได้ให้ตรวจ log ของระบบ",
-		"Could not load the waiting changes. Check the database connection.":                              "โหลดรายการที่รออนุมัติไม่ได้ ตรวจการเชื่อมต่อฐานข้อมูล",
+		"The app changed this after you opened it. Nothing was applied; check the new version below.":                                                                            "แอปแก้รายการนี้หลังจากคุณเปิดหน้า ยังไม่มีอะไรถูกนำไปใช้ ตรวจเวอร์ชันใหม่ด้านล่าง",
+		"That change is no longer waiting. It may have been approved or rejected already.":                                                                                       "รายการนี้ไม่ได้รออยู่แล้ว อาจถูกอนุมัติหรือปฏิเสธไปแล้ว",
+		"Not applied. The change still waits; try again, and check the service logs if it keeps failing.":                                                                        "ยังไม่ได้นำไปใช้ รายการยังรออยู่ ลองอีกครั้ง ถ้ายังไม่ได้ให้ตรวจ log ของระบบ",
+		"Not applied: the document changed since the app proposed this, and approving would overwrite the newer version. Reject it, or ask the app to propose the change again.": "ยังไม่ได้นำไปใช้ เอกสารถูกแก้หลังจากที่แอปเสนอรายการนี้ ถ้าอนุมัติจะทับเวอร์ชันที่ใหม่กว่า ให้ปฏิเสธ หรือให้แอปเสนอการแก้ไขใหม่อีกครั้ง",
+		"Could not load the waiting changes. Check the database connection.":                                                                                                     "โหลดรายการที่รออนุมัติไม่ได้ ตรวจการเชื่อมต่อฐานข้อมูล",
 	})
 }

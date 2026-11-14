@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,7 +76,8 @@ var tools = []tool{
 		// Destructive: the same key replaces the existing document in place.
 		Annotations: map[string]any{"destructiveHint": true, "idempotentHint": true, "openWorldHint": false}},
 	{Name: "delete_document", Title: "Delete a document", write: true,
-		Description: "Delete a document by key or ID. It takes effect at once; a copy of the old text is kept in the change history.",
+		Description: "Ask to delete a document by key or ID. The delete waits until the owner approves it on the admin page; until then customers still get answers from it. " +
+			"Sending an upsert_document for the same key replaces a waiting delete. A copy of the old text is kept in the change history.",
 		InputSchema: obj(keyOrID), Annotations: map[string]any{"destructiveHint": true, "openWorldHint": false}},
 	{Name: "test_bot", Title: "Ask the support bot",
 		Description: "Ask the real support bot a customer question, without sending anything to customers. Returns the reply, whether it would hand off to staff and why, and the knowledge it used. history is earlier turns, oldest first.",
@@ -333,6 +336,43 @@ type upsertArgs struct {
 	AllowDuplicate bool   `json:"allow_duplicate"`
 }
 
+// docProposal is a document change as it waits for the owner: an upsert
+// (the app's arguments) or a delete. Base fingerprints the document as the
+// app saw it, so an approval cannot overwrite a newer edit (QA F-C-07): ""
+// means it did not exist; nil is a proposal stored before this check.
+// The tools decode only upsertArgs, so an app cannot set Delete or Base.
+type docProposal struct {
+	upsertArgs
+	Delete bool    `json:"delete,omitempty"`
+	ID     int64   `json:"id,omitempty"` // the document to delete
+	Base   *string `json:"base,omitempty"`
+}
+
+// fingerprint identifies what a document says and where it applies. Usage
+// counts and re-indexing do not change it; any edit does.
+func fingerprint(d knowledge.Document) string {
+	b, _ := json.Marshal([]any{d.ID, d.SourceKey, d.Kind, d.Title, d.Content, d.InboxID,
+		d.ValidFrom.UnixMicro(), d.ValidUntil.UnixMicro()})
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// unchangedSince is pending.ErrTargetChanged unless cur (found tells whether
+// it exists) is still the document the proposal was based on.
+func unchangedSince(base *string, cur knowledge.Document, found bool) error {
+	if base == nil { // proposed before the check existed
+		return nil
+	}
+	now := ""
+	if found {
+		now = fingerprint(cur)
+	}
+	if now != *base {
+		return pending.ErrTargetChanged
+	}
+	return nil
+}
+
 // auditCopy is what kb_audit keeps of a document before a change.
 func auditCopy(d knowledge.Document) map[string]any {
 	m := map[string]any{"id": d.ID, "key": d.SourceKey, "kind": d.Kind, "title": d.Title, "content": d.Content,
@@ -367,20 +407,27 @@ func (s *Server) upsert(ctx context.Context, tok Token, a upsertArgs) (any, erro
 	if err := checkAIText("title or content", d.Title+"\n"+d.Content); err != nil {
 		return nil, err
 	}
-	if _, err := s.Knowledge.GetByKey(ctx, tok.AccountID, d.SourceKey); errors.Is(err, knowledge.ErrNotFound) && !a.AllowDuplicate {
-		dupes, err := s.similar(ctx, tok, d)
-		if err != nil {
-			return nil, err
+	base := ""
+	cur, err := s.Knowledge.GetByKey(ctx, tok.AccountID, d.SourceKey)
+	switch {
+	case errors.Is(err, knowledge.ErrNotFound):
+		if !a.AllowDuplicate {
+			dupes, err := s.similar(ctx, tok, d)
+			if err != nil {
+				return nil, err
+			}
+			if len(dupes) > 0 {
+				b, _ := json.Marshal(dupes)
+				return nil, userError(fmt.Sprintf("not added: this is 85%%+ similar to existing knowledge %s. Update that document (use its key, or get_document and re-save it under a key) or set allow_duplicate if it is really different", b))
+			}
 		}
-		if len(dupes) > 0 {
-			b, _ := json.Marshal(dupes)
-			return nil, userError(fmt.Sprintf("not added: this is 85%%+ similar to existing knowledge %s. Update that document (use its key, or get_document and re-save it under a key) or set allow_duplicate if it is really different", b))
-		}
-	} else if err != nil && !errors.Is(err, knowledge.ErrNotFound) {
+	case err != nil:
 		return nil, err
+	default:
+		base = fingerprint(cur)
 	}
 	a.Key = d.SourceKey
-	return s.propose(ctx, tok, pending.KindDocument, d.SourceKey, a, nil)
+	return s.propose(ctx, tok, pending.KindDocument, d.SourceKey, docProposal{upsertArgs: a, Base: &base}, nil)
 }
 
 // document builds the document an upsert describes, validated.
@@ -401,11 +448,14 @@ func (s *Server) document(accountID int64, a upsertArgs) (knowledge.Document, er
 // applyDocument saves an approved document: the old version goes to the
 // audit log first, as for every AI-tool change.
 func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error {
-	var a upsertArgs
-	if err := json.Unmarshal(raw, &a); err != nil {
+	var p docProposal
+	if err := json.Unmarshal(raw, &p); err != nil {
 		return err
 	}
-	d, err := s.document(tok.AccountID, a)
+	if p.Delete {
+		return s.applyDelete(ctx, tok, p)
+	}
+	d, err := s.document(tok.AccountID, p.upsertArgs)
 	if err != nil {
 		return err
 	}
@@ -417,11 +467,14 @@ func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error
 		return err
 	}
 	cur, err := s.Knowledge.GetByKey(ctx, tok.AccountID, d.SourceKey)
-	switch {
-	case errors.Is(err, knowledge.ErrNotFound):
-	case err != nil:
+	found := err == nil
+	if err != nil && !errors.Is(err, knowledge.ErrNotFound) {
 		return err
-	default:
+	}
+	if err := unchangedSince(p.Base, cur, found); err != nil {
+		return err
+	}
+	if found {
 		// Keep the old version before changing it; no copy, no change.
 		if err := s.Audit.Record(ctx, AuditEntry{AccountID: tok.AccountID, DocumentID: cur.ID, SourceKey: cur.SourceKey,
 			Action: "update", Actor: "mcp:" + tok.Name, TokenID: tok.ID, Before: auditCopy(cur)}); err != nil {
@@ -441,20 +494,49 @@ func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error
 	return nil
 }
 
+// deleteDocument proposes deleting a document: like every other AI edit it
+// waits for the owner (QA F-D-02), so one write token cannot empty the
+// knowledge base.
 func (s *Server) deleteDocument(ctx context.Context, tok Token, key string, id int64) (any, error) {
 	d, err := s.find(ctx, tok, key, id)
 	if err != nil {
 		return nil, notFound(err)
 	}
-	// Audit first: if it cannot be recorded, nothing is deleted.
+	base := fingerprint(d)
+	p := docProposal{upsertArgs: upsertArgs{Key: d.SourceKey, Title: d.Title}, Delete: true, ID: d.ID, Base: &base}
+	return s.propose(ctx, tok, pending.KindDocument, deleteTarget(d), p, nil)
+}
+
+// deleteTarget is the pending target of a delete: the key, or "#id" for a
+// document added by hand without one.
+func deleteTarget(d knowledge.Document) string {
+	if d.SourceKey != "" {
+		return d.SourceKey
+	}
+	return "#" + strconv.FormatInt(d.ID, 10)
+}
+
+// applyDelete deletes an approved document, if it is still the one the app
+// saw. The old version goes to the audit log first; no copy, no delete.
+func (s *Server) applyDelete(ctx context.Context, tok Token, p docProposal) error {
+	d, err := s.Knowledge.Get(ctx, tok.AccountID, p.ID)
+	if errors.Is(err, knowledge.ErrNotFound) {
+		return pending.ErrTargetChanged
+	}
+	if err != nil {
+		return err
+	}
+	if p.Base == nil || d.SourceKey != p.Key {
+		return pending.ErrTargetChanged
+	}
+	if err := unchangedSince(p.Base, d, true); err != nil {
+		return err
+	}
 	if err := s.Audit.Record(ctx, AuditEntry{AccountID: tok.AccountID, DocumentID: d.ID, SourceKey: d.SourceKey,
 		Action: "delete", Actor: "mcp:" + tok.Name, TokenID: tok.ID, Before: auditCopy(d)}); err != nil {
-		return nil, fmt.Errorf("not deleted: the audit copy could not be saved: %w", err)
+		return fmt.Errorf("not deleted: the audit copy could not be saved: %w", err)
 	}
-	if err := s.Knowledge.Delete(ctx, tok.AccountID, d.ID); err != nil {
-		return nil, notFound(err)
-	}
-	return map[string]any{"result": "deleted", "id": d.ID, "key": d.SourceKey, "title": d.Title}, nil
+	return s.Knowledge.Delete(ctx, tok.AccountID, d.ID)
 }
 
 const (
