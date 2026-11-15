@@ -3,9 +3,13 @@ package spend
 import (
 	"context"
 	"errors"
+	"math"
+	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 )
@@ -155,5 +159,35 @@ func TestWriter_FullQueueDropsWithoutBlocking(t *testing.T) {
 	// Assert
 	if got := w.Dropped.Load(); got != 2 || ins.calls != 1 {
 		t.Fatalf("dropped=%d inserts=%d", got, ins.calls)
+	}
+}
+
+func TestClean_KeepsOddRowsWritable(t *testing.T) {
+	// Arrange: a provider sends a long multi-byte model name with a NUL, and odd numbers
+	long := strings.Repeat("ก", 100) + "\x00" // 300 bytes of Thai
+	e := Event{AccountID: -1, Purpose: "", Model: long, InputTokens: math.MaxInt64, OutputTokens: -5, AudioSeconds: math.NaN()}
+
+	// Act
+	got := clean(e)
+	inf := clean(Event{Purpose: "reply", AudioSeconds: math.Inf(1)})
+
+	// Assert
+	if !utf8.ValidString(got.Model) || len(got.Model) > maxModel || strings.ContainsRune(got.Model, 0) ||
+		got.InputTokens != math.MaxInt32 || got.OutputTokens != 0 || got.AudioSeconds != 0 || got.AccountID != 0 ||
+		got.Purpose != "other" || inf.AudioSeconds != 0 || got.At.IsZero() {
+		t.Fatalf("clean = %+v (model %d bytes), inf=%v", got, len(got.Model), inf.AudioSeconds)
+	}
+}
+
+func TestNewSlack_DoesNotFollowRedirects(t *testing.T) {
+	// Arrange
+	s, err := NewSlack("https://hooks.slack.com/services/T0/B0/x")
+
+	// Act
+	redirectErr := s.Client.CheckRedirect(nil, nil)
+
+	// Assert
+	if err != nil || !errors.Is(redirectErr, http.ErrUseLastResponse) {
+		t.Fatalf("err=%v redirect=%v", err, redirectErr)
 	}
 }

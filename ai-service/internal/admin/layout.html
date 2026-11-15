@@ -512,7 +512,7 @@
   <span class="brand">{{wordmark}}</span>
   <span class="here" aria-hidden="true" lang="{{lang}}">{{template "page-name" .}}</span>
   <details class="menu">
-    <summary>{{T "Menu"}}</summary>
+    <summary>{{T "Menu"}}{{with spendWarnings}} <span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}</summary>
     <div class="menu-panel">
       <nav aria-label="{{T "Admin sections"}}" lang="{{lang}}">{{template "nav-links" .}}</nav>
       {{template "theme-form" .}}

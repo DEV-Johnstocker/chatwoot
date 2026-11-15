@@ -3,7 +3,10 @@ package spend
 import (
 	"context"
 	"errors"
+	"math"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -51,18 +54,32 @@ const (
 
 func clean(e Event) Event {
 	e.AccountID = max(e.AccountID, 0)
-	e.InputTokens, e.CachedTokens, e.OutputTokens = max(e.InputTokens, 0), max(e.CachedTokens, 0), max(e.OutputTokens, 0)
-	e.AudioSeconds = max(e.AudioSeconds, 0)
-	if len(e.Model) > maxModel {
-		e.Model = e.Model[:maxModel]
+	e.InputTokens, e.CachedTokens, e.OutputTokens = tokens(e.InputTokens), tokens(e.CachedTokens), tokens(e.OutputTokens)
+	if math.IsNaN(e.AudioSeconds) || math.IsInf(e.AudioSeconds, 0) || e.AudioSeconds < 0 {
+		e.AudioSeconds = 0
 	}
-	if e.Purpose == "" || len(e.Purpose) > maxPurpose {
+	e.Model = text(e.Model, maxModel)
+	if e.Purpose = text(e.Purpose, maxPurpose); e.Purpose == "" {
 		e.Purpose = "other"
 	}
 	if e.At.IsZero() {
 		e.At = time.Now()
 	}
 	return e
+}
+
+// tokens keeps a count inside the INT column, so one odd row cannot fail a batch.
+func tokens(n int) int { return min(max(n, 0), math.MaxInt32) }
+
+// text makes s valid UTF-8 without NUL bytes and at most limit bytes, cut
+// on a character boundary (the model name comes from the provider).
+func text(s string, limit int) string {
+	s = strings.ReplaceAll(strings.ToValidUTF8(s, ""), "\x00", "")
+	for len(s) > limit {
+		_, size := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-size]
+	}
+	return s
 }
 
 // Insert writes events in one COPY.

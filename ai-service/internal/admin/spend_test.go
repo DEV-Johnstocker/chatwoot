@@ -246,7 +246,7 @@ func TestSpend_BannerOnHomeAndBadgeInNav(t *testing.T) {
 			t.Errorf("home lacks %q", want)
 		}
 	}
-	if !strings.Contains(gaps, `class="badge nav-alert">100%+`) || strings.Contains(gaps, "AI spend is over") {
+	if strings.Count(gaps, `class="badge nav-alert">100%+`) != 3 || strings.Contains(gaps, "AI spend is over") { // sidebar, phone menu and its copy of the links
 		t.Error("other pages carry the nav badge only")
 	}
 	if strings.Contains(calm, `class="badge nav-alert"`) || strings.Contains(calm, "AI spend is") {

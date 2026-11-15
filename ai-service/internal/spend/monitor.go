@@ -232,7 +232,10 @@ func NewSlack(raw string) (*Slack, error) {
 	if err != nil || u.Scheme != "https" || u.Host != "hooks.slack.com" || u.User != nil || len(u.Path) < 2 {
 		return nil, ErrBadWebhook
 	}
-	return &Slack{URL: u.String(), Client: &http.Client{Timeout: 10 * time.Second}}, nil
+	// No redirects: the allowlist above holds only for the first host.
+	client := &http.Client{Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return &Slack{URL: u.String(), Client: client}, nil
 }
 
 // Notify implements Notifier. Errors never include the webhook address.
