@@ -12,7 +12,6 @@ Production and deploys: `deploy/README.md`.
 
 ## Project rules (these win over the general protocol below)
 
-- Reply to the owner (John) in **English**, plain and direct.
 - Base branch is **`develop`** (the fork), not `main`. Freshness check:
   `git fetch origin develop && git rev-list --left-right --count origin/develop...HEAD`.
 - Our code lives only in `ai-service/` plus `.github/workflows/ai-service*.yml`.
