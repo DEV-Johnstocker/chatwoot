@@ -181,3 +181,39 @@ func TestVerify(t *testing.T) {
 		})
 	}
 }
+
+func TestConversationFields(t *testing.T) {
+	// Arrange
+	ev, err := Parse([]byte(`{"event":"conversation_updated","id":52,"inbox_id":2,"labels":["paid","bot-handoff"],
+		"custom_attributes":{"paid_amount":"3,900"},"changed_attributes":[{"label_list":{}},{"custom_attributes":{}}]}`))
+
+	// Act
+	names, ok := ev.Changed()
+
+	// Assert
+	if err != nil || len(ev.LabelList()) != 2 || string(ev.Attribute("paid_amount")) != `"3,900"` || ev.ConversationInbox() != 2 {
+		t.Fatalf("err=%v labels=%v attr=%s inbox=%d", err, ev.LabelList(), ev.Attribute("paid_amount"), ev.ConversationInbox())
+	}
+	if !ok || len(names) != 2 {
+		t.Fatalf("changed = %v %v", names, ok)
+	}
+}
+
+func TestConversationFields_OddShapesNeverFailTheEvent(t *testing.T) {
+	// Arrange: shapes Chatwoot might send elsewhere must not break parsing.
+	body := `{"event":"message_created","id":9,"content":"hi","labels":[{"title":"x"}],"custom_attributes":"x","inbox_id":"2","changed_attributes":{"a":1}}`
+
+	// Act
+	ev, err := Parse([]byte(body))
+
+	// Assert
+	if err != nil || ev.Content != "hi" {
+		t.Fatalf("err = %v", err)
+	}
+	if ev.LabelList() != nil || ev.Attribute("paid_amount") != nil || ev.ConversationInbox() != 0 {
+		t.Fatal("odd shapes should read as empty")
+	}
+	if _, ok := ev.Changed(); ok {
+		t.Fatal("odd changed_attributes should read as unknown")
+	}
+}

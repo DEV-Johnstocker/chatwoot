@@ -42,6 +42,14 @@ type Handler struct {
 	// Chats records when each customer last sent a chat message, for comment
 	// auto-send (recentchat.Chats); nil skips it.
 	Chats ChatRecorder
+	// Sales watches signed conversation updates for the "paid" label and
+	// amount (sales.Recorder); nil skips it.
+	Sales SaleObserver
+}
+
+// SaleObserver queues sale changes seen on conversation events; it never blocks.
+type SaleObserver interface {
+	Observe(ev webhook.Event)
 }
 
 // ChatRecorder remembers customers' last chat message (recentchat.Chats).
@@ -97,6 +105,9 @@ func (h *Handler) webhook(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordPlace(r.Context(), ev)
 	h.recordChat(ev, now())
+	if h.Sales != nil {
+		h.Sales.Observe(ev)
+	}
 
 	decision := webhook.Classify(ev)
 	if decision == webhook.Ignore {

@@ -10,6 +10,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/sales"
 )
 
 // noteInstruction tells the small model how to write the private note staff
@@ -45,9 +46,9 @@ var noteWarnWords = []string{"สลิป", "โอน", "ชำระ", "จ�
 type noteKind struct{ icon, title string }
 
 var noteKinds = map[string]noteKind{
-	noteGap:    {"📚", gaps.NoteTitle}, // the gap report finds this note
-	"ชำระเงิน": {"💳", "เรื่องชำระเงิน"},
-	"คืนเงิน":  {"↩️", "ลูกค้าขอคืนเงิน"},
+	noteGap:     {"📚", gaps.NoteTitle}, // the gap report finds this note
+	notePayment: {"💳", sales.PaymentNoteTitle},
+	"คืนเงิน":   {"↩️", "ลูกค้าขอคืนเงิน"},
 	"สิทธิ์เข้าเรียน": {"🔑", "สิทธิ์เข้าเรียน / บัญชี"},
 	"ร้องเรียน":       {"😟", "ลูกค้าไม่พอใจ"},
 	"ขอคุยทีมงาน":     {"🙋", "ลูกค้าขอคุยกับทีมงาน"},
@@ -89,18 +90,18 @@ var noteSecrets = []*regexp.Regexp{
 // on. Without a note model it is the bare reason code; if the model fails it
 // is a readable label. gap reports a handoff only because the bot lacked the
 // answer, so the chat can be labelled for filling the knowledge base.
-func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) (note string, gap bool) {
+func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) (note string, gap bool, slip *slipSeen) {
 	if reason == ReasonStaffReplied || reason == ReasonBotOff {
 		// Staff are already in the chat, or the bot never spoke: nothing to summarise.
-		return "🤖 " + reasonLabels[reason] + "\n" + reason, false
+		return "🤖 " + reasonLabels[reason] + "\n" + reason, false, nil
 	}
 	if b.opts.NoteLLM == nil {
-		return reason, false
+		return reason, false, nil
 	}
 	if reason == ReasonLLMError || reason == ReasonSendFailed {
 		// The model or Chatwoot just failed: another model call would only add
 		// up to noteTimeout before staff see the chat, so the note stays plain.
-		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false
+		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, noteTimeout)
 	defer cancel()
@@ -113,7 +114,11 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 		if err != nil {
 			log.Warn("handoff summary failed", "error", err)
 		}
-		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false
+		return "🤖 **บอทส่งต่อ:** " + reasonLabels[reason] + "\n" + reason, false, nil
+	}
+	if kind == notePayment && len(images) > 0 {
+		// A photo filed under payments: most likely a transfer slip.
+		slip = &slipSeen{amount: sales.SlipAmount(summary)}
 	}
 	warn := len(images) > 0 || !quietKinds[kind] || containsAny(summary, noteWarnWords)
 	gap = kind == noteGap && reason == ReasonAIRequest && !warn
@@ -127,8 +132,16 @@ func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64,
 		sb.WriteString(noteWarning + "\n\n")
 	}
 	sb.WriteString(decorate(summary) + "\n\n" + reason)
-	return sb.String(), gap
+	return sb.String(), gap, slip
 }
+
+// notePayment is the note category for payments (its title is
+// sales.PaymentNoteTitle, which the sales credit looks for).
+const notePayment = "ชำระเงิน"
+
+// slipSeen is a payment photo the note model read: the amount it saw, if
+// any (satang, not checked).
+type slipSeen struct{ amount *int64 }
 
 // splitKind takes the "หมวด:" line out of the summary and returns its value.
 func splitKind(s string) (kind, rest string) {

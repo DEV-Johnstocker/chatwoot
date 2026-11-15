@@ -44,8 +44,10 @@ type Message struct {
 	Outgoing bool // from the bot or staff
 	Private  bool // a note only staff see
 	FromBot  bool // sent by the Agent Bot
-	Content  string
-	At       time.Time
+	// FromStaff is a message a Chatwoot user (staff) wrote.
+	FromStaff bool
+	Content   string
+	At        time.Time
 }
 
 // Chat is a conversation carrying the gap label.

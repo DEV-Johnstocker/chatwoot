@@ -75,17 +75,30 @@ type gapMessage struct {
 func (m gapMessage) toMessage() gaps.Message {
 	return gaps.Message{
 		ID: m.ID, Incoming: m.MessageType == 0, Outgoing: m.MessageType == 1, Private: m.Private,
-		FromBot: m.Sender != nil && m.Sender.Type == "agent_bot",
-		Content: m.Content, At: time.Unix(m.CreatedAt, 0),
+		FromBot:   m.Sender != nil && m.Sender.Type == "agent_bot",
+		FromStaff: m.Sender != nil && m.Sender.Type == "user",
+		Content:   m.Content, At: time.Unix(m.CreatedAt, 0),
 	}
 }
 
 // ChatMessages returns a conversation's latest messages, oldest first. It
 // reads older pages until it has the bot's gap note, at most maxMessagePages.
 func (r *Reader) ChatMessages(ctx context.Context, accountID, conversationID int64) ([]gaps.Message, error) {
+	return r.messages(ctx, accountID, conversationID, maxMessagePages, hasGapNote)
+}
+
+// AllMessages returns up to pages pages of a conversation's messages (20
+// each), oldest first: the whole chat when it is shorter.
+func (r *Reader) AllMessages(ctx context.Context, accountID, conversationID int64, pages int) ([]gaps.Message, error) {
+	return r.messages(ctx, accountID, conversationID, pages, nil)
+}
+
+// messages reads pages back from the newest until a page is short, stop
+// holds on a page, or maxPages were read.
+func (r *Reader) messages(ctx context.Context, accountID, conversationID int64, maxPages int, stop func([]gaps.Message) bool) ([]gaps.Message, error) {
 	var all []gaps.Message
 	before := int64(0)
-	for page := 0; page < maxMessagePages; page++ {
+	for page := 0; page < maxPages; page++ {
 		path := fmt.Sprintf("/api/v1/accounts/%d/conversations/%d/messages", accountID, conversationID)
 		if before > 0 {
 			path += "?before=" + fmt.Sprint(before)
@@ -101,7 +114,7 @@ func (r *Reader) ChatMessages(ctx context.Context, accountID, conversationID int
 			got = append(got, m.toMessage())
 		}
 		all = append(got, all...)
-		if len(res.Payload) < messagesPerPage || hasGapNote(got) {
+		if len(res.Payload) < messagesPerPage || (stop != nil && stop(got)) {
 			break
 		}
 		before = res.Payload[0].ID

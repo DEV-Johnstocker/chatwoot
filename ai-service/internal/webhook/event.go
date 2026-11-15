@@ -35,6 +35,13 @@ type Event struct {
 	// SourceID is the channel's own id for the message: for Messenger, Meta's
 	// message id (an echo of a page's message carries the id Meta returned).
 	SourceID string `json:"source_id"`
+	// Conversation events only: the chat's labels, custom attributes, inbox
+	// and what changed. Kept raw so an unexpected shape never fails the
+	// whole event; LabelList and Attribute read them.
+	RawLabels         json.RawMessage `json:"labels"`
+	RawAttributes     json.RawMessage `json:"custom_attributes"`
+	InboxID           json.RawMessage `json:"inbox_id"`
+	ChangedAttributes json.RawMessage `json:"changed_attributes"`
 	// ContentAttributes carries Chatwoot's message flags; external_echo marks
 	// a reply sent outside Chatwoot (e.g. from the Messenger app).
 	ContentAttributes struct {
@@ -64,6 +71,49 @@ func (ev Event) AttachmentNote() string {
 		noun = "files"
 	}
 	return fmt.Sprintf("[The customer attached %d %s: %s]", len(types), noun, strings.Join(types, ", "))
+}
+
+// LabelList is a conversation event's labels; nil when absent or malformed.
+func (ev Event) LabelList() []string {
+	var labels []string
+	if json.Unmarshal(ev.RawLabels, &labels) != nil {
+		return nil
+	}
+	return labels
+}
+
+// Attribute is one of a conversation event's custom attributes, raw; nil
+// when absent or malformed.
+func (ev Event) Attribute(name string) json.RawMessage {
+	var attrs map[string]json.RawMessage
+	if json.Unmarshal(ev.RawAttributes, &attrs) != nil {
+		return nil
+	}
+	return attrs[name]
+}
+
+// ConversationInbox is a conversation event's inbox id; 0 when absent.
+func (ev Event) ConversationInbox() int64 {
+	var id int64
+	if json.Unmarshal(ev.InboxID, &id) != nil || id < 0 {
+		return 0
+	}
+	return id
+}
+
+// Changed lists the attribute names a conversation_updated event changed;
+// ok is false when Chatwoot did not say (then assume anything changed).
+func (ev Event) Changed() (names []string, ok bool) {
+	var list []map[string]json.RawMessage
+	if json.Unmarshal(ev.ChangedAttributes, &list) != nil || len(list) == 0 {
+		return nil, false
+	}
+	for _, m := range list {
+		for k := range m {
+			names = append(names, k)
+		}
+	}
+	return names, true
 }
 
 // Account identifies the Chatwoot account.
