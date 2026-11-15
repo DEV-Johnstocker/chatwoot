@@ -33,6 +33,7 @@
     <form method="post" action="/admin/knowledge" class="card-foot">
       <input type="hidden" name="account" value="{{.AccountID}}">
       <input type="hidden" name="confirm_duplicate" value="1">
+      {{if .Gap}}<input type="hidden" name="gap" value="{{.Gap}}">{{end}}
       <input type="hidden" name="inbox" value="{{.InboxID}}">
       <input type="hidden" name="valid_from" value="{{.From}}">
       <input type="hidden" name="valid_until" value="{{.Until}}">
@@ -89,10 +90,11 @@
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="add_faq">
       <input type="hidden" name="account" value="{{.AccountID}}">
+      {{if .Gap}}<input type="hidden" name="gap" value="{{.Gap}}">{{end}}
       <label for="question">{{T "Question"}}</label>
       <input id="question" name="question" type="text" maxlength="300" required value="{{.Question}}" placeholder="ร้านเปิดกี่โมง">
       <label for="answer">{{T "Answer"}}</label>
-      <textarea id="answer" name="answer" required rows="4" placeholder="เปิดทุกวัน 9:00–18:00 น.">{{.Answer}}</textarea>
+      <textarea id="answer" name="answer" required rows="4"{{if .Gap}} autofocus{{end}} placeholder="เปิดทุกวัน 9:00–18:00 น.">{{.Answer}}</textarea>
       <details{{if or .From .Until .InboxID}} open{{end}}>
         <summary>{{T "Dates and inbox (optional)"}}</summary>
         <div class="grid2">

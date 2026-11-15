@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 )
 
 // HandoffLabel marks every chat the bot passed to staff, so they can filter it.
@@ -14,7 +15,7 @@ const HandoffLabel = "bot-handoff"
 
 // KBGapLabel marks a handoff made only because the bot lacked the answer, so
 // staff can list what to add to the knowledge base.
-const KBGapLabel = "kb-gap"
+const KBGapLabel = gaps.Label
 
 // StaffDirectory answers who can take a chat and how busy they are
 // (chatwoot.Reader, with the AI Reader agent's token).

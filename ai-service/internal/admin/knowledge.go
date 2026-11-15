@@ -103,6 +103,7 @@ type knowledgeData struct {
 	PageURL   string
 	PageKind  string // "page" or "feed", kept when adding fails
 	DupeForm  string // faq or doc
+	Gap       int64  // the gap chat this FAQ answers (/admin/gaps); adding it takes the chat off that list
 }
 
 func (h *Handler) showKnowledge(w http.ResponseWriter, r *http.Request) {
@@ -466,6 +467,9 @@ func (h *Handler) submitKnowledge(w http.ResponseWriter, r *http.Request) {
 		DocTitle: pf.Get("title"), DocContent: pf.Get("content"),
 		From: pf.Get("valid_from"), Until: pf.Get("valid_until"),
 	}}
+	if g, err := strconv.ParseInt(pf.Get("gap"), 10, 64); err == nil && g > 0 {
+		data.Gap = g
+	}
 	fail := func(form string, err error) {
 		data.Error, data.ErrorForm = errIn(langOf(r), err), form
 		h.renderKnowledge(w, r, http.StatusUnprocessableEntity, data)
@@ -523,6 +527,14 @@ func (h *Handler) submitKnowledge(w http.ResponseWriter, r *http.Request) {
 		h.Logger.Info("knowledge added", "account_id", acct, "document_id", id, "kind", doc.Kind,
 			"inbox_id", doc.InboxID, "chunks", chunks, "dated", !doc.ValidFrom.IsZero() || !doc.ValidUntil.IsZero(),
 			"remote_addr", r.RemoteAddr)
+		if data.Gap > 0 && action == "add_faq" {
+			done := "answered"
+			if !h.closeGap(r, acct, data.Gap) {
+				done = "answered-kept"
+			}
+			http.Redirect(w, r, "/admin/gaps?account="+strconv.FormatInt(acct, 10)+"&done="+done, http.StatusSeeOther)
+			return
+		}
 		http.Redirect(w, r, back+"&done=added&chunks="+strconv.Itoa(chunks), http.StatusSeeOther)
 	case "update":
 		id, _ := strconv.ParseInt(pf.Get("id"), 10, 64)

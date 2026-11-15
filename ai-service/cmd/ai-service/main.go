@@ -25,6 +25,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/comments"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/config"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
@@ -241,6 +242,7 @@ func run() error {
 			Web:    webStore(profiles), WebSync: webSyncer, Places: adminPlaces(placeStore), Logger: logger,
 			Pending: pendingStore(profiles), Approver: adminApprover(srvMCP),
 			Comments: commentQueue, Hours: adminHours,
+			Gaps: adminGaps(reader), ChatwootURL: cfg.ChatwootPublicURL,
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -537,4 +539,13 @@ func startAutoResolve(cfg config.Config, reader *chatwoot.Reader, logger *slog.L
 	}
 	logger.Info("auto-resolve on", "after", cfg.BotResolveAfter.String())
 	go s.Run(context.Background(), 15*time.Minute)
+}
+
+// adminGaps reads the gap report from Chatwoot with the reader token; without
+// it the page shows how to turn it on (a nil interface, not a nil pointer).
+func adminGaps(reader *chatwoot.Reader) admin.GapFinder {
+	if reader == nil {
+		return nil
+	}
+	return &gaps.Finder{Source: reader}
 }
