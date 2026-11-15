@@ -21,7 +21,7 @@ func init() {
 		"%d not known":           "ไม่ทราบ %d แชต",
 		"Slips to check":         "สลิปรอตรวจ",
 		"label paid-unconfirmed": "ป้าย paid-unconfirmed",
-		"The bot saw a payment slip in these chats. Check the money, then in Chatwoot add the label paid and set the conversation attribute Paid amount. The amount below is what the bot read from the image, not checked.": "บอทเห็นสลิปโอนเงินในแชตเหล่านี้ ตรวจยอดเงินเข้าก่อน แล้วใน Chatwoot ให้ใส่ป้าย paid และกรอกช่อง Paid amount ของแชต ยอดด้านล่างคือที่บอทอ่านจากรูป ยังไม่ได้ตรวจ",
+		"The bot saw a payment slip in these chats. Check the money, then confirm it in the chat with a private note: #paid and the amount, for example #paid 3,900. The amount below is what the bot read from the image, not checked.": "บอทเห็นสลิปโอนเงินในแชตเหล่านี้ ตรวจยอดเงินเข้าก่อน แล้วยืนยันในแชตด้วยโน้ตส่วนตัว: #paid ตามด้วยยอด เช่น #paid 3,900 ยอดด้านล่างคือที่บอทอ่านจากรูป ยังไม่ได้ตรวจ",
 		"No slips waiting.":                 "ไม่มีสลิปรอตรวจ",
 		"Paid chats":                        "แชตที่ชำระแล้ว",
 		"no amount":                         "ไม่มียอด",
@@ -30,8 +30,9 @@ func init() {
 		"Showing the newest %d.":            "แสดง %d รายการล่าสุด",
 		"No paid chats in this period yet.": "ยังไม่มีแชตที่ชำระเงินในช่วงนี้",
 		"How sales are counted":             "นับยอดขายอย่างไร",
-		"A chat counts as paid when staff add the label paid in Chatwoot. The amount is the conversation attribute Paid amount (paid_amount, in baht).":                 "แชตนับว่าชำระแล้วเมื่อทีมงานใส่ป้าย paid ใน Chatwoot ยอดเงินมาจากช่อง Paid amount ของแชต (paid_amount หน่วยบาท)",
-		"Closed by the bot: before the payment, the bot handed nothing to staff and no staff member replied to the customer. Otherwise it counts as closed with staff.": "บอทปิดการขายเอง: ก่อนลูกค้าชำระเงิน บอทไม่ได้ส่งต่อให้ทีมงานและไม่มีทีมงานตอบลูกค้า ถ้าไม่ใช่ นับว่าทีมงานปิดการขาย",
-		"Removing the label paid takes the chat out of the totals.": "ถ้าเอาป้าย paid ออก แชตนั้นจะไม่นับในยอดรวม",
+		"A chat counts as paid when staff write a private note #paid with the amount (for example #paid 3,900; #unpaid takes it back). The bot confirms with a note.":                                                                              "แชตนับว่าชำระแล้วเมื่อทีมงานเขียนโน้ตส่วนตัว #paid ตามด้วยยอด (เช่น #paid 3,900; #unpaid คือยกเลิก) บอทจะตอบยืนยันด้วยโน้ต",
+		"On Facebook, Instagram and LINE chats, the label paid with the conversation attribute Paid amount (paid_amount, in baht) works too. Website-chat visitors can set labels and attributes themselves, so there only the #paid note counts.": "แชต Facebook, Instagram และ LINE ใช้ป้าย paid กับช่อง Paid amount ของแชต (paid_amount หน่วยบาท) ได้ด้วย ส่วนแชตหน้าเว็บ ผู้เข้าชมตั้งป้ายและช่องเองได้ จึงนับเฉพาะโน้ต #paid",
+		"Closed by the bot: before the payment, the bot handed nothing to staff and no staff member replied to the customer. Otherwise it counts as closed with staff.":                                                                            "บอทปิดการขายเอง: ก่อนลูกค้าชำระเงิน บอทไม่ได้ส่งต่อให้ทีมงานและไม่มีทีมงานตอบลูกค้า ถ้าไม่ใช่ นับว่าทีมงานปิดการขาย",
+		"Removing the label paid, or a #unpaid note, takes the chat out of the totals.":                                                                                                                                                            "ถ้าเอาป้าย paid ออก หรือเขียนโน้ต #unpaid แชตนั้นจะไม่นับในยอดรวม",
 	})
 }

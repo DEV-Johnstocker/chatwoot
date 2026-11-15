@@ -46,8 +46,11 @@ type Message struct {
 	FromBot  bool // sent by the Agent Bot
 	// FromStaff is a message a Chatwoot user (staff) wrote.
 	FromStaff bool
-	Content   string
-	At        time.Time
+	// Echo is a message sent outside Chatwoot (e.g. from the Messenger Page
+	// app) that Chatwoot copied in.
+	Echo    bool
+	Content string
+	At      time.Time
 }
 
 // Chat is a conversation carrying the gap label.

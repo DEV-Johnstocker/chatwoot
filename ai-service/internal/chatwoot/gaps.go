@@ -2,6 +2,7 @@ package chatwoot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"slices"
@@ -70,6 +71,16 @@ type gapMessage struct {
 	Sender      *struct {
 		Type string `json:"type"`
 	} `json:"sender"`
+	// Raw, so an odd shape on one message never fails the whole page.
+	ContentAttributes json.RawMessage `json:"content_attributes"`
+}
+
+// echo reports Chatwoot's external_echo flag; false when absent or odd.
+func (m gapMessage) echo() bool {
+	var a struct {
+		ExternalEcho bool `json:"external_echo"`
+	}
+	return json.Unmarshal(m.ContentAttributes, &a) == nil && a.ExternalEcho
 }
 
 func (m gapMessage) toMessage() gaps.Message {
@@ -77,6 +88,7 @@ func (m gapMessage) toMessage() gaps.Message {
 		ID: m.ID, Incoming: m.MessageType == 0, Outgoing: m.MessageType == 1, Private: m.Private,
 		FromBot:   m.Sender != nil && m.Sender.Type == "agent_bot",
 		FromStaff: m.Sender != nil && m.Sender.Type == "user",
+		Echo:      m.echo(),
 		Content:   m.Content, At: time.Unix(m.CreatedAt, 0),
 	}
 }

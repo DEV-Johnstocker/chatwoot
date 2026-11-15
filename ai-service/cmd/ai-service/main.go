@@ -145,7 +145,7 @@ func run() error {
 	}
 	// Paid chats and payment slips for the sales dashboard (needs the database).
 	saleStore := salesStore(profiles)
-	saleRecorder := startSales(saleStore, reader, logger)
+	saleRecorder := startSales(saleStore, reader, chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil), logger)
 	// Private replies sent from the comment queue, until Meta's echo of each
 	// reaches its Chatwoot chat; the bot then adds the comment-lead note.
 	commentEchoes := &commentecho.Echoes{}
@@ -469,13 +469,14 @@ func salesStore(p *profile.Postgres) *sales.Postgres {
 	return &sales.Postgres{Pool: p.Pool}
 }
 
-// startSales watches conversation updates for the "paid" label; nil without
-// a database. The reader (optional) credits each sale to the bot or staff.
-func startSales(st *sales.Postgres, reader *chatwoot.Reader, logger *slog.Logger) *sales.Recorder {
+// startSales watches conversation updates for the "paid" label and staff
+// #paid notes; nil without a database. The reader (optional) credits each
+// sale to the bot or staff; notes (the bot token) confirms a #paid note.
+func startSales(st *sales.Postgres, reader *chatwoot.Reader, notes sales.Notes, logger *slog.Logger) *sales.Recorder {
 	if st == nil {
 		return nil
 	}
-	rec := &sales.Recorder{Store: st, Logger: logger.With("component", "sales")}
+	rec := &sales.Recorder{Store: st, Notes: notes, Logger: logger.With("component", "sales")}
 	if reader != nil {
 		rec.Messages = reader
 	}

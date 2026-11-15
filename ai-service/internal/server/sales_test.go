@@ -38,7 +38,7 @@ func TestWebhook_SignedUpdatesReachSalesEvenWhenRepeated(t *testing.T) {
 	do(h, signedRequest(paidUpdate))
 
 	// Assert
-	if len(s.got) != 2 || s.got[0].ID != 52 || len(s.got[0].LabelList()) != 1 {
+	if labels, _ := s.got[0].LabelList(); len(s.got) != 2 || s.got[0].ID != 52 || len(labels) != 1 {
 		t.Fatalf("observed %d events", len(s.got))
 	}
 }

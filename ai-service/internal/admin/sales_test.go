@@ -25,11 +25,11 @@ type fakeSalesStore struct {
 }
 
 func (f *fakeSalesStore) RecordSlip(context.Context, sales.Sale) error { return nil }
-func (f *fakeSalesStore) MarkPaid(context.Context, int64, int64, int64, *int64, time.Time) (bool, error) {
-	return false, nil
+func (f *fakeSalesStore) MarkPaid(context.Context, sales.Paid) (bool, bool, error) {
+	return false, false, nil
 }
 func (f *fakeSalesStore) SetCredit(context.Context, int64, int64, sales.Credit) error { return nil }
-func (f *fakeSalesStore) Cancel(context.Context, int64, int64) error                  { return nil }
+func (f *fakeSalesStore) Cancel(context.Context, int64, int64, time.Time) error       { return nil }
 func (f *fakeSalesStore) Totals(_ context.Context, acct int64, from, to time.Time) (sales.Totals, error) {
 	f.acct, f.from, f.to = acct, from, to
 	return f.totals, f.err

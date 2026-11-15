@@ -28,7 +28,7 @@ func openTestDB(t *testing.T) *Postgres {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS kb_chunks, kb_documents, business_profiles, kb_audit, mcp_tokens, oauth_codes, oauth_grants, oauth_clients, team_members, admin_events, web_sources, chatwoot_inboxes, ai_pending_changes, fb_comments, bot_schedules, kb_schema_version"); err != nil {
+	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS kb_chunks, kb_documents, business_profiles, kb_audit, mcp_tokens, oauth_codes, oauth_grants, oauth_clients, team_members, admin_events, web_sources, chatwoot_inboxes, ai_pending_changes, fb_comments, bot_schedules, bot_images, reply_ratings, sales, kb_schema_version"); err != nil {
 		t.Fatal(err)
 	}
 	p := &Postgres{Pool: pool}
@@ -1005,6 +1005,48 @@ func TestMigrate_V20SalesIsClosedAndChecked(t *testing.T) {
 	}
 	if okErr != nil || badStatus == nil || badCredit == nil || negative == nil || dup == nil {
 		t.Fatalf("insert ok=%v status=%v credit=%v negative=%v duplicate=%v", okErr, badStatus, badCredit, negative, dup)
+	}
+}
+
+func TestMigrate_V18ToV20InOneStepTwice(t *testing.T) {
+	// Arrange: production's path, a version-18 database where the API roles
+	// get new tables by default, migrated to v19 and v20 in one Migrate.
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+		END $$;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+		DROP TABLE reply_ratings, sales;
+		UPDATE kb_schema_version SET version = 18;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;`)
+	})
+
+	// Act
+	first, second := db.Migrate(ctx), db.Migrate(ctx)
+
+	// Assert
+	if first != nil || second != nil {
+		t.Fatalf("migrate: %v / %v", first, second)
+	}
+	for _, table := range []string{"reply_ratings", "sales"} {
+		var rls, open bool
+		if err := db.Pool.QueryRow(ctx, `SELECT relrowsecurity,
+			EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+				AND (has_table_privilege(r.rolname, $1, 'SELECT,INSERT,UPDATE,DELETE')
+				OR has_sequence_privilege(r.rolname, $1 || '_id_seq', 'USAGE,SELECT,UPDATE')))
+			FROM pg_class WHERE relname = $1`, table).Scan(&rls, &open); err != nil {
+			t.Fatalf("%s: %v", table, err)
+		}
+		if !rls || open {
+			t.Fatalf("%s: rls=%v open=%v", table, rls, open)
+		}
 	}
 }
 

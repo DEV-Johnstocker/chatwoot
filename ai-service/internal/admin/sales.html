@@ -40,7 +40,7 @@
 
   <section class="card" aria-labelledby="slips-title">
     <h2 id="slips-title">{{T "Slips to check"}}</h2>
-    <p class="hint">{{T "The bot saw a payment slip in these chats. Check the money, then in Chatwoot add the label paid and set the conversation attribute Paid amount. The amount below is what the bot read from the image, not checked."}}</p>
+    <p class="hint">{{T "The bot saw a payment slip in these chats. Check the money, then confirm it in the chat with a private note: #paid and the amount, for example #paid 3,900. The amount below is what the bot read from the image, not checked."}}</p>
     {{if .Slips}}
     <ul class="sales-list">
       {{range .Slips}}
@@ -70,9 +70,10 @@
   <details class="card">
     <summary>{{T "How sales are counted"}}</summary>
     <ul>
-      <li>{{T "A chat counts as paid when staff add the label paid in Chatwoot. The amount is the conversation attribute Paid amount (paid_amount, in baht)."}}</li>
+      <li>{{T "A chat counts as paid when staff write a private note #paid with the amount (for example #paid 3,900; #unpaid takes it back). The bot confirms with a note."}}</li>
+      <li>{{T "On Facebook, Instagram and LINE chats, the label paid with the conversation attribute Paid amount (paid_amount, in baht) works too. Website-chat visitors can set labels and attributes themselves, so there only the #paid note counts."}}</li>
       <li>{{T "Closed by the bot: before the payment, the bot handed nothing to staff and no staff member replied to the customer. Otherwise it counts as closed with staff."}}</li>
-      <li>{{T "Removing the label paid takes the chat out of the totals."}}</li>
+      <li>{{T "Removing the label paid, or a #unpaid note, takes the chat out of the totals."}}</li>
     </ul>
   </details>
   {{end}}

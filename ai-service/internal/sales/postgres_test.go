@@ -41,13 +41,13 @@ func TestPostgres_SlipThenPaidThenCancel(t *testing.T) {
 	// Act
 	slipErr := db.RecordSlip(ctx, Sale{AccountID: 1, ConversationID: 52, InboxID: 2, SlipAmount: ptr(390000), SlipAt: slipAt})
 	slips, _ := db.Slips(ctx, 1, 10)
-	need1, paidErr := db.MarkPaid(ctx, 1, 52, 0, ptr(390000), paidAt)
+	_, need1, paidErr := db.MarkPaid(ctx, Paid{AccountID: 1, ConversationID: 52, Amount: ptr(390000), At: paidAt, Source: paidAt})
 	creditErr := db.SetCredit(ctx, 1, 52, CreditBot)
-	need2, _ := db.MarkPaid(ctx, 1, 52, 0, nil, paidAt.Add(time.Hour)) // a later label edit
+	_, need2, _ := db.MarkPaid(ctx, Paid{AccountID: 1, ConversationID: 52, At: paidAt.Add(time.Hour), Source: paidAt.Add(time.Hour)}) // a later label edit
 	slipAgain := db.RecordSlip(ctx, Sale{AccountID: 1, ConversationID: 52, SlipAt: paidAt.Add(2 * time.Hour)})
 	paid, _ := db.Paid(ctx, 1, slipAt, paidAt.Add(24*time.Hour), 10)
 	slipsAfter, _ := db.Slips(ctx, 1, 10)
-	cancelErr := db.Cancel(ctx, 1, 52)
+	cancelErr := db.Cancel(ctx, 1, 52, paidAt.Add(3*time.Hour))
 	paidAfterCancel, _ := db.Paid(ctx, 1, slipAt, paidAt.Add(24*time.Hour), 10)
 
 	// Assert
@@ -77,7 +77,7 @@ func TestPostgres_TotalsByCreditAndPeriodAndAccount(t *testing.T) {
 	ctx := context.Background()
 	nov := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC)
 	add := func(acct, conv int64, amount *int64, at time.Time, c Credit) {
-		if _, err := db.MarkPaid(ctx, acct, conv, 1, amount, at); err != nil {
+		if _, _, err := db.MarkPaid(ctx, Paid{AccountID: acct, ConversationID: conv, InboxID: 1, Amount: amount, At: at}); err != nil {
 			t.Fatal(err)
 		}
 		if c != "" {
@@ -118,5 +118,45 @@ func TestPostgres_TableRefusesBadRows(t *testing.T) {
 	// Assert
 	if badStatus == nil || negative == nil || huge == nil {
 		t.Fatalf("status=%v negative=%v huge=%v", badStatus, negative, huge)
+	}
+}
+
+func TestPostgres_AmountRulesAndOrdering(t *testing.T) {
+	// Arrange
+	db := openDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	mark := func(amount *int64, byStaff bool, source time.Time) bool {
+		applied, _, err := db.MarkPaid(ctx, Paid{AccountID: 1, ConversationID: 7, Amount: amount, ByStaff: byStaff, At: source, Source: source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return applied
+	}
+	amount := func() int64 {
+		var n int64
+		if err := db.Pool.QueryRow(ctx, `SELECT amount_satang FROM sales WHERE account_id = 1 AND conversation_id = 7`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// Act
+	first := mark(ptr(390000), false, t0)
+	mark(ptr(99999900), false, t0.Add(time.Minute)) // attribute changed later: ignored
+	afterAttr := amount()
+	mark(ptr(420000), true, t0.Add(2*time.Minute)) // staff note: replaces
+	afterNote := amount()
+	stale := mark(ptr(100), true, t0.Add(-time.Hour)) // an old event arriving late
+	afterStale := amount()
+	if err := db.Cancel(ctx, 1, 7, t0.Add(-time.Hour)); err != nil { // an old cancel
+		t.Fatal(err)
+	}
+	var status string
+	_ = db.Pool.QueryRow(ctx, `SELECT status FROM sales WHERE account_id = 1 AND conversation_id = 7`).Scan(&status)
+
+	// Assert
+	if !first || afterAttr != 390000 || afterNote != 420000 || stale || afterStale != 420000 || status != "paid" {
+		t.Fatalf("first=%v attr=%d note=%d stale=%v afterStale=%d status=%s", first, afterAttr, afterNote, stale, afterStale, status)
 	}
 }

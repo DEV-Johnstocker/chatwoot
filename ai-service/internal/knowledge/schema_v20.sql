@@ -2,7 +2,10 @@
 -- A payment slip the bot reads marks the chat "slip" (not yet checked);
 -- staff confirm it in Chatwoot with the label "paid" and the conversation
 -- attribute "paid_amount", which turns the row to "paid" with the amount.
--- Removing the label marks it "cancelled". credit says who closed the sale:
+-- Removing the label marks it "cancelled". Staff can also write a private
+-- note "#paid 3,900" or "#unpaid", which works on every channel. source_at
+-- is the Chatwoot time of the change last applied, so a late, redelivered
+-- event cannot undo a newer one. credit says who closed the sale:
 -- the bot (no hand-off to staff before the payment) or staff.
 -- Amounts are in satang (1/100 baht). Code older than v20 ignores the
 -- table, so rolling the code back is safe.
@@ -19,6 +22,7 @@ CREATE TABLE IF NOT EXISTS sales (
     credit             TEXT NOT NULL DEFAULT '' CHECK (credit IN ('', 'bot', 'staff')),
     slip_at            TIMESTAMPTZ,
     paid_at            TIMESTAMPTZ,
+    source_at          TIMESTAMPTZ,
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (account_id, conversation_id)
 );

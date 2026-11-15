@@ -8,7 +8,9 @@ package webhook
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 )
@@ -39,6 +41,7 @@ type Event struct {
 	// and what changed. Kept raw so an unexpected shape never fails the
 	// whole event; LabelList and Attribute read them.
 	RawLabels         json.RawMessage `json:"labels"`
+	RawChannel        json.RawMessage `json:"channel"`
 	RawAttributes     json.RawMessage `json:"custom_attributes"`
 	InboxID           json.RawMessage `json:"inbox_id"`
 	ChangedAttributes json.RawMessage `json:"changed_attributes"`
@@ -73,13 +76,33 @@ func (ev Event) AttachmentNote() string {
 	return fmt.Sprintf("[The customer attached %d %s: %s]", len(types), noun, strings.Join(types, ", "))
 }
 
-// LabelList is a conversation event's labels; nil when absent or malformed.
-func (ev Event) LabelList() []string {
-	var labels []string
-	if json.Unmarshal(ev.RawLabels, &labels) != nil {
-		return nil
+// LabelList is a conversation event's labels; ok is false when the field is
+// absent or malformed (then the labels are unknown, not empty).
+func (ev Event) LabelList() (labels []string, ok bool) {
+	if len(ev.RawLabels) == 0 || json.Unmarshal(ev.RawLabels, &labels) != nil || labels == nil && string(ev.RawLabels) == "null" {
+		return nil, false
 	}
-	return labels
+	return labels, true
+}
+
+// Channel is a conversation event's channel type, e.g. "Channel::FacebookPage";
+// "" when absent or odd.
+func (ev Event) Channel() string {
+	var c string
+	if json.Unmarshal(ev.RawChannel, &c) != nil {
+		return ""
+	}
+	return c
+}
+
+// UpdatedTime is a conversation event's updated_at; zero when absent or odd.
+func (ev Event) UpdatedTime() time.Time {
+	var f float64
+	if json.Unmarshal(ev.UpdatedAt, &f) != nil || f <= 0 || f > 1e11 {
+		return time.Time{}
+	}
+	sec, frac := math.Modf(f)
+	return time.Unix(int64(sec), int64(frac*1e9))
 }
 
 // Attribute is one of a conversation event's custom attributes, raw; nil

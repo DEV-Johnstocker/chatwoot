@@ -79,17 +79,33 @@ type Totals struct {
 type Store interface {
 	// RecordSlip marks a chat as having sent a slip, unless it is already paid.
 	RecordSlip(ctx context.Context, s Sale) error
-	// MarkPaid marks a chat paid. amount nil keeps the amount already stored.
-	// It reports whether the sale still needs its credit worked out.
-	MarkPaid(ctx context.Context, accountID, conversationID, inboxID int64, amount *int64, at time.Time) (needCredit bool, err error)
+	// MarkPaid marks a chat paid (see Paid). It reports whether the change
+	// was applied (false: an older event than the one already stored) and
+	// whether the sale still needs its credit worked out.
+	MarkPaid(ctx context.Context, p Paid) (applied, needCredit bool, err error)
 	SetCredit(ctx context.Context, accountID, conversationID int64, c Credit) error
-	// Cancel marks a paid chat cancelled; other rows are left alone.
-	Cancel(ctx context.Context, accountID, conversationID int64) error
+	// Cancel marks a paid chat cancelled unless a newer change is stored;
+	// other rows are left alone.
+	Cancel(ctx context.Context, accountID, conversationID int64, source time.Time) error
 	Totals(ctx context.Context, accountID int64, from, to time.Time) (Totals, error)
 	// Paid lists paid sales in [from, to), newest first.
 	Paid(ctx context.Context, accountID int64, from, to time.Time, limit int) ([]Sale, error)
 	// Slips lists slips not confirmed yet, newest first.
 	Slips(ctx context.Context, accountID int64, limit int) ([]Sale, error)
+}
+
+// Paid is one "this chat paid" change.
+type Paid struct {
+	AccountID, ConversationID, InboxID int64
+	Amount                             *int64 // satang; nil keeps the stored amount
+	// ByStaff marks an amount from a staff-only source (a #paid note): it
+	// replaces a stored amount. An amount from the conversation attribute
+	// only fills an empty one.
+	ByStaff bool
+	At      time.Time // when ai-service saw it
+	// Source is Chatwoot's time for the change; a change older than the
+	// stored one is skipped. Zero skips the check.
+	Source time.Time
 }
 
 // MaxSatang bounds an amount (under 1 billion baht), as the table does.
@@ -114,9 +130,12 @@ func ParseBaht(raw json.RawMessage) (int64, error) {
 
 var bahtNoise = strings.NewReplacer(",", "", " ", "", "บาท", "", "฿", "", "THB", "", "thb", "", " ", "")
 
+// plainBaht is what is left of an amount once the noise is removed.
+var plainBaht = regexp.MustCompile(`^[0-9]+(\.[0-9]{1,2})?$`)
+
 func parseBahtText(s string) (int64, error) {
 	s = bahtNoise.Replace(strings.TrimSpace(s))
-	if s == "" {
+	if !plainBaht.MatchString(s) {
 		return 0, ErrAmount
 	}
 	f, err := strconv.ParseFloat(s, 64)
@@ -127,10 +146,14 @@ func parseBahtText(s string) (int64, error) {
 }
 
 func toSatang(f float64) (int64, error) {
-	if math.IsNaN(f) || math.IsInf(f, 0) || f < 0 || f*100 >= MaxSatang {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
 		return 0, ErrAmount
 	}
-	return int64(math.Round(f * 100)), nil
+	r := math.Round(f * 100)
+	if r >= MaxSatang {
+		return 0, ErrAmount
+	}
+	return int64(r), nil
 }
 
 // slipAmount finds an amount in baht in the note model's "จากไฟล์" line.
@@ -159,8 +182,12 @@ func SlipAmount(summary string) *int64 {
 	return nil
 }
 
-// PaymentNoteTitle heads the bot's handoff note for a payment (bot/note.go).
+// PaymentNoteTitle names the bot's handoff note for a payment (bot/note.go).
 const PaymentNoteTitle = "เรื่องชำระเงิน"
+
+// paymentNoteHead opens that note, exactly as the bot writes it; the model's
+// summary below it (customer words included) cannot produce it.
+const paymentNoteHead = "💳 **" + PaymentNoteTitle + "**"
 
 // handoffCode ends every handoff note the bot writes.
 const handoffCode = "ai-handoff:"
@@ -168,22 +195,32 @@ const handoffCode = "ai-handoff:"
 // CreditOf decides who closed a sale from the chat's messages (oldest
 // first). The payment point is the bot's first payment note; with none, the
 // end of the chat. The bot gets the credit when, before that point, no staff
-// member replied to the customer and the bot handed nothing over.
-func CreditOf(msgs []gaps.Message) Credit {
+// member replied to the customer and the bot handed nothing over. complete
+// says the messages start at the beginning of the chat; when they do not and
+// nothing pointed to staff, the credit is unknown ("").
+func CreditOf(msgs []gaps.Message, complete bool) Credit {
 	end := len(msgs)
 	for i, m := range msgs {
-		if m.Private && m.FromBot && strings.Contains(m.Content, PaymentNoteTitle) {
+		if m.Private && m.FromBot && strings.HasPrefix(strings.TrimSpace(m.Content), paymentNoteHead) {
 			end = i
 			break
 		}
 	}
+	botSpoke := false
 	for _, m := range msgs[:end] {
 		switch {
-		case m.Outgoing && !m.Private && m.FromStaff:
+		case m.Outgoing && !m.Private && m.FromBot:
+			botSpoke = true
+		case m.Outgoing && !m.Private && (m.FromStaff || (m.Echo && botSpoke)):
+			// A reply typed in Chatwoot, or in the Page app (an echo) once the
+			// bot had started; echoes before that are the Page's welcome.
 			return CreditStaff
 		case m.Private && m.FromBot && strings.Contains(m.Content, handoffCode):
 			return CreditStaff
 		}
+	}
+	if !complete {
+		return ""
 	}
 	return CreditBot
 }
