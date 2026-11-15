@@ -22,7 +22,9 @@ type ReplyFeed interface {
 }
 
 const (
-	maxRateForm    = 16 << 10 // the copied texts are capped at 2,000 and 4,000 characters
+	// maxRateForm fits the copied texts at their caps (7,000 characters) when
+	// every character is Thai: 3 bytes in UTF-8, 9 once URL-encoded.
+	maxRateForm    = (ratings.MaxCustomer+ratings.MaxBot+ratings.MaxNote)*9 + 4<<10
 	ratedPageLimit = 50
 	maxReplyPage   = 20
 	replyTimeout   = 20 * time.Second
@@ -215,9 +217,11 @@ func (h *Handler) submitReplies(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "account, chat, message and rating (good or bad) are required", http.StatusBadRequest)
 		return
 	}
+	// The copied texts come back from the page as hidden fields: the owner's
+	// own copy of what was shown, not re-read from Chatwoot (admin-trusted).
 	rt := ratings.Rating{AccountID: acct, ConversationID: conv, MessageID: msg, Good: verdict == "good",
 		Reason: f.Get("reason"), Note: f.Get("note"), Customer: f.Get("customer"), Bot: f.Get("bot"), RatedBy: actor(r)}
-	if sec, err := strconv.ParseInt(f.Get("replied_at"), 10, 64); err == nil && sec > 0 {
+	if sec, err := strconv.ParseInt(f.Get("replied_at"), 10, 64); err == nil && sec > 0 && sec <= time.Now().Add(24*time.Hour).Unix() {
 		rt.RepliedAt = time.Unix(sec, 0)
 	}
 	back := repliesData{AccountID: acct, View: f.Get("view"), Filter: f.Get("filter")}

@@ -71,11 +71,16 @@ func (r *Rating) Clean() error {
 	} else if !slices.Contains(Reasons, r.Reason) {
 		return ErrBadReason
 	}
-	r.Note = Cut(strings.TrimSpace(r.Note), MaxNote)
-	r.Customer = Cut(strings.TrimSpace(r.Customer), MaxCustomer)
-	r.Bot = Cut(strings.TrimSpace(r.Bot), MaxBot)
-	r.RatedBy = Cut(r.RatedBy, MaxRatedBy)
+	r.Note = Cut(text(r.Note), MaxNote)
+	r.Customer = Cut(text(r.Customer), MaxCustomer)
+	r.Bot = Cut(text(r.Bot), MaxBot)
+	r.RatedBy = Cut(text(r.RatedBy), MaxRatedBy)
 	return nil
+}
+
+// text makes s safe for a Postgres TEXT column: valid UTF-8, no NUL, trimmed.
+func text(s string) string {
+	return strings.TrimSpace(strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", ""))
 }
 
 // Cut shortens s to at most n characters, ending with "…" when cut.

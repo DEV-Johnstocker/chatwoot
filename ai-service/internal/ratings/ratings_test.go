@@ -151,3 +151,16 @@ func TestFeed_ListError(t *testing.T) {
 		t.Fatal("want the error")
 	}
 }
+
+func TestClean_MakesTextSafeForPostgres(t *testing.T) {
+	// Arrange
+	r := Rating{AccountID: 1, ConversationID: 2, MessageID: 3, Good: true, Note: "a\x00b\xffc"}
+
+	// Act
+	err := r.Clean()
+
+	// Assert
+	if err != nil || r.Note != "ab�c" {
+		t.Fatalf("err=%v note=%q", err, r.Note)
+	}
+}

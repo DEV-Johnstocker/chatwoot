@@ -286,3 +286,35 @@ func TestReplies_SaveFailureSaysSo(t *testing.T) {
 		t.Fatalf("code=%d", rec.Code)
 	}
 }
+
+func TestReplies_LongThaiTextsStillSave(t *testing.T) {
+	// Arrange: the largest texts the page can show, all Thai (9 bytes each once encoded).
+	mux, mr := repliesEnv(t, true, sampleFeed())
+	form := rateForm("bad", "too_long")
+	form.Set("bot", strings.Repeat("ก", ratings.MaxBot))
+	form.Set("customer", strings.Repeat("ข", ratings.MaxCustomer))
+	form.Set("note", strings.Repeat("ค", ratings.MaxNote))
+
+	// Act
+	rec := serve(mux, ratePost(form))
+
+	// Assert
+	if rec.Code != http.StatusSeeOther || len([]rune(mr.saved[501].Bot)) != ratings.MaxBot {
+		t.Fatalf("code=%d saved=%d", rec.Code, len(mr.saved))
+	}
+}
+
+func TestReplies_FarFutureReplyTimeIsDropped(t *testing.T) {
+	// Arrange: a value past Postgres's date range must not turn into a 500.
+	mux, mr := repliesEnv(t, true, sampleFeed())
+	form := rateForm("good", "")
+	form.Set("replied_at", "10000000000000")
+
+	// Act
+	rec := serve(mux, ratePost(form))
+
+	// Assert
+	if rec.Code != http.StatusSeeOther || !mr.saved[501].RepliedAt.IsZero() {
+		t.Fatalf("code=%d replied=%v", rec.Code, mr.saved[501].RepliedAt)
+	}
+}

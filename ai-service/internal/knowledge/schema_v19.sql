@@ -26,15 +26,17 @@ CREATE TABLE IF NOT EXISTS reply_ratings (
 CREATE INDEX IF NOT EXISTS reply_ratings_account_rated
     ON reply_ratings (account_id, rated_at DESC);
 
--- Supabase's API roles get every new table by default; ratings are the
--- owner's (/admin), so shut them out as earlier tables do.
+-- Supabase's API roles get every new table and sequence by default; ratings
+-- are the owner's (/admin), so shut them out of both.
 ALTER TABLE reply_ratings ENABLE ROW LEVEL SECURITY;
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
         REVOKE ALL ON reply_ratings FROM anon;
+        REVOKE ALL ON SEQUENCE reply_ratings_id_seq FROM anon;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
         REVOKE ALL ON reply_ratings FROM authenticated;
+        REVOKE ALL ON SEQUENCE reply_ratings_id_seq FROM authenticated;
     END IF;
 END $$;
