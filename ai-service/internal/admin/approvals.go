@@ -50,6 +50,7 @@ type approvalItem struct {
 
 // staffFixView is a staff correction as the owner reviews and edits it.
 type staffFixView struct {
+	Name                       string
 	Question, Answer, BotReply string
 	ConversationID             int64
 	ChatURL                    string
@@ -177,6 +178,7 @@ func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([
 		case pending.KindDocument:
 			if fix := h.staffFix(acct, c.Proposed); fix != nil {
 				it.Fix, it.New = fix, true
+				it.From = fix.Name // the chat is linked on the card
 				it.Heading = tr(lang, "Staff correction from chat #%d", fix.ConversationID)
 				it.Badge = tr(lang, "New FAQ")
 				break
@@ -256,7 +258,11 @@ func (h *Handler) staffFix(acct int64, raw []byte) *staffFixView {
 	if json.Unmarshal(raw, &d) != nil || d.Staff == nil {
 		return nil
 	}
-	return &staffFixView{Question: d.Title, Answer: d.Content, BotReply: d.Staff.BotReply,
+	name := d.Staff.Name
+	if name == "" {
+		name = "Staff"
+	}
+	return &staffFixView{Name: name, Question: d.Title, Answer: d.Content, BotReply: d.Staff.BotReply,
 		ConversationID: d.Staff.ConversationID, ChatURL: h.chatURL(acct, d.Staff.ConversationID)}
 }
 

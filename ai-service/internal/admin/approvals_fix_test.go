@@ -27,7 +27,7 @@ func TestApprovals_StaffFixShowsEditableQuestionAndAnswer(t *testing.T) {
 	body := serve(e.mux, approvalsGet("account=2")).Body.String()
 
 	// Assert
-	for _, want := range []string{"Staff correction from chat #12", "New FAQ", "(staff)", "The bot replied",
+	for _, want := range []string{"Staff correction from chat #12", "<strong>Nok</strong> (staff)", "New FAQ", "(staff)", "The bot replied",
 		"ไม่ทราบครับ &lt;script&gt;", `name="question"`, ">ราคาคอร์สเท่าไหร่</textarea>", `name="answer"`, ">3,900 บาท ถึง 30 พ.ย.</textarea>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
