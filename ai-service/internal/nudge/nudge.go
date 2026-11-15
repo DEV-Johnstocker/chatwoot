@@ -1,11 +1,14 @@
 // Package nudge sends one follow-up message to a customer who went quiet
-// after the bot gave a price: the bot still owns the chat, staff never
-// wrote in it, the bot's priced answer was the last message, and the
-// customer's last message is about 20 hours old, so the follow-up lands
-// inside Messenger's 24-hour reply window.
+// after the bot gave a price somewhere in the chat: the bot still owns the
+// chat and no staff member is assigned or wrote in it, a bot reply was the
+// last message, and the customer's last message is about 20 hours old, so
+// the follow-up lands inside Messenger's 24-hour reply window.
 //
-// The conversation gets the label "nudged" before the message is sent, so
-// a chat is followed up at most once, even if sending fails. Auto-resolve
+// The conversation gets the label "nudged" before the message is sent, and
+// only the sweep that added the label sends, so a chat is followed up at
+// most once, even if sending fails. (Chatwoot has no compare-and-set for
+// labels; two sweepers against one Chatwoot in the same second could both
+// send. Production runs one ai-service container.) Auto-resolve
 // (internal/autoresolve) counts quiet time from the bot's last message; the
 // nudge is that last message, so a nudged chat resolves a full
 // BOT_RESOLVE_AFTER later instead of being closed under it.
@@ -39,6 +42,7 @@ type Conversation struct {
 	ID           int64
 	Status       string
 	Muted        bool
+	Assigned     bool // a staff member (not the bot) is the assignee
 	Labels       []string
 	LastActivity time.Time
 }
@@ -56,7 +60,7 @@ func HasPrice(text string) bool {
 // conversation's latest messages, oldest first; after is how long after the
 // customer's last message the nudge goes out.
 func Due(c Conversation, msgs []gaps.Message, now time.Time, after time.Duration) bool {
-	if c.Status != "pending" || c.Muted || slices.Contains(c.Labels, Label) || slices.Contains(c.Labels, handoffLabel) {
+	if c.Status != "pending" || c.Muted || c.Assigned || slices.Contains(c.Labels, Label) || slices.Contains(c.Labels, handoffLabel) {
 		return false
 	}
 	last, ok := lastPublic(msgs)
@@ -123,9 +127,14 @@ type Lister interface {
 
 // Chat reads a conversation and sends the follow-up.
 type Chat interface {
-	LatestMessages(ctx context.Context, accountID, conversationID int64) ([]gaps.Message, error)
+	// ChatMessages returns the conversation's latest messages (a few pages),
+	// oldest first.
+	ChatMessages(ctx context.Context, accountID, conversationID int64) ([]gaps.Message, error)
 	ConversationStatus(ctx context.Context, accountID, conversationID int64) (string, error)
-	AddLabel(ctx context.Context, accountID, conversationID int64, label string) error
+	// Assignee returns the staff member the chat is assigned to, or 0.
+	Assignee(ctx context.Context, accountID, conversationID int64) (int64, error)
+	// AddLabelIfMissing reports false when the chat already had the label.
+	AddLabelIfMissing(ctx context.Context, accountID, conversationID int64, label string) (bool, error)
 	SendMessage(ctx context.Context, accountID, conversationID int64, content string) error
 }
 
@@ -207,7 +216,7 @@ func (s *Sweeper) sweepAccount(ctx context.Context, acct int64, now time.Time) i
 
 func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, now time.Time) bool {
 	log := s.Logger.With("account_id", acct, "conversation_id", c.ID)
-	msgs, err := s.Chat.LatestMessages(ctx, acct, c.ID)
+	msgs, err := s.Chat.ChatMessages(ctx, acct, c.ID)
 	if err != nil {
 		log.Warn("nudge: read messages", "error", err)
 		return false
@@ -215,16 +224,17 @@ func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, now tim
 	if !Due(c, msgs, now, s.After) {
 		return false
 	}
-	// Staff may have taken the chat since it was listed.
-	if status, err := s.Chat.ConversationStatus(ctx, acct, c.ID); err != nil || status != "pending" {
-		if err != nil {
-			log.Warn("nudge: read status", "error", err)
-		}
+	if !s.stillBots(ctx, acct, c.ID, log) {
 		return false
 	}
-	// Label first: a chat is nudged at most once, even if sending fails.
-	if err := s.Chat.AddLabel(ctx, acct, c.ID, Label); err != nil {
+	// Label first: a chat is nudged at most once, even if sending fails, and
+	// only by the sweep that added the label.
+	added, err := s.Chat.AddLabelIfMissing(ctx, acct, c.ID, Label)
+	if err != nil {
 		log.Warn("nudge: add label", "error", err)
+		return false
+	}
+	if !added {
 		return false
 	}
 	if err := s.Chat.SendMessage(ctx, acct, c.ID, s.Text); err != nil {
@@ -232,6 +242,25 @@ func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, now tim
 		return false
 	}
 	return true
+}
+
+// stillBots re-reads the chat just before sending: staff may have taken or
+// been assigned it since it was listed.
+func (s *Sweeper) stillBots(ctx context.Context, acct, conv int64, log *slog.Logger) bool {
+	status, err := s.Chat.ConversationStatus(ctx, acct, conv)
+	if err != nil {
+		log.Warn("nudge: read status", "error", err)
+		return false
+	}
+	if status != "pending" {
+		return false
+	}
+	staff, err := s.Chat.Assignee(ctx, acct, conv)
+	if err != nil {
+		log.Warn("nudge: read assignee", "error", err)
+		return false
+	}
+	return staff == 0
 }
 
 // Run sweeps every interval until ctx ends.

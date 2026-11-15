@@ -41,9 +41,10 @@ func TestDue_PricedQuietChat(t *testing.T) {
 
 func TestDue_Rejects(t *testing.T) {
 	cases := map[string]func(c *Conversation, m *[]gaps.Message){
-		"staff owns it": func(c *Conversation, _ *[]gaps.Message) { c.Status = "open" },
-		"resolved":      func(c *Conversation, _ *[]gaps.Message) { c.Status = "resolved" },
-		"muted":         func(c *Conversation, _ *[]gaps.Message) { c.Muted = true },
+		"staff owns it":     func(c *Conversation, _ *[]gaps.Message) { c.Status = "open" },
+		"resolved":          func(c *Conversation, _ *[]gaps.Message) { c.Status = "resolved" },
+		"muted":             func(c *Conversation, _ *[]gaps.Message) { c.Muted = true },
+		"assigned to staff": func(c *Conversation, _ *[]gaps.Message) { c.Assigned = true },
 		"already nudged": func(c *Conversation, _ *[]gaps.Message) {
 			c.Labels = []string{"vip", Label}
 		},
@@ -141,6 +142,8 @@ func (f *fakeList) PendingBetween(_ context.Context, acct int64, from, to time.T
 type fakeChat struct {
 	msgs     map[int64][]gaps.Message
 	status   string
+	assignee int64
+	hasLabel bool
 	labelErr error
 	sendErr  error
 	labeled  []int64
@@ -148,19 +151,25 @@ type fakeChat struct {
 	calls    []string
 }
 
-func (f *fakeChat) LatestMessages(_ context.Context, _, conv int64) ([]gaps.Message, error) {
+func (f *fakeChat) ChatMessages(_ context.Context, _, conv int64) ([]gaps.Message, error) {
 	return f.msgs[conv], nil
 }
 func (f *fakeChat) ConversationStatus(context.Context, int64, int64) (string, error) {
 	return f.status, nil
 }
-func (f *fakeChat) AddLabel(_ context.Context, _, conv int64, label string) error {
+func (f *fakeChat) Assignee(context.Context, int64, int64) (int64, error) {
+	return f.assignee, nil
+}
+func (f *fakeChat) AddLabelIfMissing(_ context.Context, _, conv int64, label string) (bool, error) {
 	f.calls = append(f.calls, "label:"+label)
 	if f.labelErr != nil {
-		return f.labelErr
+		return false, f.labelErr
+	}
+	if f.hasLabel {
+		return false, nil
 	}
 	f.labeled = append(f.labeled, conv)
-	return nil
+	return true, nil
 }
 func (f *fakeChat) SendMessage(_ context.Context, _, conv int64, content string) error {
 	f.calls = append(f.calls, "send")
@@ -295,5 +304,29 @@ func TestSweep_BotSwitchedOff(t *testing.T) {
 	// Assert
 	if n != 0 || len(chat.calls) != 0 {
 		t.Fatalf("n=%d calls=%v, want no nudge while the bot is switched off", n, chat.calls)
+	}
+}
+
+func TestSweep_StaffAssignedSinceListing(t *testing.T) {
+	// Arrange
+	list, chat := dueSetup()
+	chat.assignee = 12
+	// Act
+	n := newSweeper(list, chat).Sweep(context.Background())
+	// Assert
+	if n != 0 || len(chat.calls) != 0 {
+		t.Fatalf("n=%d calls=%v, want nothing done once a staff member is assigned", n, chat.calls)
+	}
+}
+
+func TestSweep_LabelAlreadyThereSendsNothing(t *testing.T) {
+	// Arrange: another sweep labelled the chat between listing and now.
+	list, chat := dueSetup()
+	chat.hasLabel = true
+	// Act
+	n := newSweeper(list, chat).Sweep(context.Background())
+	// Assert
+	if n != 0 || len(chat.sent) != 0 {
+		t.Fatalf("n=%d sent=%v, want no second follow-up", n, chat.sent)
 	}
 }

@@ -78,7 +78,8 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
 - **One follow-up to quiet priced chats** (off by default): every 15 minutes
   the bot sends `BOT_NUDGE_TEXT` once to a chat it still owns when one of its
   replies quoted a baht amount, its reply was the last message, no staff
-  member wrote in the chat (reply or note), there is no `bot-handoff` label,
+  member is assigned or wrote in the chat (reply or note, last 60 messages),
+  there is no `bot-handoff` label,
   the bot is switched on, and the customer's last message is
   `BOT_NUDGE_AFTER` old (e.g. `20h`; 1h–22h, shorter than `BOT_RESOLVE_AFTER`;
   nothing goes out after 23h). The chat gets the label `nudged` before the

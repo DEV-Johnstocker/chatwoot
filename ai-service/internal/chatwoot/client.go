@@ -41,33 +41,43 @@ func (c *Client) Assign(ctx context.Context, accountID, conversationID, userID i
 // AddLabel adds one label and keeps the conversation's others (Chatwoot's
 // labels call replaces the whole list).
 func (c *Client) AddLabel(ctx context.Context, accountID, conversationID int64, label string) error {
+	_, err := c.AddLabelIfMissing(ctx, accountID, conversationID, label)
+	return err
+}
+
+// AddLabelIfMissing is AddLabel that reports whether it added the label
+// (false: the conversation already had it).
+func (c *Client) AddLabelIfMissing(ctx context.Context, accountID, conversationID int64, label string) (bool, error) {
 	path := c.convPath(accountID, conversationID, "/labels")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("api_access_token", c.token)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("chatwoot %s: %w", path, err)
+		return false, fmt.Errorf("chatwoot %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &APIError{Path: path, Status: resp.StatusCode, Body: string(snippet)}
+		return false, &APIError{Path: path, Status: resp.StatusCode, Body: string(snippet)}
 	}
 	var current struct {
 		Payload []string `json:"payload"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&current); err != nil {
-		return fmt.Errorf("chatwoot %s: %w", path, err)
+		return false, fmt.Errorf("chatwoot %s: %w", path, err)
 	}
 	for _, l := range current.Payload {
 		if l == label {
-			return nil
+			return false, nil
 		}
 	}
-	return c.post(ctx, path, map[string]any{"labels": append(current.Payload, label)})
+	if err := c.post(ctx, path, map[string]any{"labels": append(current.Payload, label)}); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // SendPrivateNote posts a private note visible only to agents.
