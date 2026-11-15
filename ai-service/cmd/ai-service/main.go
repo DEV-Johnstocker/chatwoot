@@ -17,6 +17,7 @@ import (
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/admin"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/audit"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/autoresolve"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/bot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/cfaccess"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
@@ -132,8 +133,9 @@ func run() error {
 
 	var historyReader bot.HistoryReader
 	var staff bot.StaffDirectory
+	var reader *chatwoot.Reader
 	if cfg.ChatwootReaderToken != "" {
-		reader := chatwoot.NewReader(cfg.ChatwootBaseURL, cfg.ChatwootReaderToken, nil)
+		reader = chatwoot.NewReader(cfg.ChatwootBaseURL, cfg.ChatwootReaderToken, nil)
 		historyReader, staff = reader, reader
 		logger.Info("chat recall and workload assignment on")
 	}
@@ -170,6 +172,7 @@ func run() error {
 		Timeout: 2*cfg.LLMTimeout + 30*time.Second,
 	}, cfg.Workers, cfg.QueueSize)
 	b.Start(context.Background())
+	startAutoResolve(cfg, reader, logger)
 	if webSyncer != nil {
 		go webSyncer.Run(context.Background(), 10*time.Minute)
 	}
@@ -519,4 +522,19 @@ func parseLevel(s string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// startAutoResolve resolves chats the bot finished, every 15 minutes. It needs
+// the reader token: the bot token cannot list conversations.
+func startAutoResolve(cfg config.Config, reader *chatwoot.Reader, logger *slog.Logger) {
+	if cfg.BotResolveAfter <= 0 || reader == nil {
+		logger.Info("auto-resolve off: needs CHATWOOT_READER_TOKEN and BOT_RESOLVE_AFTER above 0")
+		return
+	}
+	s := &autoresolve.Sweeper{
+		List: reader, Chat: chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
+		After: cfg.BotResolveAfter, Now: time.Now, Logger: logger.With("component", "autoresolve"),
+	}
+	logger.Info("auto-resolve on", "after", cfg.BotResolveAfter.String())
+	go s.Run(context.Background(), 15*time.Minute)
 }

@@ -57,7 +57,8 @@ a chat.
   `LLM_MODEL`, `LLM_FALLBACK_*`, `EMBED_BASE_URL`, `EMBED_API_KEY`,
   `EMBED_MODEL`. Settings saved on `/admin` override the `LLM_*`/`EMBED_*`
   values. Optional: `EMBED_FALLBACK_*` (backup route to the same embedding
-  model), `REPLY_DELAY` (default `4s`), `CHATWOOT_READER_TOKEN`.
+  model), `REPLY_DELAY` (default `4s`), `CHATWOOT_READER_TOKEN`,
+  `BOT_RESOLVE_AFTER` (default `22h`, `0` = never resolve finished chats).
 - `CHATWOOT_READER_TOKEN` is the access token of a dedicated Chatwoot user,
   "AI Reader", used to re-read chats and to assign handoffs by workload. Keep
   that user an **Agent** (never Administrator), a member **only** of the

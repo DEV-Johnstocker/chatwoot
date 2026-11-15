@@ -278,6 +278,40 @@ func TestLoad_ReplyDelay(t *testing.T) {
 	}
 }
 
+func TestLoad_BotResolveAfter(t *testing.T) {
+	// Arrange
+	base := map[string]string{"CHATWOOT_BASE_URL": "http://x", "CHATWOOT_BOT_TOKEN": "t", "CHATWOOT_WEBHOOK_SECRET": "s"}
+	load := func(v string) (Config, error) {
+		m := map[string]string{}
+		for k, val := range base {
+			m[k] = val
+		}
+		if v != "" {
+			m["BOT_RESOLVE_AFTER"] = v
+		}
+		return Load(func(k string) (string, bool) { val, ok := m[k]; return val, ok })
+	}
+
+	// Act
+	def, errDef := load("")
+	off, errOff := load("0")
+	set, errSet := load("12h")
+	_, errShort := load("30m")
+	_, errLong := load("200h")
+	_, errJunk := load("soon")
+
+	// Assert
+	if errDef != nil || def.BotResolveAfter != 22*time.Hour {
+		t.Errorf("default = %v %v, want 22h", def.BotResolveAfter, errDef)
+	}
+	if errOff != nil || off.BotResolveAfter != 0 || errSet != nil || set.BotResolveAfter != 12*time.Hour {
+		t.Errorf("off=%v %v set=%v %v", off.BotResolveAfter, errOff, set.BotResolveAfter, errSet)
+	}
+	if errShort == nil || errLong == nil || errJunk == nil {
+		t.Error("values under 1h, over 168h or not a duration must be refused")
+	}
+}
+
 func TestFailureMessageDoesNotMentionTheSystem(t *testing.T) {
 	// Act + Assert: the owner does not want customers told a system failed.
 	for _, bad := range []string{"ระบบ", "อัตโนมัติ", "ขัดข้อง", "บอท", "AI"} {

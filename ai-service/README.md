@@ -54,6 +54,13 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   for `REPLY_DELAY` (default `4s`, `0s` turns it off), so a burst gets one
   answer that covers all of it. A staff reply, a resolved chat or a handoff
   cancels a waiting reply.
+- **Finished chats are resolved**: every 15 minutes the bot resolves chats it
+  still owns (Chatwoot status pending) when its reply was the last message, the
+  customer is not waiting, and nothing happened for `BOT_RESOLVE_AFTER`
+  (default `22h`, `0` turns it off; needs `CHATWOOT_READER_TOKEN`). Chatwoot
+  then counts a "bot resolved" chat in its Bot report and sends the inbox's
+  CSAT survey if that is on; 22h keeps it inside Messenger's 24-hour window.
+  A new customer message reopens the chat for the bot.
 - **Handoff note**: at every handoff a small vision model writes a private
   Thai note for staff (why, what the customer wants, what the bot said, what a
   photo shows, details given, next step), headed by a fixed warning that it

@@ -38,6 +38,7 @@ type Config struct {
 	LLMFallbackModel   string
 	LLMTimeout         time.Duration // per provider call
 	ReplyDelay         time.Duration // wait after a customer's last message, so quick messages get one reply
+	BotResolveAfter    time.Duration // quiet time before the bot resolves a chat it finished; 0 = off
 	SystemPrompt       string
 
 	AdminPassword string // enables /admin when set (secret)
@@ -212,6 +213,10 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	var err error
 	if cfg.ReplyDelay, err = time.ParseDuration(get("REPLY_DELAY", "4s")); err != nil || cfg.ReplyDelay < 0 || cfg.ReplyDelay > 30*time.Second {
 		errs = append(errs, fmt.Errorf("REPLY_DELAY must be a duration from 0s to 30s"))
+	}
+	if cfg.BotResolveAfter, err = time.ParseDuration(get("BOT_RESOLVE_AFTER", "22h")); err != nil ||
+		(cfg.BotResolveAfter != 0 && (cfg.BotResolveAfter < time.Hour || cfg.BotResolveAfter > 7*24*time.Hour)) {
+		errs = append(errs, fmt.Errorf("BOT_RESOLVE_AFTER must be 0 (off) or a duration from 1h to 168h"))
 	}
 	if cfg.LLMTimeout, err = time.ParseDuration(get("LLM_TIMEOUT", "45s")); err != nil {
 		errs = append(errs, fmt.Errorf("LLM_TIMEOUT: %w", err))
