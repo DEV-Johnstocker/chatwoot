@@ -40,6 +40,9 @@ type Config struct {
 	ReplyDelay         time.Duration // wait after a customer's last message, so quick messages get one reply
 	BotResolveAfter    time.Duration // quiet time before the bot resolves a chat it finished; 0 = off
 	Alerts             Alerts        // the bot's own alerts and the per-customer reply limit (alerts.go)
+	BotNudgeAfter      time.Duration // follow-up after the customer's last message in a priced chat; 0 = off
+	BotNudgeText       string        // the owner-approved follow-up message
+	BotNudgeAccounts   []int64       // accounts with follow-ups on; empty = every account
 	SystemPrompt       string
 
 	AdminPassword string // enables /admin when set (secret)
@@ -219,6 +222,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		(cfg.BotResolveAfter != 0 && (cfg.BotResolveAfter < time.Hour || cfg.BotResolveAfter > 7*24*time.Hour)) {
 		errs = append(errs, fmt.Errorf("BOT_RESOLVE_AFTER must be 0 (off) or a duration from 1h to 168h"))
 	}
+	errs = append(errs, loadNudge(get, &cfg)...)
 	if cfg.LLMTimeout, err = time.ParseDuration(get("LLM_TIMEOUT", "45s")); err != nil {
 		errs = append(errs, fmt.Errorf("LLM_TIMEOUT: %w", err))
 	}
@@ -316,6 +320,38 @@ func intVar(raw, key string, errs []error) (int, []error) {
 		return 0, append(errs, fmt.Errorf("%s must be a positive integer", key))
 	}
 	return n, errs
+}
+
+// maxNudgeText caps the follow-up message (Messenger allows 2000 characters).
+const maxNudgeText = 1000
+
+// loadNudge reads the follow-up settings. The nudge must go out before
+// auto-resolve closes the chat, and stay inside Messenger's 24-hour window.
+func loadNudge(get func(key, def string) string, cfg *Config) []error {
+	var errs []error
+	after, err := time.ParseDuration(get("BOT_NUDGE_AFTER", "0"))
+	if err != nil || (after != 0 && (after < time.Hour || after > 22*time.Hour)) {
+		errs = append(errs, fmt.Errorf("BOT_NUDGE_AFTER must be 0 (off) or a duration from 1h to 22h"))
+	} else if after > 0 && cfg.BotResolveAfter > 0 && after >= cfg.BotResolveAfter {
+		errs = append(errs, fmt.Errorf("BOT_NUDGE_AFTER must be shorter than BOT_RESOLVE_AFTER"))
+	}
+	cfg.BotNudgeAfter = after
+	cfg.BotNudgeText = strings.TrimSpace(strings.ReplaceAll(get("BOT_NUDGE_TEXT", ""), `\n`, "\n"))
+	if after > 0 && cfg.BotNudgeText == "" {
+		errs = append(errs, fmt.Errorf("BOT_NUDGE_TEXT is required when BOT_NUDGE_AFTER is set"))
+	}
+	if utf8.RuneCountInString(cfg.BotNudgeText) > maxNudgeText {
+		errs = append(errs, fmt.Errorf("BOT_NUDGE_TEXT must be at most %d characters", maxNudgeText))
+	}
+	for _, raw := range splitList(get("BOT_NUDGE_ACCOUNTS", "")) {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			errs = append(errs, fmt.Errorf("BOT_NUDGE_ACCOUNTS must be account numbers separated by commas"))
+			break
+		}
+		cfg.BotNudgeAccounts = append(cfg.BotNudgeAccounts, id)
+	}
+	return errs
 }
 
 func splitList(raw string) []string {

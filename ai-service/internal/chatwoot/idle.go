@@ -40,11 +40,12 @@ func (r *Reader) Accounts(ctx context.Context) ([]int64, error) {
 }
 
 type listedConversation struct {
-	ID              int64  `json:"id"`
-	Status          string `json:"status"`
-	Muted           bool   `json:"muted"`
-	LastActivityAt  int64  `json:"last_activity_at"`
-	WaitingSince    int64  `json:"waiting_since"`
+	ID              int64    `json:"id"`
+	Status          string   `json:"status"`
+	Muted           bool     `json:"muted"`
+	LastActivityAt  int64    `json:"last_activity_at"`
+	WaitingSince    int64    `json:"waiting_since"`
+	Labels          []string `json:"labels"`
 	LastNonActivity *struct {
 		MessageType int  `json:"message_type"`
 		Private     bool `json:"private"`
@@ -69,6 +70,20 @@ func (l listedConversation) toConversation() autoresolve.Conversation {
 // activity after before, oldest first.
 func (r *Reader) IdlePending(ctx context.Context, accountID int64, before time.Time) ([]autoresolve.Conversation, error) {
 	var out []autoresolve.Conversation
+	err := r.walkPending(ctx, accountID, func(l listedConversation) bool {
+		if time.Unix(l.LastActivityAt, 0).After(before) {
+			return false // sorted oldest first: the rest are newer
+		}
+		out = append(out, l.toConversation())
+		return true
+	})
+	return out, err
+}
+
+// walkPending calls fn for the account's pending conversations, oldest
+// activity first, until fn returns false or the pages run out (at most
+// maxIdlePages).
+func (r *Reader) walkPending(ctx context.Context, accountID int64, fn func(listedConversation) bool) error {
 	for page := 1; page <= maxIdlePages; page++ {
 		q := url.Values{
 			"status": {"pending"}, "assignee_type": {"all"},
@@ -81,17 +96,16 @@ func (r *Reader) IdlePending(ctx context.Context, accountID int64, before time.T
 		}
 		path := fmt.Sprintf("/api/v1/accounts/%d/conversations?%s", accountID, q.Encode())
 		if err := r.getJSON(ctx, path, nil, &res); err != nil {
-			return out, err
+			return err
 		}
 		for _, l := range res.Data.Payload {
-			if time.Unix(l.LastActivityAt, 0).After(before) {
-				return out, nil // sorted oldest first: the rest are newer
+			if !fn(l) {
+				return nil
 			}
-			out = append(out, l.toConversation())
 		}
 		if len(res.Data.Payload) == 0 {
-			return out, nil
+			return nil
 		}
 	}
-	return out, nil
+	return nil
 }

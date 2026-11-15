@@ -63,7 +63,9 @@ a chat.
   `#chatwoot-ai-service`, may be the same one as `SLACK_BACKUP_WEBHOOK_URL`),
   `ALERT_HANDOFF_SHARE` (default `0.5`), `REPLY_LIMIT` (default `30`, `0` =
   off), `REPLY_LIMIT_WINDOW` (default `1h`). `ALERT_ENVIRONMENT` is set in the
-  compose file.
+  compose file. `BOT_NUDGE_AFTER` / `BOT_NUDGE_TEXT` / `BOT_NUDGE_ACCOUNTS`
+  (one follow-up to quiet priced chats; off by default, see the ai-service
+  README).
 - `CHATWOOT_READER_TOKEN` is the access token of a dedicated Chatwoot user,
   "AI Reader", used to re-read chats and to assign handoffs by workload. Keep
   that user an **Agent** (never Administrator), a member **only** of the
