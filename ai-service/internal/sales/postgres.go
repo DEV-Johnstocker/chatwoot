@@ -34,29 +34,37 @@ func (p *Postgres) RecordSlip(ctx context.Context, s Sale) error {
 	return err
 }
 
-// MarkPaid implements Store. paid_at is the first time the chat was seen
-// paid; re-marking after a cancel starts a new paid_at. A change older than
-// the stored source_at updates nothing.
+// MarkPaid implements Store. A label change sets label_paid, a #paid note
+// note_paid; the row is paid while either is set. paid_at is the first time
+// the chat was seen paid; re-marking after a cancel starts a new paid_at. A
+// label change older than the stored label_at updates nothing.
 func (p *Postgres) MarkPaid(ctx context.Context, c Paid) (bool, bool, error) {
 	at := c.At
 	if at.IsZero() {
 		at = time.Now()
 	}
+	var labelAt *time.Time
+	if !c.ByStaff {
+		labelAt = nullTime(c.Source)
+	}
 	var credit Credit
-	err := p.Pool.QueryRow(ctx, `INSERT INTO sales (account_id, conversation_id, inbox_id, status, amount_satang, paid_at, source_at, updated_at)
-		VALUES ($1, $2, $3, 'paid', $4, $5, $6, now())
+	err := p.Pool.QueryRow(ctx, `INSERT INTO sales (account_id, conversation_id, inbox_id, status, amount_satang, paid_at,
+			label_paid, note_paid, label_at, updated_at)
+		VALUES ($1, $2, $3, 'paid', $4, $5, NOT $6, $6, $7, now())
 		ON CONFLICT (account_id, conversation_id) DO UPDATE SET
 			paid_at = CASE WHEN sales.status = 'paid' AND sales.paid_at IS NOT NULL THEN sales.paid_at ELSE EXCLUDED.paid_at END,
 			status = 'paid',
-			amount_satang = CASE WHEN $7 AND EXCLUDED.amount_satang IS NOT NULL THEN EXCLUDED.amount_satang
+			amount_satang = CASE WHEN $6 AND EXCLUDED.amount_satang IS NOT NULL THEN EXCLUDED.amount_satang
 				ELSE COALESCE(sales.amount_satang, EXCLUDED.amount_satang) END,
+			label_paid = sales.label_paid OR EXCLUDED.label_paid,
+			note_paid = sales.note_paid OR EXCLUDED.note_paid,
+			label_at = GREATEST(sales.label_at, EXCLUDED.label_at),
 			inbox_id = CASE WHEN sales.inbox_id = 0 THEN EXCLUDED.inbox_id ELSE sales.inbox_id END,
-			source_at = GREATEST(sales.source_at, EXCLUDED.source_at),
 			updated_at = now()
-		WHERE EXCLUDED.source_at IS NULL OR sales.source_at IS NULL OR EXCLUDED.source_at >= sales.source_at
-		RETURNING credit`, c.AccountID, c.ConversationID, max(c.InboxID, 0), c.Amount, at, nullTime(c.Source), c.ByStaff).Scan(&credit)
+		WHERE $6 OR EXCLUDED.label_at IS NULL OR sales.label_at IS NULL OR EXCLUDED.label_at >= sales.label_at
+		RETURNING credit`, c.AccountID, c.ConversationID, max(c.InboxID, 0), c.Amount, at, c.ByStaff, labelAt).Scan(&credit)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, false, nil // an older change than the one stored
+		return false, false, nil // an older label change than the one stored
 	}
 	return err == nil, credit == "", err
 }
@@ -75,12 +83,21 @@ func (p *Postgres) SetCredit(ctx context.Context, accountID, conversationID int6
 	return err
 }
 
-// Cancel implements Store.
-func (p *Postgres) Cancel(ctx context.Context, accountID, conversationID int64, source time.Time) error {
-	_, err := p.Pool.Exec(ctx, `UPDATE sales SET status = 'cancelled', updated_at = now(),
-			source_at = GREATEST(source_at, $3)
+// Cancel implements Store. A label removal clears label_paid and cancels
+// the sale only when no #paid note keeps it paid; a #unpaid note clears both.
+func (p *Postgres) Cancel(ctx context.Context, accountID, conversationID int64, byNote bool, source time.Time) error {
+	var labelAt *time.Time
+	if !byNote {
+		labelAt = nullTime(source)
+	}
+	_, err := p.Pool.Exec(ctx, `UPDATE sales SET
+			label_paid = false,
+			note_paid = note_paid AND NOT $3,
+			status = CASE WHEN note_paid AND NOT $3 THEN 'paid' ELSE 'cancelled' END,
+			label_at = GREATEST(label_at, $4),
+			updated_at = now()
 		WHERE account_id = $1 AND conversation_id = $2 AND status = 'paid'
-			AND ($3::timestamptz IS NULL OR source_at IS NULL OR $3 >= source_at)`, accountID, conversationID, nullTime(source))
+			AND ($3 OR $4::timestamptz IS NULL OR label_at IS NULL OR $4 >= label_at)`, accountID, conversationID, byNote, labelAt)
 	return err
 }
 

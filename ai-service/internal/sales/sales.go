@@ -84,9 +84,10 @@ type Store interface {
 	// whether the sale still needs its credit worked out.
 	MarkPaid(ctx context.Context, p Paid) (applied, needCredit bool, err error)
 	SetCredit(ctx context.Context, accountID, conversationID int64, c Credit) error
-	// Cancel marks a paid chat cancelled unless a newer change is stored;
-	// other rows are left alone.
-	Cancel(ctx context.Context, accountID, conversationID int64, source time.Time) error
+	// Cancel takes back a paid chat: byNote (a #unpaid note) always; a label
+	// removal only when no #paid note keeps it paid and no newer label change
+	// is stored. Other rows are left alone.
+	Cancel(ctx context.Context, accountID, conversationID int64, byNote bool, source time.Time) error
 	Totals(ctx context.Context, accountID int64, from, to time.Time) (Totals, error)
 	// Paid lists paid sales in [from, to), newest first.
 	Paid(ctx context.Context, accountID int64, from, to time.Time, limit int) ([]Sale, error)
@@ -103,8 +104,8 @@ type Paid struct {
 	// only fills an empty one.
 	ByStaff bool
 	At      time.Time // when ai-service saw it
-	// Source is Chatwoot's time for the change; a change older than the
-	// stored one is skipped. Zero skips the check.
+	// Source is Chatwoot's time for a label change; an older one than the
+	// stored one is skipped. Zero skips the check; notes are not ordered.
 	Source time.Time
 }
 

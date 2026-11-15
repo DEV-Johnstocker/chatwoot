@@ -47,7 +47,7 @@ func TestPostgres_SlipThenPaidThenCancel(t *testing.T) {
 	slipAgain := db.RecordSlip(ctx, Sale{AccountID: 1, ConversationID: 52, SlipAt: paidAt.Add(2 * time.Hour)})
 	paid, _ := db.Paid(ctx, 1, slipAt, paidAt.Add(24*time.Hour), 10)
 	slipsAfter, _ := db.Slips(ctx, 1, 10)
-	cancelErr := db.Cancel(ctx, 1, 52, paidAt.Add(3*time.Hour))
+	cancelErr := db.Cancel(ctx, 1, 52, false, paidAt.Add(3*time.Hour))
 	paidAfterCancel, _ := db.Paid(ctx, 1, slipAt, paidAt.Add(24*time.Hour), 10)
 
 	// Assert
@@ -147,9 +147,9 @@ func TestPostgres_AmountRulesAndOrdering(t *testing.T) {
 	afterAttr := amount()
 	mark(ptr(420000), true, t0.Add(2*time.Minute)) // staff note: replaces
 	afterNote := amount()
-	stale := mark(ptr(100), true, t0.Add(-time.Hour)) // an old event arriving late
+	stale := mark(nil, false, t0.Add(-time.Hour)) // an old label event arriving late
 	afterStale := amount()
-	if err := db.Cancel(ctx, 1, 7, t0.Add(-time.Hour)); err != nil { // an old cancel
+	if err := db.Cancel(ctx, 1, 7, false, t0.Add(-time.Hour)); err != nil { // an old label removal
 		t.Fatal(err)
 	}
 	var status string
@@ -158,5 +158,37 @@ func TestPostgres_AmountRulesAndOrdering(t *testing.T) {
 	// Assert
 	if !first || afterAttr != 390000 || afterNote != 420000 || stale || afterStale != 420000 || status != "paid" {
 		t.Fatalf("first=%v attr=%d note=%d stale=%v afterStale=%d status=%s", first, afterAttr, afterNote, stale, afterStale, status)
+	}
+}
+
+func TestPostgres_NoteAndLabelAreSeparate(t *testing.T) {
+	// Arrange
+	db := openDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	status := func() string {
+		var st string
+		if err := db.Pool.QueryRow(ctx, `SELECT status FROM sales WHERE account_id = 1 AND conversation_id = 8`).Scan(&st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+
+	// Act
+	if _, _, err := db.MarkPaid(ctx, Paid{AccountID: 1, ConversationID: 8, Amount: ptr(390000), ByStaff: true, At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Cancel(ctx, 1, 8, false, t0.Add(time.Hour)); err != nil { // a later label change without "paid"
+		t.Fatal(err)
+	}
+	afterLabel := status()
+	if err := db.Cancel(ctx, 1, 8, true, time.Time{}); err != nil { // #unpaid
+		t.Fatal(err)
+	}
+	afterUnpaid := status()
+
+	// Assert
+	if afterLabel != "paid" || afterUnpaid != "cancelled" {
+		t.Fatalf("after label=%s after #unpaid=%s", afterLabel, afterUnpaid)
 	}
 }

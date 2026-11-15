@@ -163,7 +163,6 @@ func (r *Recorder) fromNote(ev webhook.Event) (change, bool) {
 	}
 	c := change{accountID: ev.Account.ID, conversationID: ev.Conversation.ID, inboxID: max(ev.Inbox.ID, 0),
 		paid: paid, byStaff: true, reply: true, at: r.now()}
-	c.source = c.at
 	if paid && rest != "" {
 		raw, _ := json.Marshal(rest)
 		n, err := ParseBaht(raw)
@@ -263,7 +262,7 @@ func (r *Recorder) apply(parent context.Context, c change) {
 		return
 	}
 	if !c.paid {
-		if err := r.Store.Cancel(ctx, c.accountID, c.conversationID, c.source); err != nil {
+		if err := r.Store.Cancel(ctx, c.accountID, c.conversationID, c.byStaff, c.source); err != nil {
 			log.Error("sale cancel failed", "error", err)
 			r.reply(ctx, log, c, noteFailed)
 			return

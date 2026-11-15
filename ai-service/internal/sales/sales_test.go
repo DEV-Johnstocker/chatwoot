@@ -126,12 +126,14 @@ type memStore struct {
 	mu        sync.Mutex
 	sales     map[[2]int64]*Sale
 	source    map[[2]int64]time.Time
+	label     map[[2]int64]bool
+	note      map[[2]int64]bool
 	failPaid  bool
 	creditSet chan struct{}
 }
 
 func newMem() *memStore {
-	return &memStore{sales: map[[2]int64]*Sale{}, source: map[[2]int64]time.Time{}, creditSet: make(chan struct{}, 8)}
+	return &memStore{sales: map[[2]int64]*Sale{}, source: map[[2]int64]time.Time{}, label: map[[2]int64]bool{}, note: map[[2]int64]bool{}, creditSet: make(chan struct{}, 8)}
 }
 
 func (m *memStore) RecordSlip(_ context.Context, s Sale) error {
@@ -161,11 +163,16 @@ func (m *memStore) MarkPaid(_ context.Context, p Paid) (bool, bool, error) {
 		cur = &Sale{AccountID: p.AccountID, ConversationID: p.ConversationID, InboxID: p.InboxID}
 		m.sales[k] = cur
 	}
-	if !p.Source.IsZero() && !m.source[k].IsZero() && p.Source.Before(m.source[k]) {
+	if !p.ByStaff && !p.Source.IsZero() && !m.source[k].IsZero() && p.Source.Before(m.source[k]) {
 		return false, false, nil
 	}
-	if !p.Source.IsZero() {
-		m.source[k] = p.Source
+	if p.ByStaff {
+		m.note[k] = true
+	} else {
+		m.label[k] = true
+		if !p.Source.IsZero() {
+			m.source[k] = p.Source
+		}
 	}
 	if cur.Status != StatusPaid {
 		cur.PaidAt = p.At
@@ -185,18 +192,25 @@ func (m *memStore) SetCredit(_ context.Context, acct, conv int64, c Credit) erro
 	return nil
 }
 
-func (m *memStore) Cancel(_ context.Context, acct, conv int64, source time.Time) error {
+func (m *memStore) Cancel(_ context.Context, acct, conv int64, byNote bool, source time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := [2]int64{acct, conv}
-	if !source.IsZero() && !m.source[k].IsZero() && source.Before(m.source[k]) {
+	cur, ok := m.sales[k]
+	if !ok || cur.Status != StatusPaid {
 		return nil
 	}
-	if cur, ok := m.sales[k]; ok && cur.Status == StatusPaid {
+	if !byNote && !source.IsZero() && !m.source[k].IsZero() && source.Before(m.source[k]) {
+		return nil
+	}
+	m.label[k] = false
+	if byNote {
+		m.note[k] = false
+	} else if !source.IsZero() {
+		m.source[k] = source
+	}
+	if !m.note[k] {
 		cur.Status = StatusCancelled
-		if !source.IsZero() {
-			m.source[k] = source
-		}
 	}
 	return nil
 }
@@ -511,5 +525,24 @@ func TestParseNote(t *testing.T) {
 				t.Fatalf("parseNote(%q) = %v %q %v", in, paid, rest, ok)
 			}
 		})
+	}
+}
+
+func TestRecorder_LabelChangeDoesNotUndoAPaidNote(t *testing.T) {
+	// Arrange: a Messenger sale confirmed with a #paid note (no paid label).
+	st, notes := newMem(), &fakeNotes{}
+	r := startRecorder(t, st, nil)
+	r.Notes = notes
+	r.Observe(updated(t, staffNote(900, "#paid 3,900")))
+	waitFor(t, func() bool { return len(notes.list()) == 1 })
+
+	// Act: later the bot adds another label (a newer Chatwoot time, no "paid").
+	r.Observe(updated(t, `{"event":"conversation_updated","id":52,"account":{"id":1},"channel":"Channel::FacebookPage","updated_at":4102444800,
+		"labels":["bot-handoff","paid-unconfirmed"],"changed_attributes":[{"label_list":{}}]}`))
+	time.Sleep(50 * time.Millisecond)
+
+	// Assert
+	if s, _ := st.get(1, 52); s.Status != StatusPaid {
+		t.Fatalf("a label change undid the #paid note: %+v", s)
 	}
 }

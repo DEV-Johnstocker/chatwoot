@@ -29,7 +29,7 @@ func (f *fakeSalesStore) MarkPaid(context.Context, sales.Paid) (bool, bool, erro
 	return false, false, nil
 }
 func (f *fakeSalesStore) SetCredit(context.Context, int64, int64, sales.Credit) error { return nil }
-func (f *fakeSalesStore) Cancel(context.Context, int64, int64, time.Time) error       { return nil }
+func (f *fakeSalesStore) Cancel(context.Context, int64, int64, bool, time.Time) error { return nil }
 func (f *fakeSalesStore) Totals(_ context.Context, acct int64, from, to time.Time) (sales.Totals, error) {
 	f.acct, f.from, f.to = acct, from, to
 	return f.totals, f.err
