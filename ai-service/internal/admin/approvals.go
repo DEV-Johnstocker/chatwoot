@@ -99,7 +99,7 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 	}
 	// A staff correction's form carries the owner's edited question and answer.
 	if _, edited := f["question"]; edited && decision == "approve" {
-		q, a := strings.TrimSpace(f.Get("question")), strings.TrimSpace(f.Get("answer"))
+		q, a := cleanText(f.Get("question")), cleanText(f.Get("answer"))
 		msg := ""
 		switch {
 		case q == "" || a == "":
@@ -129,6 +129,9 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, pending.ErrTargetChanged):
 		h.renderApprovals(w, r, http.StatusConflict, approvalsData{Account: acct,
 			Error: "Not applied: the document changed since the app proposed this, and approving would overwrite the newer version. Reject it, or ask the app to propose the change again."})
+	case errors.Is(err, mcp.ErrQuestionText):
+		h.renderApprovals(w, r, http.StatusUnprocessableEntity, approvalsData{Account: acct,
+			Error: "Not applied: the question contains a link, @handle, LINE ID or long number. Remove it from the question; the answer may keep links and numbers."})
 	case errors.Is(err, mcp.ErrNotEditable):
 		h.renderApprovals(w, r, http.StatusUnprocessableEntity, approvalsData{Account: acct,
 			Error: "Not applied: only a staff correction can be edited. Approve or reject this one as it is."})
@@ -236,6 +239,11 @@ func sourceDiff(lang string, raw []byte) (string, []fieldDiff, error) {
 	fields = append(fields, fieldDiff{Label: tr(lang, "After approval"),
 		Proposed: tr(lang, "It is loaded at once and the bot answers from it. It is checked for changes on a schedule, and you can remove it on the Knowledge base page.")})
 	return tr(lang, "New source: %s", where), fields, nil
+}
+
+// cleanText makes owner-typed text safe to store: valid UTF-8, no NUL, trimmed.
+func cleanText(s string) string {
+	return strings.TrimSpace(strings.ReplaceAll(strings.ToValidUTF8(s, "\uFFFD"), "\x00", ""))
 }
 
 // staffFix reads a staff correction; nil for any other document change.

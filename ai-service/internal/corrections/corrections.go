@@ -94,10 +94,19 @@ type Service struct {
 	Messages Messages // optional; nil uses only the bot's memory
 }
 
+// KeyPrefix starts every staff correction's knowledge key. It is reserved:
+// AI apps cannot use it (internal/mcp).
+const KeyPrefix = "staff-fix-"
+
 // Key is the knowledge key a note's FAQ gets: one per note, so two notes
 // never overwrite each other and a redelivered webhook updates the same one.
 func Key(conversationID, noteID int64) string {
-	return "staff-fix-" + strconv.FormatInt(conversationID, 10) + "-" + strconv.FormatInt(noteID, 10)
+	return KeyPrefix + strconv.FormatInt(conversationID, 10) + "-" + strconv.FormatInt(noteID, 10)
+}
+
+// ReservedKey reports whether a knowledge key belongs to staff corrections.
+func ReservedKey(key string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(key)), KeyPrefix)
 }
 
 // proposal is the stored change: the fields mcp's document proposals use,

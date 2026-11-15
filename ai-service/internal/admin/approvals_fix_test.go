@@ -113,3 +113,34 @@ func TestApprovals_EditsOnAnAIChangeAreRefused(t *testing.T) {
 		t.Fatalf("status %d body %s", res.Code, res.Body.String())
 	}
 }
+
+func TestApprovals_StaffFixQuestionWithLinkExplainsWhy(t *testing.T) {
+	// Arrange
+	e := newApprovalsEnv(t, true)
+	e.propose(t, 2, pending.KindDocument, "staff-fix-12-900", staffFix("โอน line.me/x", "3,900"))
+	e.approver.err = mcp.ErrQuestionText
+
+	// Act
+	res := serve(e.mux, approvalsPost(url.Values{"account": {"2"}, "id": {"1"}, "version": {"1"}, "decision": {"approve"},
+		"question": {"โอน line.me/x"}, "answer": {"3,900"}}))
+
+	// Assert
+	if res.Code != http.StatusUnprocessableEntity || !strings.Contains(res.Body.String(), "Remove it from the question") {
+		t.Fatalf("status %d", res.Code)
+	}
+}
+
+func TestApprovals_StaffFixEditsAreCleaned(t *testing.T) {
+	// Arrange
+	e := newApprovalsEnv(t, true)
+	e.propose(t, 2, pending.KindDocument, "staff-fix-12-900", staffFix("ราคา", "3,900"))
+
+	// Act
+	serve(e.mux, approvalsPost(url.Values{"account": {"2"}, "id": {"1"}, "version": {"1"}, "decision": {"approve"},
+		"question": {"ราคา\x00"}, "answer": {"3,900\xff"}}))
+
+	// Assert
+	if len(e.approver.calls) != 1 || e.approver.calls[0].title != "ราคา" || e.approver.calls[0].content != "3,900�" {
+		t.Fatalf("calls = %+v", e.approver.calls)
+	}
+}

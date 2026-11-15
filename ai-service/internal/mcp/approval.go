@@ -59,6 +59,11 @@ func (s *Server) Approve(ctx context.Context, accountID, id int64, version int, 
 // yes or no: edits are for staff corrections.
 var ErrNotEditable = errors.New("only a staff correction can be edited before approval")
 
+// ErrQuestionText means a staff correction's question (the customer's words,
+// or the owner's edit of them) holds a link, handle or long number; the
+// answer may, the question may not.
+var ErrQuestionText = errors.New("the question contains a link, @handle, messenger ID or long number")
+
 // ApproveEdited approves a staff correction with the owner's own question
 // (title) and answer (content) in place of the staff member's.
 func (s *Server) ApproveEdited(ctx context.Context, accountID, id int64, version int, approver, title, content string) error {

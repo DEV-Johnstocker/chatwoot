@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
@@ -440,6 +441,9 @@ func (s *Server) upsert(ctx context.Context, tok Token, a upsertArgs) (any, erro
 	if knowledge.SyncedKey(a.Key) {
 		return nil, userError("keys starting with web: or feed: are kept in sync from a website or data file; edit the source instead, or use another key")
 	}
+	if corrections.ReservedKey(a.Key) {
+		return nil, userError("keys starting with " + corrections.KeyPrefix + " are for staff corrections; use another key")
+	}
 	if a.Kind != "" && a.Kind != "faq" && a.Kind != "text" {
 		return nil, userError(`kind must be "faq" or "text"`)
 	}
@@ -517,9 +521,17 @@ func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error
 	// link or number. A staff correction was written by a signed-in Chatwoot
 	// user and read by the owner (who may have edited it): links and prices
 	// are exactly what it is for.
+	// The question is the customer's own words, so it keeps the check: a
+	// customer cannot plant a link or account number in the knowledge base
+	// through a staff fix.
 	actor := "mcp:" + tok.Name
 	if p.Staff != nil {
 		actor = "staff:" + p.Staff.Name
+		if checkAIText("question", d.Title) != nil {
+			return ErrQuestionText
+		}
+	} else if corrections.ReservedKey(d.SourceKey) {
+		return userError("this change can no longer be applied: its key is reserved for staff corrections")
 	} else if err := checkAIText("title or content", d.Title+"\n"+d.Content); err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ func init() {
 		"AI approvals · Pronto": "อนุมัติการแก้ไขจาก AI · Pronto",
 		"Changes that connected AI apps and your staff want to make to the business profile and the knowledge base. Customers keep seeing the current text until you approve.": "การแก้ไขโปรไฟล์ธุรกิจและฐานความรู้ที่แอป AI ที่เชื่อมต่อไว้และทีมงานเสนอมา ลูกค้าจะยังเห็นข้อความเดิมจนกว่าคุณจะอนุมัติ",
 		"Staff send a correction from any chat: a private note that starts with #fix, followed by the right answer.":                                                           "ทีมงานส่งคำตอบที่แก้ได้จากทุกแชต: เขียนโน้ตส่วนตัวขึ้นต้นด้วย #fix แล้วตามด้วยคำตอบที่ถูก",
+		"Not applied: the question contains a link, @handle, LINE ID or long number. Remove it from the question; the answer may keep links and numbers.":                      "ยังไม่ได้ใช้: คำถามมีลิงก์ @handle ไอดี LINE หรือเลขยาว ให้ลบออกจากคำถาม (คำตอบใส่ลิงก์และตัวเลขได้)",
 		"(staff)":                              "(ทีมงาน)",
 		"Staff correction from chat #%d":       "ทีมงานแก้คำตอบจากแชต #%d",
 		"New FAQ":                              "คำถาม-คำตอบใหม่",

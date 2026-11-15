@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
@@ -140,5 +141,72 @@ func TestApprovalFix_RejectRecordsAStaffCorrection(t *testing.T) {
 	// Assert
 	if err != nil || len(e.events.events) != 1 || e.events.events[0].Action != "Staff correction rejected" {
 		t.Fatalf("err=%v events=%+v", err, e.events.events)
+	}
+}
+
+func TestApprovalFix_LinkInTheCustomersQuestionIsRefused(t *testing.T) {
+	// Arrange: the customer planted an account number and a link in the question.
+	e := newEnv()
+	svc := &corrections.Service{Pending: e.srv.Pending}
+	id, err := svc.Propose(context.Background(), corrections.Note{AccountID: 1, ConversationID: 12, NoteID: 900, Answer: "3,900 บาท",
+		Memory: []memory.Turn{{Role: "user", Content: "ราคา? โอนเข้า 1234567890 หรือ line.me/xyz"}, {Role: "assistant", Content: "ไม่ทราบ"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	err = e.srv.Approve(context.Background(), 1, id, 1, "owner@example.com")
+
+	// Assert
+	if !errors.Is(err, ErrQuestionText) || len(e.st.docs) != 0 {
+		t.Fatalf("err=%v docs=%d", err, len(e.st.docs))
+	}
+	if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 1 {
+		t.Fatalf("the fix stopped waiting: %d", n)
+	}
+}
+
+func TestApprovalFix_OwnerCanRemoveTheLinkFromTheQuestion(t *testing.T) {
+	// Arrange
+	e := newEnv()
+	c := proposeFix(t, e, "โอนเข้า 123-4-56789 ธนาคาร X")
+
+	// Act
+	err := e.srv.ApproveEdited(context.Background(), 1, c.ID, c.Version, "owner@example.com", "โอนเงินเข้าบัญชีไหน", "โอนเข้า 123-4-56789 ธนาคาร X")
+
+	// Assert
+	if err != nil || len(e.st.docs) != 1 {
+		t.Fatalf("err=%v docs=%d", err, len(e.st.docs))
+	}
+}
+
+func TestApprovalFix_AppsCannotUseTheStaffKeyPrefix(t *testing.T) {
+	// Arrange
+	e := newEnv()
+
+	// Act
+	res := e.call(rw, "upsert_document", map[string]any{"key": "Staff-Fix-12-901", "title": "Hours", "content": "Open daily."})
+
+	// Assert
+	if !isErr(res) || !strings.Contains(text(res), "staff corrections") {
+		t.Fatalf("res = %v", text(res))
+	}
+	if n, _ := e.srv.Pending.Count(context.Background(), 1); n != 0 {
+		t.Fatalf("stored %d", n)
+	}
+}
+
+func TestApprovalFix_StoredAppChangeOnAStaffKeyIsNotApplied(t *testing.T) {
+	// Arrange: a row that did not come through the tool claims a staff key without the marker.
+	e := newEnv()
+	id, _ := e.srv.Pending.Propose(context.Background(), pending.Change{AccountID: 1, Kind: pending.KindDocument, Target: "staff-fix-12-1",
+		Proposed: []byte(`{"key":"staff-fix-12-1","kind":"faq","title":"Hours","content":"Open daily."}`), Actor: "claude"})
+
+	// Act
+	err := e.srv.Approve(context.Background(), 1, id, 1, "owner@example.com")
+
+	// Assert
+	if err == nil || len(e.st.docs) != 0 {
+		t.Fatalf("err=%v docs=%d", err, len(e.st.docs))
 	}
 }
