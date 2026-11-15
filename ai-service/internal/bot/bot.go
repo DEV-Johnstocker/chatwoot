@@ -23,6 +23,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/spend"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/trace"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webhook"
 )
@@ -310,7 +311,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		"delivery_id", j.DeliveryID, "account_id", acct, "inbox_id", ev.Inbox.ID,
 		"conversation_id", conv, "message_id", ev.ID,
 	)
-	ctx, cancel := context.WithTimeout(parent, b.opts.Timeout)
+	ctx, cancel := context.WithTimeout(spend.WithAccount(parent, acct), b.opts.Timeout)
 	defer cancel()
 	if j.flush != 0 {
 		b.flush(ctx, log, j)
@@ -561,6 +562,7 @@ func retryable(err error) bool {
 // A reply the number guard would hold comes back as a bare handoff, as the
 // customer would get it.
 func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Turn) (llm.Result, []knowledge.Hit, error) {
+	ctx = spend.WithPurpose(spend.WithAccount(ctx, acct), spend.PurposeTest) // AI spend: a test, not customer traffic
 	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
 	if err == nil {
 		text, wantsHuman := SplitHandoff(res.Content)

@@ -136,7 +136,10 @@ func TestWithAccount_IgnoresNonPositive(t *testing.T) {
 
 type failInserter struct{ calls int }
 
-func (f *failInserter) Insert(context.Context, []Event) error { f.calls++; return errors.New("db down") }
+func (f *failInserter) Insert(context.Context, []Event) error {
+	f.calls++
+	return errors.New("db down")
+}
 
 func TestWriter_FullQueueDropsWithoutBlocking(t *testing.T) {
 	// Arrange: room for one event, writer not started

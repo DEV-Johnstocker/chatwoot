@@ -72,6 +72,7 @@
   .gap-done { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--border); }
   .badge { font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
   .badge.on { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
+  .badge.nav-alert { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
   label { display: block; font-weight: 600; font-size: .9rem; margin: 14px 0 6px; }
   input {
     width: 100%; font: inherit; color: var(--text); background: var(--bg);
@@ -467,10 +468,17 @@
     <a href="/admin/history"{{if eq . "history"}} aria-current="page"{{end}}>{{T "History"}}</a>
     <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
     <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
+    <a href="/admin/spend"{{if eq . "spend"}} aria-current="page"{{end}}>{{T "AI spend"}}{{with spendWarnings}}&nbsp;<span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}</a>
     <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
 {{end}}
 
-{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "history"}}{{T "History"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
+{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "history"}}{{T "History"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "spend"}}{{T "AI spend"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
+
+{{define "spend-banner"}}
+{{range spendWarnings}}
+  <div class="alert {{if ge .Level 100}}err{{else}}warn{{end}}" role="status"><strong>{{if ge .Level 100}}{{T "AI spend is over the cap %s" .Period}}{{else}}{{T "AI spend is near the cap %s" .Period}}{{end}}:</strong> {{T "%s has used %s of %s (%d%%)." .Who .Spent .Cap .Percent}} {{T "The bot keeps answering."}} <a href="/admin/spend">{{T "See AI spend"}}</a></div>
+{{end}}
+{{end}}
 
 {{define "theme-form"}}
   <form class="theme" method="post" action="/admin/theme" aria-label="{{T "Colour theme"}}">

@@ -47,6 +47,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/spend"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/trace"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/webfetch"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
@@ -96,6 +97,12 @@ func run() error {
 		return err
 	}
 	defer closeKB()
+	// AI spend: every model call's tokens go to ai_usage (needs the database).
+	usageWriter, spendMonitor := startSpend(cfg, profiles, logger)
+	rec := spendRecorder(usageWriter)
+	if kb != nil && rec != nil {
+		kb.Embedder = &spend.Embedder{Next: embedder, Purpose: spend.PurposeEmbedding, Rec: rec}
+	}
 	// Assign only when set: a nil pointer in an interface is not a nil interface.
 	var retriever bot.Retriever
 	var botProfiles bot.Profiles
@@ -117,7 +124,7 @@ func run() error {
 		mcpStore = &mcp.Postgres{Pool: profiles.Pool}
 		oauthStore = &oauth.Postgres{Pool: profiles.Pool}
 		retriever, botProfiles, adminProfiles, usage = kb, profiles, profiles, kb
-		rewriter = &bot.LLMRewriter{LLM: rewriteLLM}
+		rewriter = &bot.LLMRewriter{LLM: metered(rewriteLLM, rec, spend.PurposeRewrite, 0)}
 	}
 
 	// Tracing: assign the interface only when on (a nil pointer is not a nil interface).
@@ -157,16 +164,16 @@ func run() error {
 	monitor := startAlerts(cfg, logger)
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
-		LLM:               completer,
+		LLM:               metered(completer, rec, spend.PurposeReply, 0),
 		Knowledge:         retriever,
 		Usage:             usage,
 		Profiles:          botProfiles,
 		Hours:             botHours,
 		Rewriter:          rewriter,
 		Fetcher:           attachmentFetcher(cfg),
-		Transcriber:       liveTranscriber{store: store, model: cfg.TranscribeModel},
-		StickerLLM:        rewriteLLM,
-		NoteLLM:           rewriteLLM,
+		Transcriber:       liveTranscriber{store: store, model: cfg.TranscribeModel, rec: rec},
+		StickerLLM:        metered(rewriteLLM, rec, spend.PurposeSticker, 0),
+		NoteLLM:           metered(rewriteLLM, rec, spend.PurposeNote, 0),
 		HistoryReader:     historyReader,
 		Staff:             staff,
 		CommentEchoes:     commentEchoes,
@@ -216,7 +223,8 @@ func run() error {
 	if kb != nil {
 		commentKnowledge = kb
 	}
-	commentQueue := startComments(cfg, profiles, adminProfiles, completer, commentKnowledge, commentReviewer(cfg, current, completer, logger), commentEchoes, chats, mux, logger)
+	commentQueue := startComments(cfg, profiles, adminProfiles, metered(completer, rec, spend.PurposeComment, cfg.MetaAccountID), commentKnowledge,
+		commentReviewer(cfg, current, metered(completer, rec, spend.PurposeCommentReview, cfg.MetaAccountID), rec, logger), commentEchoes, chats, mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -267,6 +275,7 @@ func run() error {
 			Ratings: adminRatings(profiles), Replies: adminReplies(reader),
 			Sales:  adminSales(saleStore),
 			Alerts: monitor,
+			Spend:  adminSpend(profiles, spendMonitor),
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -307,6 +316,9 @@ func run() error {
 		logger.Warn("http shutdown", "error", err)
 	}
 	b.Close()
+	if usageWriter != nil {
+		usageWriter.Close() // after the bot, so the last calls are counted
+	}
 	exporter.Close() // after the bot, so the last turns are sent
 	return nil
 }
@@ -316,11 +328,18 @@ func run() error {
 type liveTranscriber struct {
 	store *settings.Store
 	model string
+	rec   spend.Recorder // nil: AI spend off
 }
 
 func (t liveTranscriber) Transcribe(ctx context.Context, audio []byte, filename, hint string) (string, error) {
 	p := t.store.Get().Primary
-	return (&media.Transcriber{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: t.model, Prompt: hint}).Transcribe(ctx, audio, filename)
+	tr := &media.Transcriber{BaseURL: p.BaseURL, APIKey: p.APIKey, Model: t.model, Prompt: hint}
+	text, err := tr.Transcribe(ctx, audio, filename)
+	if err == nil && t.rec != nil {
+		t.rec.Record(spend.Event{AccountID: spend.AccountFrom(ctx), Purpose: spend.PurposeTranscription, Model: t.model,
+			InputTokens: tr.Used.InputTokens, OutputTokens: tr.Used.OutputTokens, AudioSeconds: tr.Used.Seconds, At: time.Now()})
+	}
+	return text, err
 }
 
 // attachmentFetcher downloads customer files from Chatwoot only. Inside
@@ -438,7 +457,7 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 // commentReviewer is the shadow reviewer of drafted comment replies, or nil
 // (a nil interface) when COMMENT_REVIEWER=off. It records what it would do
 // and sends only through auto-send (COMMENT_AUTO_SEND=on).
-func commentReviewer(cfg config.Config, current settings.LLM, completer llm.Completer, logger *slog.Logger) comments.Reviewer {
+func commentReviewer(cfg config.Config, current settings.LLM, completer llm.Completer, rec spend.Recorder, logger *slog.Logger) comments.Reviewer {
 	switch cfg.CommentReviewer {
 	case "jev":
 		logger.Info("comment reviewer (shadow): jev", "model", cfg.TypeSafeModel)
@@ -451,7 +470,7 @@ func commentReviewer(cfg config.Config, current settings.LLM, completer llm.Comp
 		sw := &llm.Switch{}
 		sw.Set(settings.NewCompleter(settings.RewriteSettings(current, cfg.CommentReviewModel), cfg.LLMTimeout, logger))
 		logger.Info("comment reviewer (shadow): llm", "model", cfg.CommentReviewModel)
-		return &comments.LLMReviewer{LLM: sw, Model: cfg.CommentReviewModel}
+		return &comments.LLMReviewer{LLM: metered(sw, rec, spend.PurposeCommentReview, cfg.MetaAccountID), Model: cfg.CommentReviewModel}
 	}
 	return nil
 }
