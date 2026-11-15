@@ -121,6 +121,9 @@ func hasGapNote(msgs []gaps.Message) bool {
 // ReplaceLabel swaps one label for another and keeps the rest (Chatwoot's
 // labels call replaces the whole list). Without the from label it does
 // nothing and returns gaps.ErrNotAGap, so a second click changes nothing.
+// Chatwoot has no compare-and-set for labels: a label staff change in the
+// moment between the read and the write is lost (accepted: rare, and only
+// labels on one chat).
 func (r *Reader) ReplaceLabel(ctx context.Context, accountID, conversationID int64, from, to string) error {
 	path := fmt.Sprintf("/api/v1/accounts/%d/conversations/%d/labels", accountID, conversationID)
 	var current struct {

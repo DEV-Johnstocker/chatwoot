@@ -147,3 +147,18 @@ func TestReplaceLabel_WithoutTheLabelChangesNothing(t *testing.T) {
 		t.Fatalf("err=%v posts=%d", err, posts)
 	}
 }
+
+func TestReaderErrors_NameThePathNotTheURL(t *testing.T) {
+	// Arrange: nothing listens on the port, so the request fails to connect.
+	srv := httptest.NewServer(http.NotFoundHandler())
+	base := srv.URL
+	srv.Close()
+
+	// Act
+	_, err := NewReader(base, "reader", nil).GapChats(context.Background(), 1, 0)
+
+	// Assert
+	if err == nil || strings.Contains(err.Error(), base) || strings.Contains(err.Error(), "labels") {
+		t.Fatalf("err = %v", err)
+	}
+}

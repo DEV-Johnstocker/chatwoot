@@ -523,7 +523,12 @@ func (h *Handler) submitKnowledge(w http.ResponseWriter, r *http.Request) {
 			fail(form, err)
 			return
 		}
-		h.record(r, acct, "knowledge added", doc.Title, nil)
+		summary := doc.Title
+		if data.Gap > 0 && action == "add_faq" {
+			// The question may still be the customer's own words: keep them out of the history.
+			summary = "FAQ #" + strconv.FormatInt(id, 10) + " from chat #" + strconv.FormatInt(data.Gap, 10)
+		}
+		h.record(r, acct, "knowledge added", summary, nil)
 		h.Logger.Info("knowledge added", "account_id", acct, "document_id", id, "kind", doc.Kind,
 			"inbox_id", doc.InboxID, "chunks", chunks, "dated", !doc.ValidFrom.IsZero() || !doc.ValidUntil.IsZero(),
 			"remote_addr", r.RemoteAddr)
