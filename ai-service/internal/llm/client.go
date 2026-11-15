@@ -55,6 +55,7 @@ type Result struct {
 	Content          string
 	Model            string
 	PromptTokens     int
+	CachedTokens     int // part of PromptTokens served from the provider's prompt cache (cheaper)
 	CompletionTokens int
 	UsedFallback     bool // set by Fallback when the secondary provider answered
 }
@@ -95,6 +96,9 @@ type chatResponse struct {
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
+		Details          struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
@@ -143,6 +147,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message) (Result, erro
 		Content:          strings.TrimSpace(parsed.Choices[0].Message.Content),
 		Model:            parsed.Model,
 		PromptTokens:     parsed.Usage.PromptTokens,
+		CachedTokens:     parsed.Usage.Details.CachedTokens,
 		CompletionTokens: parsed.Usage.CompletionTokens,
 	}, nil
 }

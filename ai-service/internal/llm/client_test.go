@@ -142,3 +142,16 @@ func TestComplete_ErrorStatusIsTyped(t *testing.T) {
 		t.Error("IsRateLimited must match only a typed 429, through wrapping")
 	}
 }
+
+func TestComplete_ReadsCachedPromptTokens(t *testing.T) {
+	// Arrange: OpenAI reports cached prompt tokens under prompt_tokens_details
+	c := serve(t, 200, `{"model":"gpt-6-luna","choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1000,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":768}}}`, nil, nil)
+
+	// Act
+	res, err := c.Complete(context.Background(), []Message{{Role: "user", Content: "x"}})
+
+	// Assert
+	if err != nil || res.PromptTokens != 1000 || res.CachedTokens != 768 || res.CompletionTokens != 5 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+}

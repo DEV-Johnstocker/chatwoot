@@ -60,6 +60,9 @@ type response struct {
 		Index     int       `json:"index"`
 		Embedding []float32 `json:"embedding"`
 	} `json:"data"`
+	Usage struct {
+		PromptTokens int `json:"prompt_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
@@ -114,6 +117,7 @@ func (c *Client) embedBatch(ctx context.Context, texts []string) ([][]float32, e
 	if len(parsed.Data) != len(texts) {
 		return nil, fmt.Errorf("embeddings: got %d vectors for %d inputs", len(parsed.Data), len(texts))
 	}
+	counterFrom(ctx).add(parsed.Usage.PromptTokens, c.model)
 	out := make([][]float32, len(texts))
 	for _, d := range parsed.Data {
 		if d.Index < 0 || d.Index >= len(texts) || out[d.Index] != nil {

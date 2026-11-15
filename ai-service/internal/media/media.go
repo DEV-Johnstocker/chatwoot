@@ -154,6 +154,16 @@ type Transcriber struct {
 	// which the model then spells correctly. Optional.
 	Prompt string
 	Client *http.Client
+	// Used is the provider's usage report of the last call, for the spend
+	// page. Build one Transcriber per call when calls run concurrently.
+	Used TranscriptionUsage
+}
+
+// TranscriptionUsage is what the provider bills: tokens (gpt-4o-*-transcribe)
+// or audio seconds (whisper-1).
+type TranscriptionUsage struct {
+	InputTokens, OutputTokens int
+	Seconds                   float64
 }
 
 // Transcribe returns the spoken text.
@@ -191,6 +201,11 @@ func (t *Transcriber) Transcribe(ctx context.Context, audio []byte, filename str
 	defer res.Body.Close()
 	var out struct {
 		Text  string `json:"text"`
+		Usage struct {
+			InputTokens  int     `json:"input_tokens"`
+			OutputTokens int     `json:"output_tokens"`
+			Seconds      float64 `json:"seconds"`
+		} `json:"usage"`
 		Error struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -201,5 +216,6 @@ func (t *Transcriber) Transcribe(ctx context.Context, audio []byte, filename str
 	if res.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("transcription status %d", res.StatusCode)
 	}
+	t.Used = TranscriptionUsage{InputTokens: out.Usage.InputTokens, OutputTokens: out.Usage.OutputTokens, Seconds: out.Usage.Seconds}
 	return strings.TrimSpace(out.Text), nil
 }
