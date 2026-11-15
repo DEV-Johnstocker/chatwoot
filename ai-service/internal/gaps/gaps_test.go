@@ -169,19 +169,6 @@ func TestFinder_ListError(t *testing.T) {
 	}
 }
 
-func TestFinder_GetRefusesAChatOffTheList(t *testing.T) {
-	// Arrange
-	src := &fakeSource{chats: []Chat{{ID: 5}}}
-
-	// Act
-	_, err := (&Finder{Source: src}).Get(context.Background(), 1, 6)
-
-	// Assert
-	if !errors.Is(err, ErrNotAGap) {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestFinder_DoneSwapsTheLabel(t *testing.T) {
 	// Arrange
 	src := &fakeSource{}

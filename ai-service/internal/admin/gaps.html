@@ -11,7 +11,7 @@
   <div class="page-head">
     <div>
       <h1>{{T "Unanswered questions"}}</h1>
-      <p class="lead">{{T "Chats the bot passed to your team only because it did not know the answer (label kb-gap in Chatwoot). Add the answer once and the bot can reply next time."}}</p>
+      <p class="lead">{{T "Chats the bot passed to your team only because it did not know the answer (label kb-gap in Chatwoot). Edit the question and answer on each card and add it; the bot can reply next time."}}</p>
     </div>
     {{template "account-picker" (dict "Action" "/admin/gaps" "Current" .AccountID)}}
   </div>
@@ -34,21 +34,22 @@
     </div>
     {{if and .Asked .Wanted}}<p class="gap-sum"><span class="gap-label">{{T "Bot's summary"}}</span> {{.Wanted}}</p>{{end}}
     {{if not .NoteFound}}<p class="hint">{{T "The bot's note was not found in the latest messages; open the chat to see the question."}}</p>{{end}}
-    {{if .StaffReply}}
-    <div class="gap-reply"><p class="gap-label">{{T "Your team replied"}}</p><blockquote>{{.StaffReply}}</blockquote></div>
-    {{end}}
-    <div class="actions">
-      <form method="post" action="/admin/gaps">
-        <input type="hidden" name="account" value="{{$.AccountID}}">
-        <input type="hidden" name="conversation" value="{{.ID}}">
-        <button type="submit" name="action" value="done">{{T "Done, no answer needed"}}</button>
-      </form>
-      <form method="post" action="/admin/gaps">
-        <input type="hidden" name="account" value="{{$.AccountID}}">
-        <input type="hidden" name="conversation" value="{{.ID}}">
-        <button type="submit" name="action" value="answer" class="primary">{{T "Turn into an answer"}}</button>
-      </form>
-    </div>
+    <form method="post" action="/admin/knowledge" class="gap-form" autocomplete="off">
+      <input type="hidden" name="action" value="add_faq">
+      <input type="hidden" name="account" value="{{$.AccountID}}">
+      <input type="hidden" name="gap" value="{{.ID}}">
+      <label for="gq-{{.ID}}">{{T "Question"}}</label>
+      <input id="gq-{{.ID}}" name="question" type="text" maxlength="300" required value="{{.Question}}">
+      <label for="ga-{{.ID}}">{{T "Answer"}}</label>
+      <textarea id="ga-{{.ID}}" name="answer" required rows="4" aria-describedby="gh-{{.ID}}">{{.StaffReply}}</textarea>
+      <p class="field-hint" id="gh-{{.ID}}">{{if .StaffReply}}{{T "Filled from your team's reply in the chat. Edit it so it fits every customer, then add it."}}{{else}}{{T "Write the answer the bot should give next time."}}{{end}}</p>
+      <div class="actions"><button type="submit" class="primary">{{T "Add to knowledge base"}}</button></div>
+    </form>
+    <form method="post" action="/admin/gaps" class="gap-done">
+      <input type="hidden" name="account" value="{{$.AccountID}}">
+      <input type="hidden" name="conversation" value="{{.ID}}">
+      <button type="submit" name="action" value="done">{{T "Done, no answer needed"}}</button>
+    </form>
   </section>
   {{end}}
   {{if .Full}}<p class="hint">{{T "Showing the newest %d. Handle these to see older ones." 25}}</p>{{end}}

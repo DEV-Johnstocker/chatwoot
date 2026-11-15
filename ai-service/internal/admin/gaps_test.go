@@ -38,17 +38,6 @@ func (f *fakeGaps) List(_ context.Context, acct int64, limit int) ([]gaps.Gap, e
 	return out, nil
 }
 
-func (f *fakeGaps) Get(_ context.Context, acct, conv int64) (gaps.Gap, error) {
-	if f.listErr != nil {
-		return gaps.Gap{}, f.listErr
-	}
-	g, ok := f.open[conv]
-	if !ok {
-		return gaps.Gap{}, gaps.ErrNotAGap
-	}
-	return g, nil
-}
-
 func (f *fakeGaps) Done(_ context.Context, acct, conv int64) error {
 	if f.doneErr != nil {
 		return f.doneErr
@@ -114,8 +103,11 @@ func TestGaps_ListShowsQuestionReplyAndChatLink(t *testing.T) {
 	if rec.Code != http.StatusOK || len(fg.accts) != 1 || fg.accts[0] != 3 {
 		t.Fatalf("code=%d accts=%v", rec.Code, fg.accts)
 	}
-	for _, want := range []string{"คอร์สมีใบประกาศไหม &lt;b&gt;", "อยากรู้เรื่องใบประกาศ", "มีค่ะ ได้เมื่อเรียนจบ",
-		`href="https://pronto.example/app/accounts/3/conversations/41"`, `value="answer"`, `value="done"`} {
+	for _, want := range []string{"คอร์สมีใบประกาศไหม &lt;b&gt;", "อยากรู้เรื่องใบประกาศ",
+		`href="https://pronto.example/app/accounts/3/conversations/41"`, `value="done"`,
+		`action="/admin/knowledge"`, `name="gap" value="41"`, `value="add_faq"`,
+		`name="question" type="text" maxlength="300" required value="คอร์สมีใบประกาศไหม &lt;b&gt;"`,
+		`>มีค่ะ ได้เมื่อเรียนจบ</textarea>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -237,26 +229,20 @@ func TestGaps_DoneWhenChatwootFailsSaysNothingChanged(t *testing.T) {
 	}
 }
 
-func TestGaps_AnswerFillsTheFAQFormAndSavingClosesTheGap(t *testing.T) {
+func TestGaps_EditedAnswerFromTheCardIsAddedAndClosesTheGap(t *testing.T) {
 	// Arrange
 	fg := sampleGaps()
 	mux, ms := gapsEnv(t, fg)
 
-	// Act: "Turn into an answer" opens the filled form, then the owner adds it.
-	form := serve(mux, gapPost(url.Values{"account": {"1"}, "conversation": {"41"}, "action": {"answer"}}))
+	// Act: the owner edits both fields on the card, then adds it.
 	add := serve(mux, kform(url.Values{"action": {"add_faq"}, "account": {"1"}, "gap": {"41"},
 		"question": {"คอร์สมีใบประกาศไหม"}, "answer": {"มีค่ะ ได้เมื่อเรียนจบ"}}))
 
 	// Assert
-	body := form.Body.String()
-	if form.Code != http.StatusOK || !strings.Contains(body, `name="gap" value="41"`) ||
-		!strings.Contains(body, `value="คอร์สมีใบประกาศไหม &lt;b&gt;"`) || !strings.Contains(body, ">มีค่ะ ได้เมื่อเรียนจบ</textarea>") {
-		t.Fatalf("form code=%d", form.Code)
-	}
 	if add.Code != http.StatusSeeOther || add.Header().Get("Location") != "/admin/gaps?account=1&done=answered" {
 		t.Fatalf("add code=%d loc=%q body=%s", add.Code, add.Header().Get("Location"), add.Body)
 	}
-	if len(ms.docs) != 1 || ms.docs[0].Title != "คอร์สมีใบประกาศไหม" || len(fg.done) != 1 {
+	if len(ms.docs) != 1 || ms.docs[0].Title != "คอร์สมีใบประกาศไหม" || ms.docs[0].Content != "มีค่ะ ได้เมื่อเรียนจบ" || len(fg.done) != 1 {
 		t.Errorf("docs=%+v done=%v", ms.docs, fg.done)
 	}
 }
@@ -274,20 +260,6 @@ func TestGaps_AnswerSavedEvenWhenTheLabelCannotChange(t *testing.T) {
 	// Assert
 	if add.Header().Get("Location") != "/admin/gaps?account=1&done=answered-kept" || len(ms.docs) != 1 {
 		t.Fatalf("loc=%q docs=%d", add.Header().Get("Location"), len(ms.docs))
-	}
-}
-
-func TestGaps_AnswerForAChatOffTheList(t *testing.T) {
-	// Arrange
-	fg := sampleGaps()
-	mux, _ := gapsEnv(t, fg)
-
-	// Act
-	rec := serve(mux, gapPost(url.Values{"account": {"1"}, "conversation": {"99"}, "action": {"answer"}}))
-
-	// Assert
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("code=%d", rec.Code)
 	}
 }
 

@@ -19,7 +19,6 @@ import (
 // GapFinder reads and closes gap chats (gaps.Finder over chatwoot.Reader).
 type GapFinder interface {
 	List(ctx context.Context, accountID int64, limit int) ([]gaps.Gap, error)
-	Get(ctx context.Context, accountID, conversationID int64) (gaps.Gap, error)
 	Done(ctx context.Context, accountID, conversationID int64) error
 }
 
@@ -35,6 +34,7 @@ type gapView struct {
 	When       string
 	Wanted     string
 	Asked      string
+	Question   string // pre-filled FAQ question: the customer's words, else the summary
 	StaffReply string
 	NoteFound  bool
 	ChatURL    string
@@ -78,7 +78,7 @@ func (h *Handler) showGaps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) toGapView(lang string, acct int64, g gaps.Gap) gapView {
-	v := gapView{ID: g.ConversationID, Wanted: g.Wanted, Asked: g.Asked, StaffReply: g.StaffReply, NoteFound: g.NoteFound}
+	v := gapView{ID: g.ConversationID, Wanted: g.Wanted, Asked: g.Asked, Question: g.Question(), StaffReply: g.StaffReply, NoteFound: g.NoteFound}
 	if g.InboxID > 0 {
 		v.InboxID = strconv.FormatInt(g.InboxID, 10)
 	}
@@ -91,8 +91,9 @@ func (h *Handler) toGapView(lang string, acct int64, g gaps.Gap) gapView {
 	return v
 }
 
-// submitGaps handles "Turn into an answer" (the knowledge page's FAQ form,
-// filled from the chat) and "Done" (takes the chat off the list).
+// submitGaps handles "Done" (takes the chat off the list). The answer form
+// on each card posts to /admin/knowledge (add_faq with the gap field), so
+// duplicate checks and errors work as on the Knowledge page.
 func (h *Handler) submitGaps(w http.ResponseWriter, r *http.Request) {
 	if h.Gaps == nil {
 		http.Error(w, "gap report off: set CHATWOOT_READER_TOKEN", http.StatusServiceUnavailable)
@@ -113,16 +114,6 @@ func (h *Handler) submitGaps(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), gapTimeout)
 	defer cancel()
 	switch f.Get("action") {
-	case "answer":
-		g, err := h.Gaps.Get(ctx, acct, conv)
-		if err != nil {
-			h.gapFailed(w, r, acct, conv, err)
-			return
-		}
-		data := knowledgeData{AccountID: acct, Gap: conv}
-		data.Question, data.Answer = g.Question(), g.StaffReply
-		data.Notice = tr(langOf(r), "Write the answer to this customer question below. Adding it takes chat #%d off the gap list.", conv)
-		h.renderKnowledge(w, r, http.StatusOK, data)
 	case "done":
 		if err := h.Gaps.Done(ctx, acct, conv); err != nil {
 			h.gapFailed(w, r, acct, conv, err)

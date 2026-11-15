@@ -181,20 +181,6 @@ func (f *Finder) List(ctx context.Context, accountID int64, limit int) ([]Gap, e
 	return out, nil
 }
 
-// Get reads one gap chat; ErrNotAGap when it is not on the list.
-func (f *Finder) Get(ctx context.Context, accountID, conversationID int64) (Gap, error) {
-	chats, err := f.Source.GapChats(ctx, accountID, 0)
-	if err != nil {
-		return Gap{}, err
-	}
-	for _, c := range chats {
-		if c.ID == conversationID {
-			return f.read(ctx, accountID, c), nil
-		}
-	}
-	return Gap{}, ErrNotAGap
-}
-
 // Done takes the chat off the list: "kb-gap" becomes "kb-gap-done".
 func (f *Finder) Done(ctx context.Context, accountID, conversationID int64) error {
 	return f.Source.ReplaceLabel(ctx, accountID, conversationID, Label, DoneLabel)
