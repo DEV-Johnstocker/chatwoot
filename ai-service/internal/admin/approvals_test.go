@@ -24,6 +24,8 @@ type approveCall struct {
 	acct, id int64
 	version  int
 	approver string
+	title    string // ApproveEdited only
+	content  string
 }
 
 type fakeApprover struct {
@@ -32,12 +34,17 @@ type fakeApprover struct {
 }
 
 func (f *fakeApprover) Approve(_ context.Context, acct, id int64, version int, approver string) error {
-	f.calls = append(f.calls, approveCall{"approve", acct, id, version, approver})
+	f.calls = append(f.calls, approveCall{op: "approve", acct: acct, id: id, version: version, approver: approver})
+	return f.err
+}
+
+func (f *fakeApprover) ApproveEdited(_ context.Context, acct, id int64, version int, approver, title, content string) error {
+	f.calls = append(f.calls, approveCall{"approve-edited", acct, id, version, approver, title, content})
 	return f.err
 }
 
 func (f *fakeApprover) Reject(_ context.Context, acct, id int64, version int, approver string) error {
-	f.calls = append(f.calls, approveCall{"reject", acct, id, version, approver})
+	f.calls = append(f.calls, approveCall{op: "reject", acct: acct, id: id, version: version, approver: approver})
 	return f.err
 }
 
@@ -143,7 +150,7 @@ func TestApprovals_ApproveAndReject(t *testing.T) {
 			res := serve(e.mux, approvalsPost(url.Values{"account": {"2"}, "id": {"1"}, "version": {"1"}, "decision": {op}}))
 
 			// Assert
-			want := approveCall{op, 2, c.ID, c.Version, "admin password"}
+			want := approveCall{op: op, acct: 2, id: c.ID, version: c.Version, approver: "admin password"}
 			if len(e.approver.calls) != 1 || e.approver.calls[0] != want {
 				t.Fatalf("calls = %+v, want %+v", e.approver.calls, want)
 			}

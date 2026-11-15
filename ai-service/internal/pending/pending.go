@@ -61,6 +61,18 @@ type Change struct {
 	At       time.Time
 }
 
+// StaffFix marks a document change that a staff member sent from a Chatwoot
+// chat (a private note starting with #fix): the corrected answer to the
+// customer question the bot got wrong. The owner may edit it before
+// approving. Only the bot's correction path sets it: the AI-app tools never
+// decode it. Issue: DEV-Johnstocker/chatwoot#1
+type StaffFix struct {
+	Name           string `json:"name"`            // the staff member, as Chatwoot names them
+	ConversationID int64  `json:"conversation_id"` // the chat the note was written in
+	NoteID         int64  `json:"note_id"`         // the private note's message id
+	BotReply       string `json:"bot_reply"`       // what the bot said, for context
+}
+
 // Store keeps waiting changes. Every method is scoped to one account.
 type Store interface {
 	// Propose adds a change, or updates the one already waiting for the same

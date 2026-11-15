@@ -111,7 +111,10 @@ type Options struct {
 	CommentEchoes CommentEchoes
 	// Images gives each account's pictures, sent where the model writes
 	// profile.ImageMarker; nil: the bot never offers any.
-	Images         ImageStore
+	Images ImageStore
+	// Corrections turns a staff "#fix" note into an FAQ waiting for the
+	// owner's approval; nil answers such a note with "not turned on".
+	Corrections    Corrector
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -305,6 +308,9 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		if takeover {
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, "", ReasonStaffReplied, nil)
 		}
+	case webhook.Correct:
+		b.cancelPending(acct, conv) // a staff note: staff are handling the chat
+		b.correct(ctx, log, ev)
 	case webhook.Forget:
 		b.cancelPending(acct, conv)
 		b.opts.History.Forget(acct, conv)

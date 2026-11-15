@@ -68,6 +68,24 @@ func TestClassify(t *testing.T) {
 		}, Pause},
 		{"staff private note", func(e *Event) { e.Private = true; e.MessageType = "outgoing"; e.Sender.Type = "user" }, Pause},
 		{"bot's own private note", func(e *Event) { e.Private = true; e.MessageType = "outgoing"; e.Sender.Type = "agent_bot" }, Ignore},
+		{"staff #fix note", func(e *Event) {
+			e.Private, e.MessageType, e.Sender.Type, e.Content = true, "outgoing", "user", "#fix 3,900 บาท"
+		}, Correct},
+		{"staff #fix note in an open chat", func(e *Event) {
+			e.Private, e.MessageType, e.Sender.Type, e.Content = true, "outgoing", "user", "#แก้ 3,900"
+			e.Conversation.Status = "open"
+		}, Correct},
+		{"bot's own note starting #fix", func(e *Event) {
+			e.Private, e.MessageType, e.Sender.Type, e.Content = true, "outgoing", "agent_bot", "#fix x"
+		}, Ignore},
+		{"automation note starting #fix", func(e *Event) {
+			e.Private, e.MessageType, e.Sender.Type, e.Content = true, "outgoing", "", "#fix x"
+		}, Pause},
+		{"customer writes #fix", func(e *Event) { e.Content = "#fix ราคา" }, Reply},
+		{"staff public reply starting #fix", func(e *Event) {
+			e.MessageType, e.Sender.Type, e.Content = "outgoing", "user", "#fix x"
+			e.Conversation.Status = "open"
+		}, Record},
 		{"staff opened the chat", func(e *Event) { e.Event = "conversation_status_changed"; e.Status = "open" }, Pause},
 		{"chat back to the bot", func(e *Event) { e.Event = "conversation_status_changed"; e.Status = "pending" }, Ignore},
 		{"conversation updated, staff", func(e *Event) { e.Event = "conversation_updated"; e.Status = "open" }, Pause},

@@ -8,8 +8,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/mcp"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 )
@@ -18,6 +21,9 @@ import (
 // MCP server implements it with the same checks and history as its tools.
 type Approver interface {
 	Approve(ctx context.Context, accountID, id int64, version int, approver string) error
+	// ApproveEdited approves a staff correction with the owner's own
+	// question and answer.
+	ApproveEdited(ctx context.Context, accountID, id int64, version int, approver, title, content string) error
 	Reject(ctx context.Context, accountID, id int64, version int, approver string) error
 }
 
@@ -39,6 +45,14 @@ type approvalItem struct {
 	Delete  bool   // a delete: show only the current values
 	Badge   string // "New document", "Delete document" or "New source"
 	Fields  []fieldDiff
+	Fix     *staffFixView // a staff correction: editable question and answer
+}
+
+// staffFixView is a staff correction as the owner reviews and edits it.
+type staffFixView struct {
+	Question, Answer, BotReply string
+	ConversationID             int64
+	ChatURL                    string
 }
 
 type fieldDiff struct {
@@ -83,6 +97,26 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 	if decision == "reject" {
 		decide = h.Approver.Reject
 	}
+	// A staff correction's form carries the owner's edited question and answer.
+	if _, edited := f["question"]; edited && decision == "approve" {
+		q, a := strings.TrimSpace(f.Get("question")), strings.TrimSpace(f.Get("answer"))
+		msg := ""
+		switch {
+		case q == "" || a == "":
+			msg = "Not applied: the question and the answer cannot be empty."
+		case utf8.RuneCountInString(q) > knowledge.MaxTitleRunes:
+			msg = "Not applied: the question is longer than 300 characters. Shorten it."
+		case utf8.RuneCountInString(a) > corrections.MaxAnswer:
+			msg = "Not applied: the answer is longer than 4,000 characters. Shorten it."
+		}
+		if msg != "" {
+			h.renderApprovals(w, r, http.StatusUnprocessableEntity, approvalsData{Account: acct, Error: msg})
+			return
+		}
+		decide = func(ctx context.Context, acct, id int64, version int, who string) error {
+			return h.Approver.ApproveEdited(ctx, acct, id, version, who, q, a)
+		}
+	}
 	err := decide(context.WithoutCancel(r.Context()), acct, id, version, actor(r))
 	switch {
 	case err == nil:
@@ -95,6 +129,9 @@ func (h *Handler) submitApprovals(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, pending.ErrTargetChanged):
 		h.renderApprovals(w, r, http.StatusConflict, approvalsData{Account: acct,
 			Error: "Not applied: the document changed since the app proposed this, and approving would overwrite the newer version. Reject it, or ask the app to propose the change again."})
+	case errors.Is(err, mcp.ErrNotEditable):
+		h.renderApprovals(w, r, http.StatusUnprocessableEntity, approvalsData{Account: acct,
+			Error: "Not applied: only a staff correction can be edited. Approve or reject this one as it is."})
 	case errors.Is(err, pending.ErrNotFound):
 		h.renderApprovals(w, r, http.StatusNotFound, approvalsData{Account: acct,
 			Error: "That change is no longer waiting. It may have been approved or rejected already."})
@@ -135,6 +172,12 @@ func (h *Handler) approvalItems(ctx context.Context, lang string, acct int64) ([
 			it.Heading = tr(lang, "Business profile")
 			it.Fields, err = h.profileDiff(ctx, lang, acct, c.Proposed)
 		case pending.KindDocument:
+			if fix := h.staffFix(acct, c.Proposed); fix != nil {
+				it.Fix, it.New = fix, true
+				it.Heading = tr(lang, "Staff correction from chat #%d", fix.ConversationID)
+				it.Badge = tr(lang, "New FAQ")
+				break
+			}
 			if it.Delete = isDelete(c.Proposed); it.Delete {
 				it.Heading, it.Fields, err = h.deleteDiff(ctx, lang, acct, c.Target, c.Proposed)
 				it.Badge = tr(lang, "Delete document")
@@ -193,6 +236,20 @@ func sourceDiff(lang string, raw []byte) (string, []fieldDiff, error) {
 	fields = append(fields, fieldDiff{Label: tr(lang, "After approval"),
 		Proposed: tr(lang, "It is loaded at once and the bot answers from it. It is checked for changes on a schedule, and you can remove it on the Knowledge base page.")})
 	return tr(lang, "New source: %s", where), fields, nil
+}
+
+// staffFix reads a staff correction; nil for any other document change.
+func (h *Handler) staffFix(acct int64, raw []byte) *staffFixView {
+	var d struct {
+		Title   string            `json:"title"`
+		Content string            `json:"content"`
+		Staff   *pending.StaffFix `json:"staff"`
+	}
+	if json.Unmarshal(raw, &d) != nil || d.Staff == nil {
+		return nil
+	}
+	return &staffFixView{Question: d.Title, Answer: d.Content, BotReply: d.Staff.BotReply,
+		ConversationID: d.Staff.ConversationID, ChatURL: h.chatURL(acct, d.Staff.ConversationID)}
 }
 
 // isDelete reports whether a document change asks to delete the document.

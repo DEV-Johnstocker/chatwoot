@@ -52,6 +52,32 @@ func (s *Server) propose(ctx context.Context, tok Token, kind pending.Kind, targ
 // applying fails, the change is put back to wait. approver is who approved
 // (shown in the history).
 func (s *Server) Approve(ctx context.Context, accountID, id int64, version int, approver string) error {
+	return s.approve(ctx, accountID, id, version, approver, nil)
+}
+
+// ErrNotEditable means the owner sent edits for a change that only takes a
+// yes or no: edits are for staff corrections.
+var ErrNotEditable = errors.New("only a staff correction can be edited before approval")
+
+// ApproveEdited approves a staff correction with the owner's own question
+// (title) and answer (content) in place of the staff member's.
+func (s *Server) ApproveEdited(ctx context.Context, accountID, id int64, version int, approver, title, content string) error {
+	return s.approve(ctx, accountID, id, version, approver, func(c *pending.Change) error {
+		var p docProposal
+		if c.Kind != pending.KindDocument || json.Unmarshal(c.Proposed, &p) != nil || p.Staff == nil || p.Delete {
+			return ErrNotEditable
+		}
+		p.Title, p.Content = title, content
+		raw, err := json.Marshal(p)
+		if err != nil {
+			return err
+		}
+		c.Proposed = raw
+		return nil
+	})
+}
+
+func (s *Server) approve(ctx context.Context, accountID, id int64, version int, approver string, edit func(*pending.Change) error) error {
 	c, err := s.Pending.Get(ctx, accountID, id)
 	if err != nil {
 		return err
@@ -59,35 +85,52 @@ func (s *Server) Approve(ctx context.Context, accountID, id int64, version int, 
 	if c.Version != version {
 		return pending.ErrChanged
 	}
+	applied := c
+	if edit != nil {
+		if err := edit(&applied); err != nil {
+			return err
+		}
+	}
 	if err := s.Pending.Remove(ctx, accountID, id, version); err != nil {
 		return err
 	}
 	tok := Token{ID: c.TokenID, AccountID: accountID, Name: c.Actor}
 	switch c.Kind {
 	case pending.KindProfile:
-		err = s.applyProfile(ctx, tok, c.Proposed, approver)
+		err = s.applyProfile(ctx, tok, applied.Proposed, approver)
 	case pending.KindDocument:
-		err = s.applyDocument(ctx, tok, c.Proposed)
+		err = s.applyDocument(ctx, tok, applied.Proposed)
 	case pending.KindSource:
 		if s.Sources == nil || s.Checker == nil {
 			err = errors.New("sources are not available on this server")
 		} else {
-			err = s.applySource(ctx, tok, c.Proposed, approver)
+			err = s.applySource(ctx, tok, applied.Proposed, approver)
 		}
 	default:
 		err = fmt.Errorf("unknown change kind %q", c.Kind)
 	}
 	if err != nil {
+		// The original goes back to wait, not the owner's unsaved edits.
 		if _, putErr := s.Pending.Propose(ctx, c); putErr != nil {
 			s.Logger.Error("approval failed and the change could not be put back", "account_id", accountID, "change_id", id, "error", putErr)
 		}
 		return err
 	}
 	if c.Kind == pending.KindDocument {
-		s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: "AI change approved",
+		action := "AI change approved"
+		if isStaffFix(c) {
+			action = "Staff correction approved"
+		}
+		s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: action,
 			Summary: c.Actor + ": " + documentWhat(c)})
 	}
 	return nil
+}
+
+// isStaffFix reports whether a change is a staff correction.
+func isStaffFix(c pending.Change) bool {
+	var p docProposal
+	return c.Kind == pending.KindDocument && json.Unmarshal(c.Proposed, &p) == nil && p.Staff != nil
 }
 
 // Reject drops a waiting change of the account and records what it was.
@@ -110,7 +153,11 @@ func (s *Server) Reject(ctx context.Context, accountID, id int64, version int, a
 	if c.Kind == pending.KindSource {
 		before = withoutQuery(c.Proposed) // a signed link's token stays out of the history
 	}
-	s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: "AI change rejected",
+	action := "AI change rejected"
+	if isStaffFix(c) {
+		action = "Staff correction rejected"
+	}
+	s.record(ctx, audit.Event{AccountID: accountID, Actor: approver, Action: action,
 		Summary: c.Actor + ": " + what, Before: before})
 	return nil
 }

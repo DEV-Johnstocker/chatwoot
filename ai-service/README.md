@@ -67,6 +67,14 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   on the page; adding it, or "Done", relabels the chat `kb-gap-done`. Nothing is stored in
   ai-service.
   A new customer message reopens the chat for the bot.
+- **Staff corrections** (`#fix`): a staff member writes a private note in any
+  chat starting with `#fix` (or `#แก้`, `#แก้ไข`) followed by the right
+  answer. It becomes a new FAQ waiting on `/admin/approvals`: the question is
+  the customer message the bot last answered before the note (read with
+  `CHATWOOT_READER_TOKEN`, else the bot's memory), shown with the bot's reply.
+  The owner can edit the question and answer before approving; links and
+  numbers are allowed, unlike AI-app proposals. The bot confirms in a private
+  note. On only with approvals (`MCP_ENABLED`, `DATABASE_URL`, admin password).
 - **Handoff note**: at every handoff a small vision model writes a private
   Thai note for staff (why, what the customer wants, what the bot said, what a
   photo shows, details given, next step), headed by a fixed warning that it
