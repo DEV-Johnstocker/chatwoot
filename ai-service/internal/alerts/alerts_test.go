@@ -60,7 +60,7 @@ func TestCheck_SendFailuresAlertOnceThenClear(t *testing.T) {
 	if want := ":warning: [STAGING] Bot alert: Bot replies are not reaching Chatwoot. 3 in the last 15 min (accounts 1, 3)."; !strings.HasPrefix(n.sent[0], want) {
 		t.Errorf("alert = %q, want prefix %q", n.sent[0], want)
 	}
-	if !strings.HasPrefix(n.sent[1], ":white_check_mark: [STAGING] Cleared: Bot replies are not reaching Chatwoot") {
+	if n.sent[1] != ":white_check_mark: [STAGING] Cleared: Bot replies are not reaching Chatwoot. Back to normal (it started at 10:00)." {
 		t.Errorf("recovery = %q", n.sent[1])
 	}
 	if len(firing) != 1 || firing[0].Kind != SendFailed {

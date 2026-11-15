@@ -249,3 +249,35 @@ type failingSend struct{ fakeChatwoot }
 func (f *failingSend) SendMessage(context.Context, int64, int64, string) error {
 	return errors.New("connection refused")
 }
+
+func TestReplyLimit_CountsPerInbox(t *testing.T) {
+	// Arrange: the same contact id over the limit in inbox 1
+	now := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	b, _, l, _ := limitedBot(1, &now)
+	b.Process(context.Background(), fromContact("a", 7, 55))
+	b.Process(context.Background(), fromContact("b", 7, 55))
+	other := fromContact("c", 9, 55)
+	other.Event.Inbox.ID = 2
+
+	// Act
+	b.Process(context.Background(), other)
+
+	// Assert
+	if l.calls != 2 {
+		t.Errorf("model calls = %d, want 2 (inbox 2 has its own count)", l.calls)
+	}
+}
+
+func TestAlerts_CustomerAskingForPersonIsNotASpike(t *testing.T) {
+	// Arrange
+	now := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	b, _, _, a := limitedBot(0, &now)
+
+	// Act
+	b.Process(context.Background(), fromContact("human please", 7, 55))
+
+	// Assert
+	if len(a.turns) != 0 || len(a.events) != 0 {
+		t.Errorf("turns %v events %v, want nothing counted", a.turns, a.events)
+	}
+}

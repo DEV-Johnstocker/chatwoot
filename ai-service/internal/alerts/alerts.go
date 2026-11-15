@@ -91,6 +91,7 @@ type Monitor struct {
 	notifier   Notifier // nil: alerts show on the admin page and in the log only
 	label      string   // environment shown in every message, e.g. "STAGING"
 	spikeShare float64
+	loc        *time.Location // for times in messages
 	now        func() time.Time
 	log        *slog.Logger
 
@@ -119,19 +120,23 @@ type Options struct {
 	Notifier   Notifier
 	Label      string           // environment name for messages; "" leaves it out
 	SpikeShare float64          // 0 uses DefaultSpikeShare
+	Location   *time.Location   // times in messages; nil uses UTC
 	Now        func() time.Time // nil uses time.Now
 	Logger     *slog.Logger
 }
 
 // New returns a Monitor.
 func New(o Options) *Monitor {
-	m := &Monitor{notifier: o.Notifier, label: o.Label, spikeShare: o.SpikeShare, now: o.Now, log: o.Logger,
+	m := &Monitor{notifier: o.Notifier, label: o.Label, spikeShare: o.SpikeShare, loc: o.Location, now: o.Now, log: o.Logger,
 		events: map[Kind][]event{}, active: map[Kind]*state{}}
 	if m.spikeShare <= 0 || m.spikeShare > 1 {
 		m.spikeShare = DefaultSpikeShare
 	}
 	if m.now == nil {
 		m.now = time.Now
+	}
+	if m.loc == nil {
+		m.loc = time.UTC
 	}
 	if m.log == nil {
 		m.log = slog.Default()
@@ -228,7 +233,7 @@ func (m *Monitor) decide() []message {
 			out = append(out, message{k, m.line(":warning:", "Still going on: "+Titles[k], detail), false})
 		case !firing && s != nil && m.cleared(k, now):
 			delete(m.active, k)
-			out = append(out, message{k, m.line(":white_check_mark:", "Cleared: "+Titles[k], "since "+s.since.Format("15:04 MST")+"."), false})
+			out = append(out, message{k, m.line(":white_check_mark:", "Cleared: "+Titles[k], "Back to normal (it started at "+s.since.In(m.loc).Format("15:04")+")."), false})
 		}
 	}
 	return out

@@ -62,15 +62,15 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   CSAT survey if that is on; 22h keeps it inside Messenger's 24-hour window.
 - **Reply limit**: one customer gets at most `REPLY_LIMIT` bot replies
   (default `30`, `0` turns it off) in `REPLY_LIMIT_WINDOW` (default `1h`),
-  counted per contact across chats. Past it the bot stops calling the model
-  for them and hands the chat to staff once, quietly: no message to the
+  counted per contact and inbox, across chats. Past it the bot stops
+  calling the model for them and hands the chat to staff once, quietly: no message to the
   customer, a private note with `ai-handoff:reply-limit`. Until the window
   ends their messages are not read, transcribed or answered.
 - **Bot alerts** (`internal/alerts`): replies Chatwoot refused (3 in 15 min),
   model errors (3 in 15 min), a full queue (any 429 to Chatwoot), a hand-off
   spike (at least 10 answered messages in an hour and `ALERT_HANDOFF_SHARE`,
-  default `0.5`, of them handed to staff; bot-off and reply-limit hand-offs
-  are not counted) and reply limits (any). Each kind posts once to Slack via
+  default `0.5`, of them handed to staff; bot-off, reply-limit and
+  customer-asked hand-offs are not counted) and reply limits (any). Each kind posts once to Slack via
   `SLACK_ALERT_WEBHOOK_URL` when it starts, every 6 hours while it lasts and
   once when a whole window passes clean; `ALERT_ENVIRONMENT` names the
   deployment. Messages hold counts and account ids only. Active problems

@@ -646,7 +646,7 @@ func startAlerts(cfg config.Config, logger *slog.Logger) *alerts.Monitor {
 		n = alerts.Slack{URL: cfg.Alerts.SlackWebhookURL}
 	}
 	m := alerts.New(alerts.Options{Notifier: n, Label: cfg.Alerts.Environment, SpikeShare: cfg.Alerts.HandoffSpikeShare,
-		Logger: logger.With("component", "alerts")})
+		Location: cfg.Location, Logger: logger.With("component", "alerts")})
 	logger.Info("bot alerts on", "slack", n != nil, "reply_limit", cfg.Alerts.ReplyLimit, "reply_limit_window", cfg.Alerts.ReplyLimitWindow.String())
 	go m.Run(context.Background(), time.Minute)
 	return m

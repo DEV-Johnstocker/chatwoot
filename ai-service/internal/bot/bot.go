@@ -365,7 +365,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			b.handOffBotOff(ctx, log, acct, ev.Inbox.ID, conv)
 			return
 		}
-		if b.overLimit(limitKeyFor(acct, conv, ev.Sender.ID)) {
+		if b.overLimit(limitKeyFor(acct, ev.Inbox.ID, conv, ev.Sender.ID)) {
 			// Over the reply limit: nothing is read, transcribed or answered
 			// until the window ends; the chat goes (back) to staff.
 			tr.Outcome = "handoff:" + ReasonReplyLimit
@@ -424,7 +424,7 @@ func (b *Bot) finishTurn(tr *trace.Turn) {
 }
 
 func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, tr *trace.Turn, images []string) {
-	if !b.takeReply(limitKeyFor(acct, conv, tr.ContactID)) {
+	if !b.takeReply(limitKeyFor(acct, inbox, conv, tr.ContactID)) {
 		b.handOffReplyLimit(ctx, log, acct, inbox, conv, tr)
 		return
 	}

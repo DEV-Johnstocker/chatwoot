@@ -22,18 +22,20 @@ type Alerts interface {
 	Turn(handedOff bool)
 }
 
-// limitKey is who a reply counts against: the contact when Chatwoot names
-// one (so new chats do not reset the count), else the chat.
+// limitKey is who a reply counts against: the contact in this inbox when
+// Chatwoot names one (so new chats do not reset the count), else the chat.
+// The inbox is part of it, so a visitor who joins someone's contact through
+// one channel cannot silence the bot for them on another.
 type limitKey struct {
-	acct, id int64
-	chat     bool
+	acct, inbox, id int64
+	chat            bool
 }
 
-func limitKeyFor(acct, conv, contact int64) limitKey {
+func limitKeyFor(acct, inbox, conv, contact int64) limitKey {
 	if contact > 0 {
-		return limitKey{acct: acct, id: contact}
+		return limitKey{acct: acct, inbox: inbox, id: contact}
 	}
-	return limitKey{acct: acct, id: conv, chat: true}
+	return limitKey{acct: acct, inbox: inbox, id: conv, chat: true}
 }
 
 // limitPruneEvery bounds how often the reply counts are swept for old entries.
@@ -156,7 +158,9 @@ func (b *Bot) markLimitNote(acct, conv int64) bool {
 }
 
 // alertTurn tells the alert monitor how a customer message ended. A bot
-// switched off or a reply limit are the owner's own rules, not a spike;
+// switched off or a reply limit are the owner's own rules, and a customer
+// asking for a person is their choice: none is a spike (one customer typing
+// "human" ten times must not raise it);
 // waiting and skipped messages are counted when their burst is answered.
 func (b *Bot) alertTurn(tr *trace.Turn) {
 	a := b.opts.Alerts
@@ -165,7 +169,7 @@ func (b *Bot) alertTurn(tr *trace.Turn) {
 	}
 	reason, handedOff := strings.CutPrefix(tr.Outcome, "handoff:")
 	switch {
-	case handedOff && (reason == ReasonBotOff || reason == ReasonReplyLimit):
+	case handedOff && (reason == ReasonBotOff || reason == ReasonReplyLimit || reason == ReasonCustomerAsked):
 		return
 	case handedOff:
 		switch reason {
