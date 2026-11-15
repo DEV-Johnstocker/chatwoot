@@ -19,11 +19,11 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>{{T "Sales are off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
   {{else}}
-  <nav class="period" aria-label="{{T "Period"}}">
+  <div class="period" role="group" aria-label="{{T "Period"}}">
     <a href="/admin/sales?account={{.AccountID}}" aria-current="{{if eq .Period "month"}}true{{else}}false{{end}}">{{T "This month"}}</a>
     <a href="/admin/sales?account={{.AccountID}}&amp;period=last-month" aria-current="{{if eq .Period "last-month"}}true{{else}}false{{end}}">{{T "Last month"}}</a>
     <a href="/admin/sales?account={{.AccountID}}&amp;period=30d" aria-current="{{if eq .Period "30d"}}true{{else}}false{{end}}">{{T "Last 30 days"}}</a>
-  </nav>
+  </div>
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 
   <ul class="kpis" aria-label="{{.PeriodName}}">
