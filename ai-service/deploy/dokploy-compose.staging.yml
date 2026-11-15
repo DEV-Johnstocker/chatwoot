@@ -136,6 +136,7 @@ services:
       # Optional: an agent account token ("AI Reader") so the bot can re-read a
       # chat after a restart or when a closed chat reopens. Bot tokens cannot.
       CHATWOOT_READER_TOKEN: ${CHATWOOT_READER_TOKEN:-}
+      BOT_RESOLVE_AFTER: ${BOT_RESOLVE_AFTER:-22h}
       # Required: the webhook path bypasses Access, so a missing or guessable
       # secret would let anyone drive the bot. Keep the "ai" profile off until
       # the Agent Bot exists and both values are set.
