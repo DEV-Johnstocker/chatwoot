@@ -24,8 +24,8 @@
   .trend .bar:hover span { opacity: 1; outline: 2px solid var(--card); }
   .trend-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: .8rem; margin: 6px 0 0; }
   .scroll-x { overflow-x: auto; }
-  .scroll-x table { min-width: 520px; }
   td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 640px) { td.r { text-align: left; } }
   .cap-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 0 12px; align-items: end; }
   .cap-form .actions { margin: 0 0 16px; }
   .scope-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -98,7 +98,7 @@
       <summary>{{T "Show as a table"}}</summary>
       <div class="scroll-x"><table>
         <thead><tr><th scope="col">{{T "Day"}}</th><th scope="col" class="r">{{T "Cost"}}</th></tr></thead>
-        <tbody>{{range .Bars}}<tr><td>{{.Label}}</td><td class="r">{{.Cost}}</td></tr>{{end}}</tbody>
+        <tbody>{{range .Bars}}<tr><td>{{.Label}}</td><td class="r" data-label="{{T "Cost"}}">{{.Cost}}</td></tr>{{end}}</tbody>
       </table></div>
     </details>
   </section>
@@ -109,7 +109,7 @@
       {{if .ByPurpose}}
       <div class="scroll-x"><table>
         <thead><tr><th scope="col">{{T "Purpose"}}</th><th scope="col" class="r">{{T "Calls"}}</th><th scope="col" class="r">{{T "Cost"}}</th><th scope="col" class="r">{{T "Share"}}</th></tr></thead>
-        <tbody>{{range .ByPurpose}}<tr><td>{{.Name}}</td><td class="r">{{.Calls}}</td><td class="r">{{.Cost}}{{if not .Priced}}*{{end}}</td><td class="r">{{.Share}}%</td></tr>{{end}}</tbody>
+        <tbody>{{range .ByPurpose}}<tr><td>{{.Name}}</td><td class="r" data-label="{{T "Calls"}}">{{.Calls}}</td><td class="r" data-label="{{T "Cost"}}">{{.Cost}}{{if not .Priced}}*{{end}}</td><td class="r" data-label="{{T "Share"}}">{{.Share}}%</td></tr>{{end}}</tbody>
       </table></div>
       {{else}}<p class="empty">{{T "No model calls this month yet."}}</p>{{end}}
     </section>
@@ -118,7 +118,7 @@
       {{if .ByModel}}
       <div class="scroll-x"><table>
         <thead><tr><th scope="col">{{T "Model"}}</th><th scope="col" class="r">{{T "Tokens in"}}</th><th scope="col" class="r">{{T "Tokens out"}}</th><th scope="col" class="r">{{T "Cost"}}</th></tr></thead>
-        <tbody>{{range .ByModel}}<tr><td><code>{{.Name}}</code></td><td class="r">{{.Input}}</td><td class="r">{{.Output}}</td><td class="r">{{.Cost}}{{if not .Priced}}*{{end}}</td></tr>{{end}}</tbody>
+        <tbody>{{range .ByModel}}<tr><td><code>{{.Name}}</code></td><td class="r" data-label="{{T "Tokens in"}}">{{.Input}}</td><td class="r" data-label="{{T "Tokens out"}}">{{.Output}}</td><td class="r" data-label="{{T "Cost"}}">{{.Cost}}{{if not .Priced}}*{{end}}</td></tr>{{end}}</tbody>
       </table></div>
       {{else}}<p class="empty">{{T "No model calls this month yet."}}</p>{{end}}
     </section>
@@ -143,7 +143,7 @@
     <div class="scroll-x"><table>
       <thead><tr><th scope="col">{{T "For"}}</th><th scope="col" class="r">{{T "Per day"}}</th><th scope="col" class="r">{{T "Per month"}}</th><th scope="col">{{T "Changed"}}</th><th scope="col"><span class="visually-hidden">{{T "Actions"}}</span></th></tr></thead>
       <tbody>{{range .Caps}}<tr>
-        <td>{{.Who}}</td><td class="r">{{if .Daily}}${{.Daily}}{{else}}—{{end}}</td><td class="r">{{if .Monthly}}${{.Monthly}}{{else}}—{{end}}</td>
+        <td>{{.Who}}</td><td class="r" data-label="{{T "Per day"}}">{{if .Daily}}${{.Daily}}{{else}}—{{end}}</td><td class="r" data-label="{{T "Per month"}}">{{if .Monthly}}${{.Monthly}}{{else}}—{{end}}</td>
         <td class="preview">{{.UpdatedAt}}{{with .UpdatedBy}} · {{.}}{{end}}</td>
         <td class="row-actions"><form method="post" action="/admin/spend" class="inline">
           <input type="hidden" name="action" value="save_cap"><input type="hidden" name="account" value="{{.AccountID}}">
