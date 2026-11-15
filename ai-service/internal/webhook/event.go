@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 )
 
 // Event is the subset of an Agent Bot webhook payload that ai-service uses.
@@ -80,6 +82,7 @@ type Inbox struct {
 type Sender struct {
 	ID   int64  `json:"id"`
 	Type string `json:"type"`
+	Name string `json:"name"` // a Chatwoot user's display name; personal data, never logged
 }
 
 // Conversation is the conversation a message belongs to.
@@ -121,6 +124,10 @@ const (
 	// wrote a private note or sent a file): drop any reply the bot is waiting
 	// to send.
 	Pause
+	// Correct means a staff member wrote a "#fix" private note: propose the
+	// corrected answer for the owner's approval (internal/corrections). It
+	// also pauses the bot, like any staff note.
+	Correct
 )
 
 // Classify decides how to handle an event. It answers only public customer
@@ -141,6 +148,11 @@ func Classify(ev Event) Decision {
 	}
 	staff := ev.MessageType == "outgoing" && ev.Sender.Type != "agent_bot"
 	if ev.Private {
+		if staff && ev.Sender.Type == "user" {
+			if _, ok := corrections.Parse(ev.Content); ok {
+				return Correct
+			}
+		}
 		if staff {
 			return Pause
 		}

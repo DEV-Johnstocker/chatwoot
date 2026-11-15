@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
@@ -393,6 +394,9 @@ type docProposal struct {
 	Delete bool    `json:"delete,omitempty"`
 	ID     int64   `json:"id,omitempty"` // the document to delete
 	Base   *string `json:"base,omitempty"`
+	// Staff marks a correction a staff member sent from a Chatwoot chat
+	// (internal/corrections); only that path sets it.
+	Staff *pending.StaffFix `json:"staff,omitempty"`
 }
 
 // fingerprint identifies what a document says and where it applies. Usage
@@ -436,6 +440,9 @@ func auditCopy(d knowledge.Document) map[string]any {
 func (s *Server) upsert(ctx context.Context, tok Token, a upsertArgs) (any, error) {
 	if knowledge.SyncedKey(a.Key) {
 		return nil, userError("keys starting with web: or feed: are kept in sync from a website or data file; edit the source instead, or use another key")
+	}
+	if corrections.ReservedKey(a.Key) {
+		return nil, userError("keys starting with " + corrections.KeyPrefix + " are for staff corrections; use another key")
 	}
 	if a.Kind != "" && a.Kind != "faq" && a.Kind != "text" {
 		return nil, userError(`kind must be "faq" or "text"`)
@@ -510,7 +517,22 @@ func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error
 	if knowledge.SyncedKey(d.SourceKey) || d.InboxID < 0 {
 		return userError("this change can no longer be applied: its key or inbox is not allowed")
 	}
-	if err := checkAIText("title or content", d.Title+"\n"+d.Content); err != nil {
+	// The AI-text check guards against a prompt-injected app slipping in a
+	// link or number. A staff correction was written by a signed-in Chatwoot
+	// user and read by the owner (who may have edited it): links and prices
+	// are exactly what it is for.
+	// The question is the customer's own words, so it keeps the check: a
+	// customer cannot plant a link or account number in the knowledge base
+	// through a staff fix.
+	actor := "mcp:" + tok.Name
+	if p.Staff != nil {
+		actor = "staff:" + p.Staff.Name
+		if checkAIText("question", d.Title) != nil {
+			return ErrQuestionText
+		}
+	} else if corrections.ReservedKey(d.SourceKey) {
+		return userError("this change can no longer be applied: its key is reserved for staff corrections")
+	} else if err := checkAIText("title or content", d.Title+"\n"+d.Content); err != nil {
 		return err
 	}
 	cur, err := s.Knowledge.GetByKey(ctx, tok.AccountID, d.SourceKey)
@@ -524,7 +546,7 @@ func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error
 	if found {
 		// Keep the old version before changing it; no copy, no change.
 		if err := s.Audit.Record(ctx, AuditEntry{AccountID: tok.AccountID, DocumentID: cur.ID, SourceKey: cur.SourceKey,
-			Action: "update", Actor: "mcp:" + tok.Name, TokenID: tok.ID, Before: auditCopy(cur)}); err != nil {
+			Action: "update", Actor: actor, TokenID: tok.ID, Before: auditCopy(cur)}); err != nil {
 			return fmt.Errorf("not saved: the audit copy could not be stored: %w", err)
 		}
 	}
@@ -534,7 +556,7 @@ func (s *Server) applyDocument(ctx context.Context, tok Token, raw []byte) error
 	}
 	if before.ID == 0 {
 		if err := s.Audit.Record(ctx, AuditEntry{AccountID: tok.AccountID, DocumentID: id, SourceKey: d.SourceKey,
-			Action: "create", Actor: "mcp:" + tok.Name, TokenID: tok.ID}); err != nil {
+			Action: "create", Actor: actor, TokenID: tok.ID}); err != nil {
 			s.Logger.Error("mcp audit not recorded", "account_id", tok.AccountID, "document_id", id, "error", err)
 		}
 	}

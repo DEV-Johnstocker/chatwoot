@@ -24,6 +24,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/commentecho"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/comments"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/config"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
@@ -160,6 +161,7 @@ func run() error {
 		Staff:             staff,
 		CommentEchoes:     commentEchoes,
 		Images:            imageStore,
+		Corrections:       staffCorrections(cfg, mcpStore, profiles, reader),
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),
@@ -448,6 +450,21 @@ func pendingStore(p *profile.Postgres) pending.Store {
 		return nil
 	}
 	return &pending.Postgres{Pool: p.Pool}
+}
+
+// staffCorrections turns staff "#fix" notes into FAQs on /admin → Approvals.
+// It is on only when that page can apply them: MCP on, with its database and
+// the admin password (the same conditions as srvMCP below).
+func staffCorrections(cfg config.Config, mcpStore *mcp.Postgres, profiles *profile.Postgres, reader *chatwoot.Reader) bot.Corrector {
+	st := pendingStore(profiles)
+	if !cfg.MCPEnabled || mcpStore == nil || cfg.AdminPassword == "" || st == nil {
+		return nil
+	}
+	svc := &corrections.Service{Pending: st}
+	if reader != nil {
+		svc.Messages = reader
+	}
+	return svc
 }
 
 // adminApprover keeps a nil MCP server a nil interface (approvals off).

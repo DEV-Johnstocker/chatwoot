@@ -11,7 +11,8 @@
   <div class="page-head">
     <div>
       <h1>{{T "AI approvals"}}</h1>
-      <p class="lead">{{T "Changes that connected AI apps want to make to the business profile and the knowledge base. Customers keep seeing the current text until you approve."}}</p>
+      <p class="lead">{{T "Changes that connected AI apps and your staff want to make to the business profile and the knowledge base. Customers keep seeing the current text until you approve."}}</p>
+      <p class="hint">{{T "Staff send a correction from any chat: a private note that starts with #fix, followed by the right answer."}}</p>
     </div>
     {{template "account-picker" (dict "Action" "/admin/approvals" "Current" .Account)}}
   </div>
@@ -31,8 +32,28 @@
   <section class="card change" aria-labelledby="change-{{.ID}}">
     <div class="change-head">
       <h2 id="change-{{.ID}}">{{.Heading}}{{with .Badge}} <span class="badge scheduled">{{.}}</span>{{end}}</h2>
-      <p class="hint">{{T "From"}} <strong>{{.From}}</strong> {{T "(AI app)"}} · {{.When}}</p>
+      <p class="hint">{{T "From"}} <strong>{{.From}}</strong> {{if .Fix}}{{T "(staff)"}}{{else}}{{T "(AI app)"}}{{end}} · {{.When}}{{with .Fix}}{{if .ChatURL}} · <a href="{{.ChatURL}}" target="_blank" rel="noopener">{{T "Open chat #%d" .ConversationID}}</a>{{end}}{{end}}</p>
     </div>
+    {{if .Fix}}
+    {{with .Fix.BotReply}}
+    <p class="gap-label">{{T "The bot replied"}}</p>
+    <blockquote class="rp-text rp-bot">{{.}}</blockquote>
+    {{end}}
+    <form method="post" action="/admin/approvals" class="fix-form" autocomplete="off">
+      <input type="hidden" name="account" value="{{$.Account}}">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="version" value="{{.Version}}">
+      <label for="fq-{{.ID}}">{{T "Customer question"}}</label>
+      <textarea id="fq-{{.ID}}" name="question" rows="2" maxlength="300" required>{{.Fix.Question}}</textarea>
+      <label for="fa-{{.ID}}">{{T "Right answer (the bot will use this)"}}</label>
+      <textarea id="fa-{{.ID}}" name="answer" rows="5" maxlength="4000" required>{{.Fix.Answer}}</textarea>
+      <p class="hint">{{T "Edit either one if needed. It is added to the knowledge base as a question and answer."}}</p>
+      <div class="actions">
+        <button type="submit" name="decision" value="reject" class="danger" formnovalidate>{{T "Reject"}}</button>
+        <button type="submit" name="decision" value="approve" class="primary">{{T "Approve"}}</button>
+      </div>
+    </form>
+    {{else}}
     {{$new := .New}}{{$del := .Delete}}
     {{range .Fields}}
     <div class="diff">
@@ -56,6 +77,7 @@
       <button type="submit" name="decision" value="reject" class="danger">{{T "Reject"}}</button>
       <button type="submit" name="decision" value="approve" class="primary">{{T "Approve"}}</button>
     </form>
+    {{end}}
   </section>
   {{end}}
   {{end}}
