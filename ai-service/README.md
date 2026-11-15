@@ -60,6 +60,12 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   (default `22h`, `0` turns it off; needs `CHATWOOT_READER_TOKEN`). Chatwoot
   then counts a "bot resolved" chat in its Bot report and sends the inbox's
   CSAT survey if that is on; 22h keeps it inside Messenger's 24-hour window.
+- **Unanswered questions** (`/admin/gaps`): chats the bot handed over only
+  because it had no answer (label `kb-gap`), read live from Chatwoot with
+  `CHATWOOT_READER_TOKEN`: the customer's words, the bot's summary and the
+  first staff reply. Each card is an FAQ form filled with them, edited and added
+  on the page; adding it, or "Done", relabels the chat `kb-gap-done`. Nothing is stored in
+  ai-service.
   A new customer message reopens the chat for the bot.
 - **Handoff note**: at every handoff a small vision model writes a private
   Thai note for staff (why, what the customer wants, what the bot said, what a

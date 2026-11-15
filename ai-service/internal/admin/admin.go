@@ -129,6 +129,11 @@ type Handler struct {
 	MCPURL string
 	// Location is the business time zone for knowledge dates; nil is UTC.
 	Location *time.Location
+	// Gaps lists the questions the bot could not answer (Chatwoot label
+	// kb-gap); nil shows the gap report as off (no reader token).
+	Gaps GapFinder
+	// ChatwootURL is Chatwoot's public address for "Open chat" links; empty hides them.
+	ChatwootURL string
 	// Tester runs the reply pipeline for the test page; nil turns that page off.
 	Tester Tester
 	// Probe sends a tiny test request to a chat provider. Nil uses a real call.
@@ -185,6 +190,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
 	mux.Handle("GET /admin/images", wrap(h.showImages))
 	mux.Handle("POST /admin/images", wrap(h.submitImage))
+	mux.Handle("GET /admin/gaps", wrap(h.showGaps))
+	mux.Handle("POST /admin/gaps", wrap(h.submitGaps))
 	mux.Handle("GET /admin/approvals", wrap(h.showApprovals))
 	mux.Handle("POST /admin/approvals", wrap(h.submitApprovals))
 	mux.Handle("GET /admin/comments", wrap(h.showComments))

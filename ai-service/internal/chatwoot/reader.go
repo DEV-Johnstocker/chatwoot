@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -223,17 +225,23 @@ func (r *Reader) getJSON(ctx context.Context, path string, body any, out any) er
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// Errors name the path without its query and never the full URL (AGENTS.md §6).
+	logPath, _, _ := strings.Cut(path, "?")
 	resp, err := r.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("chatwoot %s: %w", path, err)
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
+		return fmt.Errorf("chatwoot %s: %w", logPath, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return &APIError{Path: path, Status: resp.StatusCode, Body: string(snippet)}
+		return &APIError{Path: logPath, Status: resp.StatusCode, Body: string(snippet)}
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(out); err != nil {
-		return fmt.Errorf("chatwoot %s: %w", path, err)
+		return fmt.Errorf("chatwoot %s: %w", logPath, err)
 	}
 	return nil
 }

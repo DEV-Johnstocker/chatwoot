@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Unanswered questions · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "gaps"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Unanswered questions"}}</h1>
+      <p class="lead">{{T "Chats the bot passed to your team only because it did not know the answer (label kb-gap in Chatwoot). Edit the question and answer on each card and add it; the bot can reply next time."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/gaps" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "The question list is off."}}</strong> {{T "Set %s for ai-service and restart it." "CHATWOOT_READER_TOKEN"}}</div>
+  {{else}}
+  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+
+  {{if and (not .Gaps) (not .Error)}}
+  <p class="empty">{{T "No unanswered questions. The bot had an answer for everything it was asked."}}</p>
+  {{end}}
+
+  {{range .Gaps}}
+  <section class="card gap" aria-labelledby="gap-{{.ID}}">
+    <div class="change-head">
+      <h2 id="gap-{{.ID}}" class="gap-q">{{if .Asked}}{{.Asked}}{{else if .Wanted}}{{.Wanted}}{{else}}{{T "Chat #%d" .ID}}{{end}}</h2>
+      <p class="hint">{{with .When}}{{.}} · {{end}}{{if .InboxID}}{{range inboxes $.AccountID .InboxID}}{{if .Selected}}{{.Label}} · {{end}}{{end}}{{end}}{{if .ChatURL}}<a href="{{.ChatURL}}" target="_blank" rel="noopener">{{T "Open chat #%d" .ID}}</a>{{else}}{{T "Chat #%d" .ID}}{{end}}</p>
+    </div>
+    {{if and .Asked .Wanted}}<p class="gap-sum"><span class="gap-label">{{T "Bot's summary"}}</span> {{.Wanted}}</p>{{end}}
+    {{if not .NoteFound}}<p class="hint">{{T "The bot's note was not found in the latest messages; open the chat to see the question."}}</p>{{end}}
+    <form method="post" action="/admin/knowledge" class="gap-form" autocomplete="off">
+      <input type="hidden" name="action" value="add_faq">
+      <input type="hidden" name="account" value="{{$.AccountID}}">
+      <input type="hidden" name="gap" value="{{.ID}}">
+      <label for="gq-{{.ID}}">{{T "Question"}}</label>
+      <input id="gq-{{.ID}}" name="question" type="text" maxlength="300" required value="{{.Question}}">
+      <label for="ga-{{.ID}}">{{T "Answer"}}</label>
+      <textarea id="ga-{{.ID}}" name="answer" required rows="4" aria-describedby="gh-{{.ID}}">{{.StaffReply}}</textarea>
+      <p class="field-hint" id="gh-{{.ID}}">{{if .StaffReply}}{{T "Filled from your team's reply in the chat. Edit it so it fits every customer, then add it."}}{{else}}{{T "Write the answer the bot should give next time."}}{{end}}</p>
+      <div class="actions"><button type="submit" class="primary">{{T "Add to knowledge base"}}</button></div>
+    </form>
+    <form method="post" action="/admin/gaps" class="gap-done">
+      <input type="hidden" name="account" value="{{$.AccountID}}">
+      <input type="hidden" name="conversation" value="{{.ID}}">
+      <button type="submit" name="action" value="done">{{T "Done, no answer needed"}}</button>
+    </form>
+  </section>
+  {{end}}
+  {{if .Full}}<p class="hint">{{T "Showing the newest %d. Handle these to see older ones." 25}}</p>{{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>

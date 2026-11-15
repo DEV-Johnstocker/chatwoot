@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 )
@@ -44,7 +45,7 @@ var noteWarnWords = []string{"สลิป", "โอน", "ชำระ", "จ�
 type noteKind struct{ icon, title string }
 
 var noteKinds = map[string]noteKind{
-	noteGap:    {"📚", "บอทไม่มีข้อมูลเรื่องนี้"},
+	noteGap:    {"📚", gaps.NoteTitle}, // the gap report finds this note
 	"ชำระเงิน": {"💳", "เรื่องชำระเงิน"},
 	"คืนเงิน":  {"↩️", "ลูกค้าขอคืนเงิน"},
 	"สิทธิ์เข้าเรียน": {"🔑", "สิทธิ์เข้าเรียน / บัญชี"},
