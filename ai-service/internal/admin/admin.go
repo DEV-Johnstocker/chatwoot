@@ -142,6 +142,9 @@ type Handler struct {
 	// Sales holds paid chats and payment slips for the sales dashboard; nil
 	// turns that page off (no database).
 	Sales sales.Store
+	// Alerts lists the bot's own problems going on now (alerts.Monitor),
+	// shown on Home; nil shows none.
+	Alerts AlertBoard
 	// ChatwootURL is Chatwoot's public address for "Open chat" links; empty hides them.
 	ChatwootURL string
 	// Tester runs the reply pipeline for the test page; nil turns that page off.

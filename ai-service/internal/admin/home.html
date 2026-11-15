@@ -16,6 +16,9 @@
     {{template "account-picker" (dict "Action" "/admin" "Current" .AccountID)}}
   </div>
 
+  {{range .Alerts}}
+  <div class="alert warn" role="status"><strong>{{T "Bot alert: %s" .Title}}</strong> {{T "Since %s. Affects every account on this server." .Since}}</div>
+  {{end}}
   {{if .Waiting}}
   <div class="alert info" role="status"><strong>{{if eq .Waiting 1}}{{T "%d AI change waits for your approval." .Waiting}}{{else}}{{T "%d AI changes wait for your approval." .Waiting}}{{end}}</strong> <a href="/admin/approvals?account={{.AccountID}}">{{if eq .Waiting 1}}{{T "Review it"}}{{else}}{{T "Review them"}}{{end}}</a></div>
   {{end}}

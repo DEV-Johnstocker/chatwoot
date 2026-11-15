@@ -77,6 +77,7 @@ var reasonLabels = map[string]string{
 	ReasonBotOff:        "บอทปิดอยู่ หรือข้อความเข้ามานอกเวลาทำงานของบอท แชทนี้ส่งให้ทีมงานตอบ",
 	ReasonNumberHeld:    "คำตอบของบอทมีเลขบัญชี เบอร์ หรือเลขยาวที่ไม่ได้มาจากโปรไฟล์ธุรกิจ ระบบจึงไม่ส่งให้ลูกค้า",
 	ReasonSendFailed:    "ส่งคำตอบของบอทให้ลูกค้าไม่สำเร็จ (ลองซ้ำแล้ว) ลูกค้ายังไม่ได้รับคำตอบ",
+	ReasonReplyLimit:    "ลูกค้าคนนี้ส่งข้อความถี่มาก บอทตอบครบจำนวนครั้งที่ตั้งไว้แล้ว (กันสแปม) จึงหยุดตอบชั่วคราวเพื่อไม่ให้เปลืองเครดิต AI ทีมงานโปรดดูแลต่อ",
 }
 
 // Card and Thai ID numbers never belong in a note, even if a model copies them.
@@ -91,7 +92,7 @@ var noteSecrets = []*regexp.Regexp{
 // is a readable label. gap reports a handoff only because the bot lacked the
 // answer, so the chat can be labelled for filling the knowledge base.
 func (b *Bot) staffNote(ctx context.Context, log *slog.Logger, acct, conv int64, botMsg, reason string, images []string) (note string, gap bool, slip *slipSeen) {
-	if reason == ReasonStaffReplied || reason == ReasonBotOff {
+	if reason == ReasonStaffReplied || reason == ReasonBotOff || reason == ReasonReplyLimit {
 		// Staff are already in the chat, or the bot never spoke: nothing to summarise.
 		return "🤖 " + reasonLabels[reason] + "\n" + reason, false, nil
 	}

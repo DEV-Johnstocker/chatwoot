@@ -28,6 +28,7 @@ type homeData struct {
 	Profiles    bool
 	Recent      []recentView
 	Waiting     int // AI-app edits waiting for approval
+	Alerts      []alertView
 }
 
 type recentView struct {
@@ -49,6 +50,7 @@ func (h *Handler) showHome(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Business, d.Features = p.BusinessName, p.Features
 	}
+	d.Alerts = h.activeAlerts(lang)
 	if h.approvalsOn() {
 		n, err := h.Pending.Count(r.Context(), acct)
 		if err != nil {

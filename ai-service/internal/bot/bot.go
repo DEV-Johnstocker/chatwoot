@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/alerts"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/chatwoot"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
 	ownerimages "github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
@@ -133,6 +134,12 @@ type Options struct {
 	// ReplyDelay waits this long after a customer's last message before
 	// replying, so quick messages get one answer (batch.go). 0 replies at once.
 	ReplyDelay time.Duration
+	// ReplyLimit caps bot replies per customer within ReplyLimitWindow
+	// (limit.go); 0 turns the limit off.
+	ReplyLimit       int
+	ReplyLimitWindow time.Duration
+	// Alerts counts failures for the owner's alerts; nil: none.
+	Alerts Alerts
 }
 
 // Job is one event to process plus its delivery id for log correlation.
@@ -163,6 +170,13 @@ type Bot struct {
 	// queues; done wakes an Enqueue that is waiting for room.
 	sendMu sync.RWMutex
 	done   chan struct{}
+
+	// replies and limited hold the per-customer reply counts (limit.go).
+	limitMu     sync.Mutex
+	replies     map[limitKey][]time.Time
+	limited     map[limitKey]time.Time
+	limitNoted  map[convKey]time.Time // chats given a reply-limit note lately
+	limitPruned time.Time
 
 	enqueueWait   time.Duration // how long Enqueue waits for room in a full queue
 	sendRetryWait time.Duration // pause before the one retry of a failed reply
@@ -220,6 +234,9 @@ func (b *Bot) Enqueue(j Job) error {
 	case b.queue(j) <- j:
 		return nil
 	case <-t.C:
+		if b.opts.Alerts != nil { // not at shutdown: that 429 is expected
+			b.opts.Alerts.Record(alerts.QueueFull, j.Event.Account.ID)
+		}
 		return ErrQueueFull
 	case <-b.done:
 		return ErrQueueFull
@@ -348,6 +365,13 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			b.handOffBotOff(ctx, log, acct, ev.Inbox.ID, conv)
 			return
 		}
+		if b.overLimit(limitKeyFor(acct, conv, ev.Sender.ID)) {
+			// Over the reply limit: nothing is read, transcribed or answered
+			// until the window ends; the chat goes (back) to staff.
+			tr.Outcome = "handoff:" + ReasonReplyLimit
+			b.passLimited(ctx, log, acct, ev.Inbox.ID, conv)
+			return
+		}
 		p := profile.Profile{AccountID: acct}
 		if len(ev.Attachments) > 0 { // text-only messages skip the extra profile query
 			p = b.mediaProfile(ctx, log, acct)
@@ -391,6 +415,7 @@ func (b *Bot) startTurn(ev webhook.Event, input string) *trace.Turn {
 }
 
 func (b *Bot) finishTurn(tr *trace.Turn) {
+	b.alertTurn(tr)
 	if b.opts.Tracer == nil || tr.Outcome == "waiting" { // a burst is traced once, when it is answered
 		return
 	}
@@ -399,6 +424,10 @@ func (b *Bot) finishTurn(tr *trace.Turn) {
 }
 
 func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, tr *trace.Turn, images []string) {
+	if !b.takeReply(limitKeyFor(acct, conv, tr.ContactID)) {
+		b.handOffReplyLimit(ctx, log, acct, inbox, conv, tr)
+		return
+	}
 	cw := b.opts.Chatwoot
 	if err := cw.SetTyping(ctx, acct, conv, true); err != nil {
 		log.Warn("typing on failed", "error", err)

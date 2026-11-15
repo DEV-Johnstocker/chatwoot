@@ -58,7 +58,12 @@ a chat.
   `EMBED_MODEL`. Settings saved on `/admin` override the `LLM_*`/`EMBED_*`
   values. Optional: `EMBED_FALLBACK_*` (backup route to the same embedding
   model), `REPLY_DELAY` (default `4s`), `CHATWOOT_READER_TOKEN`,
-  `BOT_RESOLVE_AFTER` (default `22h`, `0` = never resolve finished chats).
+  `BOT_RESOLVE_AFTER` (default `22h`, `0` = never resolve finished chats),
+  `SLACK_ALERT_WEBHOOK_URL` (the bot's own alerts; an incoming webhook to
+  `#chatwoot-ai-service`, may be the same one as `SLACK_BACKUP_WEBHOOK_URL`),
+  `ALERT_HANDOFF_SHARE` (default `0.5`), `REPLY_LIMIT` (default `30`, `0` =
+  off), `REPLY_LIMIT_WINDOW` (default `1h`). `ALERT_ENVIRONMENT` is set in the
+  compose file.
 - `CHATWOOT_READER_TOKEN` is the access token of a dedicated Chatwoot user,
   "AI Reader", used to re-read chats and to assign handoffs by workload. Keep
   that user an **Agent** (never Administrator), a member **only** of the

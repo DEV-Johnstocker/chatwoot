@@ -16,6 +16,7 @@ import (
 	_ "time/tzdata" // the distroless image has no zoneinfo; TIMEZONE needs it
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/admin"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/alerts"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/audit"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/autoresolve"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/bot"
@@ -149,6 +150,7 @@ func run() error {
 	// Private replies sent from the comment queue, until Meta's echo of each
 	// reaches its Chatwoot chat; the bot then adds the comment-lead note.
 	commentEchoes := &commentecho.Echoes{}
+	monitor := startAlerts(cfg, logger)
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
 		LLM:               completer,
@@ -176,6 +178,9 @@ func run() error {
 		AttachmentMessage: cfg.AttachmentMessage,
 		Location:          cfg.Location,
 		ReplyDelay:        cfg.ReplyDelay,
+		ReplyLimit:        cfg.Alerts.ReplyLimit,
+		ReplyLimitWindow:  cfg.Alerts.ReplyLimitWindow,
+		Alerts:            monitor,
 		Logger:            logger,
 		// Primary + fallback calls, plus Chatwoot API calls.
 		Timeout: 2*cfg.LLMTimeout + 30*time.Second,
@@ -255,7 +260,8 @@ func run() error {
 			Comments: commentQueue, Hours: adminHours,
 			Gaps: adminGaps(reader), ChatwootURL: cfg.ChatwootPublicURL,
 			Ratings: adminRatings(profiles), Replies: adminReplies(reader),
-			Sales: adminSales(saleStore),
+			Sales:  adminSales(saleStore),
+			Alerts: monitor,
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -630,4 +636,18 @@ func adminReplies(reader *chatwoot.Reader) admin.ReplyFeed {
 		return nil
 	}
 	return &ratings.Feed{Source: reader}
+}
+
+// startAlerts watches the bot for its own failures, checked every minute.
+// Without a Slack webhook they show on /admin and in the log only.
+func startAlerts(cfg config.Config, logger *slog.Logger) *alerts.Monitor {
+	var n alerts.Notifier // nil interface without a webhook
+	if cfg.Alerts.SlackWebhookURL != "" {
+		n = alerts.Slack{URL: cfg.Alerts.SlackWebhookURL}
+	}
+	m := alerts.New(alerts.Options{Notifier: n, Label: cfg.Alerts.Environment, SpikeShare: cfg.Alerts.HandoffSpikeShare,
+		Logger: logger.With("component", "alerts")})
+	logger.Info("bot alerts on", "slack", n != nil, "reply_limit", cfg.Alerts.ReplyLimit, "reply_limit_window", cfg.Alerts.ReplyLimitWindow.String())
+	go m.Run(context.Background(), time.Minute)
+	return m
 }
