@@ -19,7 +19,7 @@ type Kind string
 // Kinds.
 const (
 	KindProfile  Kind = "profile"  // business profile fields
-	KindDocument Kind = "document" // one knowledge document, by key
+	KindDocument Kind = "document" // one knowledge document, by key: added, replaced or deleted
 	KindSource   Kind = "source"   // a new web page or data file to keep in sync, by address
 )
 
@@ -40,6 +40,9 @@ var (
 	// ErrChanged means the app changed the proposal after the owner looked
 	// at it; the owner must look again.
 	ErrChanged = errors.New("the change was updated after you opened it")
+	// ErrTargetChanged means the document the change was proposed for was
+	// edited, added or deleted since: approving would overwrite newer work.
+	ErrTargetChanged = errors.New("the document changed since this proposal; reject it, or ask the app to propose again")
 )
 
 // Change is one waiting edit.

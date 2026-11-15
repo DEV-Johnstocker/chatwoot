@@ -147,7 +147,7 @@ bearer_token_env_var = "AISVC_MCP_TOKEN"</pre><button type="button" class="btn s
       <ul class="sources">
         <li><strong>{{T "Read only:"}}</strong> {{T "list documents with status and usage, read one, find near-copies, read the business profile, list website pages and data files, see recent changes, and ask the bot a test question."}}</li>
         <li><strong>{{T "Read and write"}}</strong> {{T "also: suggest a new or changed document (by its key, for example"}} <code>product-017</code>{{T ") or a change to the business name, about, tone and rules. These wait for your approval on"}} <a href="/admin/approvals?account={{.AccountID}}">{{T "AI approvals"}}</a>{{T "; customers keep seeing the current text until you approve."}}</li>
-        <li>{{T "Deleting a document, and syncing or rescheduling a website page or data file, take effect at once (a data file syncs in the background). Deletes and schedule changes show under Recent changes on Home as the AI tool; what a sync changes shows as “website sync”. The history is kept for 180 days by default."}}</li>
+        <li>{{T "Deleting a document waits for your approval on the AI approvals page, like other edits. Syncing or rescheduling a website page or data file takes effect at once (a data file syncs in the background). Approved deletes and schedule changes show under Recent changes on Home; what a sync changes shows as “website sync”. The history is kept for 180 days by default."}}</li>
       </ul>
     </section>
 
@@ -164,7 +164,7 @@ bearer_token_env_var = "AISVC_MCP_TOKEN"</pre><button type="button" class="btn s
           <label class="check"><input type="radio" name="access" value="read" checked>
             <span><strong>{{T "Read only"}}</strong><span class="field-hint">{{T "Safe for reviewing and testing."}}</span></span></label>
           <label class="check"><input type="radio" name="access" value="write">
-            <span><strong>{{T "Read and write"}}</strong><span class="field-hint">{{T "Edits wait for your approval. Deletes and syncs apply at once."}}</span></span></label>
+            <span><strong>{{T "Read and write"}}</strong><span class="field-hint">{{T "Edits and deletes wait for your approval. Syncs apply at once."}}</span></span></label>
         </fieldset>
         <label for="expires">{{T "Expires after"}}</label>
         <select id="expires" name="expires">

@@ -14,10 +14,12 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/oauth"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratelimit"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
@@ -132,7 +135,31 @@ type Handler struct {
 	Probe func(ctx context.Context, p settings.Provider) (llm.Result, error)
 	// ProbeEmbedding embeds one word with an embeddings provider. Nil uses a real call.
 	ProbeEmbedding func(ctx context.Context, p settings.Provider) error
+
+	// loginFails counts password attempts per client IP (an IPv6 /64), and
+	// loginFailsAll across all addresses (QA F-A-02). goodIPs are addresses
+	// that signed in with the right password recently.
+	loginFails, loginFailsAll ratelimit.Limiter
+	goodMu                    sync.Mutex
+	goodIPs                   map[string]time.Time
 }
+
+// Wrong /admin passwords are slowed down twice over:
+//   - per address: after loginMaxFails within loginWindow, that address gets
+//     429 until the window ends, even with the right password, so guessing
+//     gets no answer;
+//   - across all addresses: at most loginMaxFailsAll wrong passwords a minute
+//     are checked; beyond that, addresses that have not signed in correctly
+//     within goodIPTTL get 429 for the rest of the minute. It is a slowdown,
+//     not a lock: it ends with each minute, and the owner's known addresses
+//     and Cloudflare Access sign-ins pass.
+const (
+	loginMaxFails    = 10
+	loginWindow      = 10 * time.Minute
+	loginMaxFailsAll = 30
+	goodIPTTL        = 24 * time.Hour
+	maxGoodIPs       = 256
+)
 
 // Routes registers the admin endpoints on mux.
 func (h *Handler) Routes(mux *http.ServeMux) {
@@ -463,6 +490,8 @@ func (h *Handler) isOwner(email string) bool {
 // token, or a signed-in person who is not an owner, is refused.
 func (h *Handler) requireAuth(next http.Handler) http.Handler {
 	want := sha256.Sum256([]byte(h.Password))
+	h.loginFails.Period = loginWindow // set while routes are registered, before serving
+	h.loginFailsAll.Period = time.Minute
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h.AdminAccess != nil {
 			if tok := r.Header.Get(cfaccess.Header); tok != "" {
@@ -482,8 +511,24 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 			}
 		}
 		user, pass, ok := r.BasicAuth()
+		// Each attempt is reserved before the password is compared, under the
+		// limiter's lock, so parallel guesses cannot pass the limit. A right
+		// password gives the attempt back.
+		var done func(good bool)
+		if ok {
+			var retry int
+			if done, retry = h.reserveLogin(ratelimit.PrefixKey(ratelimit.ClientIP(r))); done == nil {
+				w.Header().Set("Retry-After", strconv.Itoa(retry))
+				http.Error(w, "too many wrong passwords; wait and try again", http.StatusTooManyRequests)
+				return
+			}
+		}
 		got := sha256.Sum256([]byte(pass))
-		if !ok || user != Username || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
+		good := ok && user == Username && subtle.ConstantTimeCompare(got[:], want[:]) == 1
+		if done != nil {
+			done(good)
+		}
+		if !good {
 			if ok {
 				h.Logger.Warn("admin login failed", "remote_addr", r.RemoteAddr)
 			}
@@ -493,6 +538,74 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// reserveLogin takes one password attempt for the address key before the
+// password is compared. done reports the outcome: a right password gives
+// the attempts back and remembers the address. done is nil when the attempt
+// is refused; retry is then the Retry-After in seconds.
+//
+// When the per-address table is full (an attacker filled it with other
+// addresses), the address is not tracked: its password is still checked,
+// so the owner gets in, and a wrong one is bounded by the all-address cap
+// below, which is one key and always tracked.
+func (h *Handler) reserveLogin(key string) (done func(good bool), retry int) {
+	undoIP, err := h.loginFails.Reserve(key, loginMaxFails)
+	tracked := err == nil
+	switch {
+	case errors.Is(err, ratelimit.ErrFull):
+		undoIP = func() {}
+	case err != nil:
+		return nil, int(loginWindow.Seconds())
+	}
+	// Only a tracked known address skips the all-address cap: an untracked
+	// one has no per-address limit, so it must always pay into the cap
+	// (someone behind the owner's NAT could otherwise guess freely).
+	var undoAll func()
+	if !tracked || !h.knownGood(key) {
+		if undoAll, err = h.loginFailsAll.Reserve("all", loginMaxFailsAll); err != nil {
+			undoIP() // this attempt was never checked
+			return nil, int(time.Minute.Seconds())
+		}
+	}
+	return func(good bool) {
+		if !good {
+			return
+		}
+		undoIP()
+		if undoAll != nil {
+			undoAll()
+		}
+		h.rememberGood(key)
+	}, 0
+}
+
+// knownGood reports whether key signed in with the right password within goodIPTTL.
+func (h *Handler) knownGood(key string) bool {
+	h.goodMu.Lock()
+	defer h.goodMu.Unlock()
+	at, ok := h.goodIPs[key]
+	return ok && time.Since(at) < goodIPTTL
+}
+
+// rememberGood records a right password from key. Only right passwords add
+// to the list, and it keeps at most maxGoodIPs (the oldest goes first).
+func (h *Handler) rememberGood(key string) {
+	h.goodMu.Lock()
+	defer h.goodMu.Unlock()
+	if h.goodIPs == nil {
+		h.goodIPs = map[string]time.Time{}
+	}
+	if _, ok := h.goodIPs[key]; !ok && len(h.goodIPs) >= maxGoodIPs {
+		oldest := ""
+		for k, at := range h.goodIPs {
+			if oldest == "" || at.Before(h.goodIPs[oldest]) {
+				oldest = k
+			}
+		}
+		delete(h.goodIPs, oldest)
+	}
+	h.goodIPs[key] = time.Now()
 }
 
 // csp allows only our own script file (no inline scripts, no eval) and
