@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Rate replies · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "replies"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Rate replies"}}</h1>
+      <p class="lead">{{T "Recent replies the bot sent to customers. Mark each one good or needs work, and say what was wrong. Your ratings are kept so they can become test cases for the bot."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/replies" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "Rating is off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+
+  <ul class="stats" aria-label="{{T "Show"}}">
+    <li><a href="/admin/replies?account={{.AccountID}}" aria-current="{{if eq .View "torate"}}true{{else}}false{{end}}"><span class="stat-num">{{if eq .View "torate"}}{{len .Replies}}{{else}}–{{end}}</span> <span class="stat-label">{{T "To rate"}}</span></a></li>
+    <li><a href="/admin/replies?account={{.AccountID}}&amp;view=rated" aria-current="{{if and (eq .View "rated") (eq .Filter "")}}true{{else}}false{{end}}"><span class="stat-num">{{.Total}}</span> <span class="stat-label">{{T "Rated"}}</span></a></li>
+    <li><a href="/admin/replies?account={{.AccountID}}&amp;view=rated&amp;filter=good" aria-current="{{if eq .Filter "good"}}true{{else}}false{{end}}"><span class="stat-num">{{.Good}}</span> <span class="stat-label">👍 {{T "Good"}}</span></a></li>
+    <li><a href="/admin/replies?account={{.AccountID}}&amp;view=rated&amp;filter=bad" aria-current="{{if eq .Filter "bad"}}true{{else}}false{{end}}"><span class="stat-num">{{.Bad}}</span> <span class="stat-label">👎 {{T "Needs work"}}</span></a></li>
+  </ul>
+
+  {{if and (eq .View "torate") (not .FeedOn)}}
+  <div class="alert err" role="alert"><strong>{{T "Recent replies cannot be read."}}</strong> {{T "Set %s for ai-service and restart it." "CHATWOOT_READER_TOKEN"}}</div>
+  {{end}}
+
+  {{if and (not .Replies) (not .Error)}}
+  <p class="empty">{{if eq .View "rated"}}{{T "No ratings yet."}}{{else if .FeedOn}}{{T "Nothing new to rate in these chats."}}{{end}}</p>
+  {{end}}
+  {{if .Hidden}}<p class="hint">{{T "%d replies in these chats are already rated (see Rated)." .Hidden}}</p>{{end}}
+
+  {{range .Replies}}
+  <section class="card reply" aria-label="{{T "Reply in chat #%d" .ConversationID}}">
+    <p class="hint">{{with .When}}{{.}} · {{end}}{{if .InboxID}}{{range inboxes $.AccountID .InboxID}}{{if .Selected}}{{.Label}} · {{end}}{{end}}{{end}}{{if .ChatURL}}<a href="{{.ChatURL}}" target="_blank" rel="noopener">{{T "Open chat #%d" .ConversationID}}</a>{{else}}{{T "Chat #%d" .ConversationID}}{{end}}</p>
+    <p class="gap-label">{{T "Customer"}}</p>
+    <blockquote class="rp-text">{{if .Customer}}{{.Customer}}{{else}}<span class="hint">{{T "(no new customer message: the bot followed up)"}}</span>{{end}}</blockquote>
+    <p class="gap-label">{{T "Bot replied"}}</p>
+    <blockquote class="rp-text rp-bot">{{.Bot}}</blockquote>
+    {{if .Rated}}
+    <p class="rp-verdict">{{if .Good}}<span class="badge on">👍 {{T "Good"}}</span>{{else}}<span class="badge expired">👎 {{T "Needs work"}}</span> {{.ReasonLabel}}{{end}}{{with .Note}} · “{{.}}”{{end}} <span class="hint">· {{T "rated %s" .RatedWhen}}</span></p>
+    {{end}}
+    <form method="post" action="/admin/replies" class="rp-form" autocomplete="off">
+      <input type="hidden" name="account" value="{{$.AccountID}}">
+      <input type="hidden" name="conversation" value="{{.ConversationID}}">
+      <input type="hidden" name="message" value="{{.MessageID}}">
+      <input type="hidden" name="customer" value="{{.Customer}}">
+      <input type="hidden" name="bot" value="{{.Bot}}">
+      {{if .RepliedUnix}}<input type="hidden" name="replied_at" value="{{.RepliedUnix}}">{{end}}
+      <input type="hidden" name="view" value="{{$.View}}">
+      {{with $.Filter}}<input type="hidden" name="filter" value="{{.}}">{{end}}
+      {{if gt $.Page 1}}<input type="hidden" name="page" value="{{$.Page}}">{{end}}
+      <div class="grid2">
+        <div><label for="why-{{.MessageID}}">{{T "What was wrong? (for 👎)"}}</label>
+        {{$cur := .Reason}}<select id="why-{{.MessageID}}" name="reason">
+          <option value="">{{T "Choose…"}}</option>
+          {{range $.Reasons}}<option value="{{.Value}}"{{if eq .Value $cur}} selected{{end}}>{{.Label}}</option>{{end}}
+        </select></div>
+        <div><label for="note-{{.MessageID}}">{{T "Note (optional)"}}</label>
+        <textarea id="note-{{.MessageID}}" name="note" rows="2" maxlength="1000" placeholder="{{T "What should it have said?"}}">{{.Note}}</textarea></div>
+      </div>
+      <div class="actions">
+        <button type="submit" name="rating" value="bad">👎 {{T "Needs work"}}</button>
+        <button type="submit" name="rating" value="good" class="primary">👍 {{T "Good"}}</button>
+      </div>
+    </form>
+  </section>
+  {{end}}
+
+  {{if eq .View "torate"}}{{if .FeedOn}}
+  <nav class="pager" aria-label="{{T "More chats"}}">
+    {{with .Prev}}<a class="btn" href="/admin/replies?account={{$.AccountID}}&amp;page={{.}}">{{T "Newer chats"}}</a>{{end}}
+    {{with .Next}}<a class="btn" href="/admin/replies?account={{$.AccountID}}&amp;page={{.}}">{{T "Older chats"}}</a>{{end}}
+  </nav>
+  {{end}}{{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>

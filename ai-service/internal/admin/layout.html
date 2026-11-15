@@ -65,6 +65,10 @@
   .gap-label { display: block; color: var(--muted); font-size: .8rem; font-weight: 600; margin: 0 0 4px; }
   .gap-sum { margin: 0 0 14px; }
   .gap-form { margin: 0 0 8px; }
+  .rp-text { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--border); white-space: pre-line; overflow-wrap: anywhere; }
+  .rp-bot { border-left-color: var(--accent); }
+  .rp-verdict { margin: 0 0 12px; }
+  .pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; }
   .gap-done { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--border); }
   .badge { font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
   .badge.on { background: var(--ok-bg); color: var(--ok-text); border-color: transparent; }
@@ -429,6 +433,7 @@
     <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
     <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
     <a href="/admin/images"{{if eq . "images"}} aria-current="page"{{end}}>{{T "Bot images"}}</a>
+    <a href="/admin/replies"{{if eq . "replies"}} aria-current="page"{{end}}>{{T "Rate replies"}}</a>
     <a href="/admin/gaps"{{if eq . "gaps"}} aria-current="page"{{end}}>{{T "Unanswered questions"}}</a>
     <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
     <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
