@@ -35,6 +35,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratelimit"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/websync"
@@ -132,6 +133,11 @@ type Handler struct {
 	// Gaps lists the questions the bot could not answer (Chatwoot label
 	// kb-gap); nil shows the gap report as off (no reader token).
 	Gaps GapFinder
+	// Ratings keeps the owner's ratings of bot replies; nil turns the
+	// "Rate replies" page off (no database). Replies lists recent bot
+	// replies from Chatwoot; nil leaves only the rated list.
+	Ratings ratings.Store
+	Replies ReplyFeed
 	// ChatwootURL is Chatwoot's public address for "Open chat" links; empty hides them.
 	ChatwootURL string
 	// Tester runs the reply pipeline for the test page; nil turns that page off.
@@ -190,6 +196,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
 	mux.Handle("GET /admin/images", wrap(h.showImages))
 	mux.Handle("POST /admin/images", wrap(h.submitImage))
+	mux.Handle("GET /admin/replies", wrap(h.showReplies))
+	mux.Handle("POST /admin/replies", wrap(h.submitReplies))
 	mux.Handle("GET /admin/gaps", wrap(h.showGaps))
 	mux.Handle("POST /admin/gaps", wrap(h.submitGaps))
 	mux.Handle("GET /admin/approvals", wrap(h.showApprovals))

@@ -38,6 +38,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/places"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/recentchat"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
@@ -243,6 +244,7 @@ func run() error {
 			Pending: pendingStore(profiles), Approver: adminApprover(srvMCP),
 			Comments: commentQueue, Hours: adminHours,
 			Gaps: adminGaps(reader), ChatwootURL: cfg.ChatwootPublicURL,
+			Ratings: adminRatings(profiles), Replies: adminReplies(reader),
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -548,4 +550,20 @@ func adminGaps(reader *chatwoot.Reader) admin.GapFinder {
 		return nil
 	}
 	return &gaps.Finder{Source: reader}
+}
+
+// adminRatings keeps reply ratings in the database; nil turns the page off.
+func adminRatings(profiles *profile.Postgres) ratings.Store {
+	if profiles == nil {
+		return nil
+	}
+	return &ratings.Postgres{Pool: profiles.Pool}
+}
+
+// adminReplies lists recent bot replies with the reader token; nil without it.
+func adminReplies(reader *chatwoot.Reader) admin.ReplyFeed {
+	if reader == nil {
+		return nil
+	}
+	return &ratings.Feed{Source: reader}
 }
