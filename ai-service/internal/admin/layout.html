@@ -335,6 +335,13 @@
   }
   .slack-state { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin: 8px 0 12px; }
   fieldset.spike { margin-top: 20px; }
+  /* Follow-up */
+  form.nudge-settings .nudge-fields { margin-top: 16px; max-width: 60ch; }
+  form.nudge-settings .nudge-fields select { width: auto; }
+  form.nudge-settings fieldset.mode-choice { margin-top: 16px; }
+  form.nudge-settings .nudge-preview { margin-top: 12px; max-width: 60ch; }
+  form.nudge-settings .nudge-preview .chat { margin: 6px 0 0; }
+  ul.nudge-rules { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
   /* Bot on/off */
   .bot-state { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
   .bot-state .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
@@ -475,6 +482,7 @@
     <a href="/admin"{{if eq . "home"}} aria-current="page"{{end}}>{{T "Home"}}</a>
     <a href="/admin/hours"{{if eq . "hours"}} aria-current="page"{{end}}>{{T "Bot on/off"}}</a>
     <a href="/admin/alerts"{{if eq . "alerts"}} aria-current="page"{{end}}>{{T "Alerts"}}</a>
+    <a href="/admin/nudge"{{if eq . "nudge"}} aria-current="page"{{end}}>{{T "Follow-up"}}</a>
     <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
     <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
     <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
@@ -492,7 +500,7 @@
     <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
 {{end}}
 
-{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "history"}}{{T "History"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "spend"}}{{T "AI spend"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
+{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "history"}}{{T "History"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "spend"}}{{T "AI spend"}}{{else if eq . "providers"}}{{T "AI providers"}}{{else if eq . "nudge"}}{{T "Follow-up"}}{{end}}{{end}}
 
 {{define "spend-banner"}}
 {{range spendWarnings}}

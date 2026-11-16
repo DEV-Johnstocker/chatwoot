@@ -97,6 +97,27 @@ func TestCheck_FemaleVoice(t *testing.T) {
 	}
 }
 
+func TestCheck_EnglishChatRefusesBotPressureAndLinks(t *testing.T) {
+	chat := []gaps.Message{{Incoming: true, Content: "how much is the course?"}, {Outgoing: true, FromBot: true, Content: "It is 9,900 baht."}}
+	for _, text := range []string{
+		"Hi! Our ai can help with the course.",
+		"Hi! This is the shop bot, ask me anything about the course.",
+		"Hurry, the course offer is limited!",
+		"Hi! There is a discount on the course this week.",
+		"Hi! See shop.xyz for the course.",
+		"Hi! I don't know if you saw the course details.",
+	} {
+		t.Run(text, func(t *testing.T) {
+			// Act
+			err := Check(text, chat)
+			// Assert
+			if err == nil {
+				t.Fatalf("Check(%q) = nil, want refused", text)
+			}
+		})
+	}
+}
+
 func TestCheck_EnglishChatRefusesThai(t *testing.T) {
 	// Arrange
 	chat := []gaps.Message{{Incoming: true, Content: "how much is the course?"}, {Outgoing: true, FromBot: true, Content: "It is 9,900 baht."}}
@@ -149,6 +170,19 @@ func TestLLMWriter_SendsPublicTranscriptOnly(t *testing.T) {
 	}
 }
 
+func TestWriteOnlyWhenTheRuleAsks(t *testing.T) {
+	// Arrange
+	s := newSweeper(nil, nil)
+	f := &fakeLLM{reply: "สวัสดีครับคุณลูกค้า ทักมาได้เลยครับ"}
+	s.Writer = &LLMWriter{LLM: f}
+	// Act
+	got, written := s.message(context.Background(), Rule{On: true, Text: "fixed"}, sampleThaiChat())
+	// Assert
+	if got != "fixed" || written || f.got != nil {
+		t.Fatalf("got %q written=%v calls=%v, want the fixed text and no model call", got, written, f.got)
+	}
+}
+
 func TestWriteOrFallback(t *testing.T) {
 	cases := map[string]struct {
 		w    Writer
@@ -163,9 +197,9 @@ func TestWriteOrFallback(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Arrange
 			s := newSweeper(nil, nil)
-			s.Text, s.Writer = "fixed", tc.w
+			s.Writer = tc.w
 			// Act
-			got, _ := s.message(context.Background(), sampleThaiChat())
+			got, _ := s.message(context.Background(), Rule{On: true, Text: "fixed", Write: true}, sampleThaiChat())
 			// Assert
 			if got != tc.want {
 				t.Fatalf("message = %q, want %q", got, tc.want)

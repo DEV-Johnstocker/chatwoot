@@ -204,7 +204,8 @@ func run() error {
 	}, cfg.Workers, cfg.QueueSize)
 	b.Start(context.Background())
 	startAutoResolve(cfg, reader, logger)
-	startNudge(cfg, reader, botHours, rewriteLLM, logger)
+	nudgeSettings := openNudgeSettings(cfg, logger)
+	startNudge(cfg, nudgeSettings, reader, botHours, metered(rewriteLLM, rec, spend.PurposeNudge, 0), logger)
 	if webSyncer != nil {
 		go webSyncer.Run(context.Background(), 10*time.Minute)
 	}
@@ -283,6 +284,7 @@ func run() error {
 			Alerts: monitor, AlertSettings: alertSettings, SlackConfigured: cfg.Alerts.SlackWebhookURL != "",
 			Spend: adminSpend(profiles, spendMonitor),
 			Leads: adminLeads(leadStore),
+			Nudge: nudgeSettings, NudgeReady: reader != nil,
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -644,29 +646,40 @@ func startAutoResolve(cfg config.Config, reader *chatwoot.Reader, logger *slog.L
 	go s.Run(context.Background(), 15*time.Minute)
 }
 
-// startNudge sends the one follow-up to quiet priced chats, every 15 minutes.
-// Like auto-resolve it needs the reader token to list conversations.
-func startNudge(cfg config.Config, reader *chatwoot.Reader, hours bot.Hours, small llm.Completer, logger *slog.Logger) {
-	if cfg.BotNudgeAfter <= 0 || reader == nil {
-		logger.Info("follow-up nudge off: needs CHATWOOT_READER_TOKEN, BOT_NUDGE_AFTER and BOT_NUDGE_TEXT")
-		return
+// openNudgeSettings loads the owner's per-account follow-up settings
+// (/admin/nudge), kept next to the AI provider settings on the data volume.
+// BOT_NUDGE_* give the values until the owner saves an account. A damaged
+// file turns every account off (bad entries only their account) and is logged.
+func openNudgeSettings(cfg config.Config, logger *slog.Logger) *nudge.SettingsStore {
+	path := filepath.Join(filepath.Dir(cfg.SettingsPath), "nudge-settings.json")
+	s, err := nudge.OpenSettings(path, nudge.Defaults{After: cfg.BotNudgeAfter, Text: cfg.BotNudgeText,
+		Write: cfg.BotNudgeWrite, Accounts: cfg.BotNudgeAccounts, ResolveAfter: cfg.BotResolveAfter})
+	if err != nil {
+		logger.Error("nudge settings: damaged file or entries are off", "error", err)
 	}
-	accounts := map[int64]bool{}
-	for _, id := range cfg.BotNudgeAccounts {
-		accounts[id] = true
+	return s
+}
+
+// startNudge sends the one follow-up to quiet priced chats, every 15 minutes,
+// to each account whose rule is on. Like auto-resolve it needs the reader
+// token to list conversations. The writer uses the small (rewrite) model;
+// an account's fixed text is its fallback.
+func startNudge(cfg config.Config, rules *nudge.SettingsStore, reader *chatwoot.Reader, hours bot.Hours, small llm.Completer, logger *slog.Logger) {
+	if reader == nil {
+		logger.Info("follow-up nudge off: needs CHATWOOT_READER_TOKEN")
+		return
 	}
 	s := &nudge.Sweeper{
 		List: reader, Chat: nudgeChat{Reader: reader, Client: chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil)},
-		Accounts: accounts, After: cfg.BotNudgeAfter, Text: cfg.BotNudgeText,
+		Rules: rules, Writer: &nudge.LLMWriter{LLM: small},
 		Now: time.Now, Logger: logger.With("component", "nudge"),
 	}
 	if hours != nil {
 		s.Hours = hours
 	}
-	if cfg.BotNudgeWrite {
-		s.Writer = &nudge.LLMWriter{LLM: small} // the rewrite (small) model; BOT_NUDGE_TEXT is the fallback
-	}
-	logger.Info("follow-up nudge on", "after", cfg.BotNudgeAfter.String(), "accounts", cfg.BotNudgeAccounts, "written", cfg.BotNudgeWrite)
+	d := rules.Defaults()
+	logger.Info("follow-up nudge ready: each account's setting on /admin/nudge",
+		"default_after", d.After.String(), "default_accounts", d.Accounts, "default_written", d.Write)
 	go s.Run(context.Background(), 15*time.Minute)
 }
 

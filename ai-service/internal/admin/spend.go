@@ -217,7 +217,7 @@ func purposeName(lang, p string) string {
 		spend.PurposeNote: "Notes for staff", spend.PurposeSticker: "Sticker replies",
 		spend.PurposeComment: "Comment reply drafts", spend.PurposeCommentReview: "Comment draft review",
 		spend.PurposeEmbedding: "Knowledge search (embeddings)", spend.PurposeTranscription: "Voice notes",
-		spend.PurposeTest: "Your tests (Test bot, AI tools)",
+		spend.PurposeNudge: "Follow-up messages", spend.PurposeTest: "Your tests (Test bot, AI tools)",
 	}
 	if n, ok := names[p]; ok {
 		return tr(lang, n)

@@ -57,6 +57,7 @@ func init() {
 		"Replies to customers":            "ตอบลูกค้า",
 		"Search question rewrite":         "เรียบเรียงคำถามเพื่อค้นหา",
 		"Notes for staff":                 "โน้ตถึงทีมงาน",
+		"Follow-up messages":              "ข้อความติดตามลูกค้า",
 		"Sticker replies":                 "ตอบสติกเกอร์",
 		"Comment reply drafts":            "ร่างตอบคอมเมนต์",
 		"Comment draft review":            "ตรวจร่างตอบคอมเมนต์",

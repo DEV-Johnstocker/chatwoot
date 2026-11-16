@@ -127,7 +127,10 @@ var wrongVoice = map[voice][]string{
 }
 
 var (
-	linkLike = regexp.MustCompile(`(?i)https?:|www\.|@|\b[a-z0-9-]+\.(com|net|org|co|th|io|me|ly|shop|example)\b`)
+	// linkLike: a scheme, www., a handle, or anything shaped like a domain.
+	linkLike = regexp.MustCompile(`(?i)https?:|www\.|@|[a-z0-9-]\.[a-z]{2,}\b`)
+	// englishForbidden: bot words, pressure and promotions in an English draft.
+	englishForbidden = regexp.MustCompile(`(?i)\b(ai|a\.i|bot|chatbot|robot|automated|assistant|hurry|urgent|limited|last chance|deadline|discount|promo|promotion|sale|offer ends|don'?t know|not sure)\b`)
 	// forbidden phrases: unknowns the owner dislikes, pressure and
 	// promotions, and words that say a bot wrote it.
 	forbidden = []string{
@@ -156,10 +159,14 @@ func Check(text string, msgs []gaps.Message) error {
 	case linkLike.MatchString(text):
 		return errors.New("contains a link or handle")
 	}
+	lower := strings.ToLower(text)
 	for _, f := range forbidden {
-		if strings.Contains(text, f) {
+		if strings.Contains(lower, strings.ToLower(f)) {
 			return fmt.Errorf("contains a forbidden phrase")
 		}
+	}
+	if englishForbidden.MatchString(text) {
+		return fmt.Errorf("contains a forbidden phrase")
 	}
 	v := voiceOf(msgs)
 	if v == voiceEnglish {
@@ -191,20 +198,21 @@ func thaiChat(msgs []gaps.Message) bool {
 	return false
 }
 
-// message is the follow-up for this chat: the Writer's draft when it passes
-// Check, else the fixed Text. written reports which one.
-func (s *Sweeper) message(ctx context.Context, msgs []gaps.Message) (text string, written bool) {
-	if s.Writer == nil {
-		return s.Text, false
+// message is the follow-up for this chat: the Writer's draft when the rule
+// asks for one and it passes Check, else the rule's fixed text. written
+// reports which one.
+func (s *Sweeper) message(ctx context.Context, rule Rule, msgs []gaps.Message) (text string, written bool) {
+	if !rule.Write || s.Writer == nil {
+		return rule.Text, false
 	}
 	draft, err := s.Writer.Write(ctx, msgs)
 	if err != nil {
 		s.Logger.Warn("nudge: write follow-up; sending the fixed text", "error", err)
-		return s.Text, false
+		return rule.Text, false
 	}
 	if err := Check(draft, msgs); err != nil {
 		s.Logger.Info("nudge: written follow-up refused; sending the fixed text", "reason", err.Error())
-		return s.Text, false
+		return rule.Text, false
 	}
 	return draft, true
 }
