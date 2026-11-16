@@ -9,6 +9,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strconv"
 	"strings"
@@ -148,11 +149,17 @@ func eachStore(t *testing.T, test func(t *testing.T, s Store, acct int64)) {
 	for name, open := range stores {
 		t.Run(name, func(t *testing.T) {
 			s := open(t)
-			acct := 700000 + time.Now().UnixNano()%100000
+			// A random account per test: a clock-based one repeated on
+			// clocks that count whole microseconds, so one test saw another's
+			// removed copies.
+			acct := 700000 + rand.Int64N(1_000_000_000)
 			t.Cleanup(func() {
 				list, _ := s.List(context.Background(), acct)
 				for _, m := range list {
 					_ = s.Delete(context.Background(), acct, m.ID)
+				}
+				if pg, ok := s.(*Postgres); ok {
+					_, _ = pg.Pool.Exec(context.Background(), `DELETE FROM bot_images_removed WHERE account_id IN ($1, $2)`, acct, acct+1)
 				}
 			})
 			test(t, s, acct)
