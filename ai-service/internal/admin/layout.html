@@ -125,6 +125,11 @@
   nav a { color: var(--muted); text-decoration: none; font-weight: 600; padding: 10px 12px; min-height: 44px; display: flex; align-items: center; border-radius: 8px; white-space: nowrap; }
   nav a:hover { background: var(--bg); color: var(--text); }
   nav a[aria-current="page"] { color: var(--text); background: var(--bg); box-shadow: inset 3px 0 0 var(--accent); }
+  /* Menu groups: a small heading over each set of pages. */
+  .nav-group { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  /* Desktop sidebar is mouse-driven: tighter rows keep every group on one screen (phone menu keeps 44px). */
+  .sidebar nav a { min-height: 36px; padding: 6px 12px; }
+  .nav-head { margin: 0 0 2px; padding: 0 12px; color: var(--muted); font-size: .75rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   textarea { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--field-border); border-radius: 8px; padding: 10px 12px; min-height: 160px; resize: vertical; }
   input[type="file"] { padding: 8px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
@@ -383,7 +388,6 @@
   h3.sub { font-size: 1rem; font-weight: 650; margin: 20px 0 4px; }
   .card.newtoken { border: 2px solid var(--accent); }
   /* Home checklist and test chat */
-  .nav-settings { margin-top: 16px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; }
   .status { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 8px; margin: 0 0 16px; font-weight: 600;
     border: 1px solid color-mix(in srgb, currentColor 22%, transparent); }
   .status.ready { background: var(--ok-bg); color: var(--ok-text); }
@@ -480,24 +484,39 @@
 
 {{define "nav-links"}}
     <a href="/admin"{{if eq . "home"}} aria-current="page"{{end}}>{{T "Home"}}</a>
-    <a href="/admin/hours"{{if eq . "hours"}} aria-current="page"{{end}}>{{T "Bot on/off"}}</a>
-    <a href="/admin/alerts"{{if eq . "alerts"}} aria-current="page"{{end}}>{{T "Alerts"}}</a>
-    <a href="/admin/nudge"{{if eq . "nudge"}} aria-current="page"{{end}}>{{T "Follow-up"}}</a>
-    <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
-    <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
-    <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
-    <a href="/admin/promotions"{{if eq . "promos"}} aria-current="page"{{end}}>{{T "Promotions"}}</a>
-    <a href="/admin/images"{{if eq . "images"}} aria-current="page"{{end}}>{{T "Bot images"}}</a>
-    <a href="/admin/sales"{{if eq . "sales"}} aria-current="page"{{end}}>{{T "Sales"}}</a>
-    <a href="/admin/replies"{{if eq . "replies"}} aria-current="page"{{end}}>{{T "Rate replies"}}</a>
-    <a href="/admin/gaps"{{if eq . "gaps"}} aria-current="page"{{end}}>{{T "Unanswered questions"}}</a>
-    <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
-    <a href="/admin/history"{{if eq . "history"}} aria-current="page"{{end}}>{{T "History"}}</a>
-    <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
-    <a href="/admin/leads"{{if eq . "leads"}} aria-current="page"{{end}}>{{T "Leads"}}</a>
-    <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
-    <a href="/admin/spend"{{if eq . "spend"}} aria-current="page"{{end}}>{{T "AI spend"}}{{with spendWarnings}}&nbsp;<span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}</a>
-    <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
+    <div class="nav-group" role="group" aria-label="{{T "Bot"}}">
+      <p class="nav-head" aria-hidden="true">{{T "Bot"}}</p>
+      <a href="/admin/hours"{{if eq . "hours"}} aria-current="page"{{end}}>{{T "Bot on/off"}}</a>
+      <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
+      <a href="/admin/nudge"{{if eq . "nudge"}} aria-current="page"{{end}}>{{T "Follow-up"}}</a>
+    </div>
+    <div class="nav-group" role="group" aria-label="{{T "What the bot knows"}}">
+      <p class="nav-head" aria-hidden="true">{{T "What the bot knows"}}</p>
+      <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
+      <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
+      <a href="/admin/promotions"{{if eq . "promos"}} aria-current="page"{{end}}>{{T "Promotions"}}</a>
+      <a href="/admin/images"{{if eq . "images"}} aria-current="page"{{end}}>{{T "Bot images"}}</a>
+    </div>
+    <div class="nav-group" role="group" aria-label="{{T "Improve answers"}}">
+      <p class="nav-head" aria-hidden="true">{{T "Improve answers"}}</p>
+      <a href="/admin/replies"{{if eq . "replies"}} aria-current="page"{{end}}>{{T "Rate replies"}}</a>
+      <a href="/admin/gaps"{{if eq . "gaps"}} aria-current="page"{{end}}>{{T "Unanswered questions"}}</a>
+      <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
+    </div>
+    <div class="nav-group" role="group" aria-label="{{T "Sales and leads"}}">
+      <p class="nav-head" aria-hidden="true">{{T "Sales and leads"}}</p>
+      <a href="/admin/sales"{{if eq . "sales"}} aria-current="page"{{end}}>{{T "Sales"}}</a>
+      <a href="/admin/leads"{{if eq . "leads"}} aria-current="page"{{end}}>{{T "Leads"}}</a>
+      <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
+    </div>
+    <div class="nav-group" role="group" aria-label="{{T "Settings"}}">
+      <p class="nav-head" aria-hidden="true">{{T "Settings"}}</p>
+      <a href="/admin/alerts"{{if eq . "alerts"}} aria-current="page"{{end}}>{{T "Alerts"}}</a>
+      <a href="/admin/spend"{{if eq . "spend"}} aria-current="page"{{end}}>{{T "AI spend"}}{{with spendWarnings}}&nbsp;<span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}</a>
+      <a href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
+      <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
+      <a href="/admin/history"{{if eq . "history"}} aria-current="page"{{end}}>{{T "History"}}</a>
+    </div>
 {{end}}
 
 {{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "history"}}{{T "History"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "spend"}}{{T "AI spend"}}{{else if eq . "providers"}}{{T "AI providers"}}{{else if eq . "nudge"}}{{T "Follow-up"}}{{end}}{{end}}
