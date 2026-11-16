@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/embed"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/spend"
 )
 
 // Kind is the type of a knowledge document.
@@ -225,7 +226,7 @@ func (s *Service) embedChunks(ctx context.Context, d Document) (string, []Chunk,
 		return "", nil, embed.ErrNotConfigured
 	}
 	texts := s.chunkTexts(d)
-	vecs, err := s.Embedder.Embed(ctx, texts)
+	vecs, err := s.Embedder.Embed(spend.WithAccount(ctx, d.AccountID), texts)
 	if err != nil {
 		return "", nil, err
 	}
@@ -328,7 +329,7 @@ func (s *Service) Similar(ctx context.Context, d Document) ([]Hit, error) {
 	if model == "" || len(texts) == 0 {
 		return nil, nil
 	}
-	vecs, err := s.Embedder.Embed(ctx, texts[:1])
+	vecs, err := s.Embedder.Embed(spend.WithAccount(ctx, d.AccountID), texts[:1])
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +412,7 @@ func (s *Service) Retrieve(ctx context.Context, accountID, inboxID int64, querie
 	if len(queries) == 0 || model == "" {
 		return nil, nil
 	}
-	vecs, err := s.Embedder.Embed(ctx, queries)
+	vecs, err := s.Embedder.Embed(spend.WithAccount(ctx, accountID), queries)
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +491,7 @@ func (s *Service) Search(ctx context.Context, accountID, inboxID int64, text str
 	if text == "" || model == "" {
 		return nil, nil
 	}
-	vecs, err := s.Embedder.Embed(ctx, []string{text})
+	vecs, err := s.Embedder.Embed(spend.WithAccount(ctx, accountID), []string{text})
 	if err != nil {
 		return nil, err
 	}

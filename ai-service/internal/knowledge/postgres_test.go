@@ -1269,3 +1269,60 @@ func TestMigrate_V21KeepsRemovedPicturesPrivate(t *testing.T) {
 		t.Fatalf("insert ok=%v bad account=%v no name=%v bad type=%v", okErr, badAcct, noName, badType)
 	}
 }
+
+// v22 on a Supabase-like database: the upgrade from v21 must create the AI
+// spend tables with row level security on, anon/authenticated shut out of the
+// tables and the usage id sequence, and refuse values the service never writes.
+func TestMigrateV22Spend(t *testing.T) {
+	// Arrange
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+		END $$;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+		DROP TABLE ai_usage, ai_spend_caps, ai_spend_alerts;
+		UPDATE kb_schema_version SET version = 21;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;`)
+	})
+
+	// Act
+	err := db.Migrate(ctx)
+	exec := func(sql string) error { _, e := db.Pool.Exec(ctx, sql); return e }
+	okUsage := exec(`INSERT INTO ai_usage (account_id, purpose, model, input_tokens, output_tokens) VALUES (1, 'reply', 'gpt-6-luna', 10, 2)`)
+	negTokens := exec(`INSERT INTO ai_usage (purpose, input_tokens) VALUES ('reply', -1)`)
+	noPurpose := exec(`INSERT INTO ai_usage (purpose) VALUES ('')`)
+	okCap := exec(`INSERT INTO ai_spend_caps (account_id, daily_micros) VALUES (0, 5000000)`)
+	zeroCap := exec(`INSERT INTO ai_spend_caps (account_id, monthly_micros) VALUES (2, 0)`)
+	okAlert := exec(`INSERT INTO ai_spend_alerts (account_id, period, period_start, level, cap_micros, spent_micros) VALUES (0, 'day', '2026-11-16', 80, 5000000, 4100000)`)
+	badLevel := exec(`INSERT INTO ai_spend_alerts (account_id, period, period_start, level, cap_micros, spent_micros) VALUES (0, 'day', '2026-11-16', 50, 5000000, 1)`)
+	dupAlert := exec(`INSERT INTO ai_spend_alerts (account_id, period, period_start, level, cap_micros, spent_micros) VALUES (0, 'day', '2026-11-16', 80, 5000000, 4200000)`)
+
+	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	var rlsOff, tableOpen, seqOpen bool
+	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
+		EXISTS (SELECT 1 FROM pg_class WHERE relname IN ('ai_usage', 'ai_spend_caps', 'ai_spend_alerts') AND NOT relrowsecurity),
+		EXISTS (SELECT 1 FROM pg_roles r, unnest(ARRAY['ai_usage', 'ai_spend_caps', 'ai_spend_alerts']) tbl
+			WHERE r.rolname IN ('anon', 'authenticated') AND has_table_privilege(r.rolname, tbl, 'SELECT,INSERT,UPDATE,DELETE')),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_sequence_privilege(r.rolname, 'ai_usage_id_seq', 'USAGE,SELECT,UPDATE'))`).Scan(&version, &rlsOff, &tableOpen, &seqOpen); err != nil {
+		t.Fatal(err)
+	}
+	if version != SchemaVersion || rlsOff || tableOpen || seqOpen {
+		t.Fatalf("version=%d rls off=%v table open=%v sequence open=%v", version, rlsOff, tableOpen, seqOpen)
+	}
+	if okUsage != nil || okCap != nil || okAlert != nil || negTokens == nil || noPurpose == nil || zeroCap == nil || badLevel == nil || dupAlert == nil {
+		t.Fatalf("usage ok=%v cap ok=%v alert ok=%v neg=%v nopurpose=%v zerocap=%v badlevel=%v dup=%v",
+			okUsage, okCap, okAlert, negTokens, noPurpose, zeroCap, badLevel, dupAlert)
+	}
+}

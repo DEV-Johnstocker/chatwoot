@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "AI spend · Pronto"}}</title>
+<style>
+  .spend-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; margin: 0 0 16px; }
+  .spend-tile { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 14px 16px; }
+  .spend-tile .stat-num { display: block; }
+  .meters { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .meter-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: .95rem; }
+  .meter-track { height: 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); margin-top: 6px; overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+  .meter-fill.l80 { background: var(--warn-text); }
+  .meter-fill.l100 { background: var(--err-text); }
+  .lvl { font-weight: 650; }
+  .lvl.l80 { color: var(--warn-text); }
+  .lvl.l100 { color: var(--err-text); }
+  .trend { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px; align-items: end; height: 140px;
+    border-bottom: 1px solid var(--border); padding-top: 4px; }
+  .trend .bar { display: flex; align-items: flex-end; height: 100%; }
+  .trend .bar span { display: block; width: 100%; min-height: 0; background: var(--accent); opacity: .75; border-radius: 4px 4px 0 0; }
+  .trend .bar.today span { opacity: 1; }
+  .trend .bar:hover span { opacity: 1; outline: 2px solid var(--card); }
+  .trend-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: .8rem; margin: 6px 0 0; }
+  .scroll-x { overflow-x: auto; }
+  td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 640px) { td.r { text-align: left; } }
+  .cap-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 0 12px; align-items: end; }
+  .cap-form .actions { margin: 0 0 16px; }
+  .scope-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .scope-pick select { width: auto; min-width: 12rem; }
+</style>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "spend"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "AI spend"}}</h1>
+      <p class="lead">{{T "What the AI models cost, estimated from the tokens each call used and the providers' list prices. Your provider's bill is the final word."}}</p>
+    </div>
+    {{if .Enabled}}
+    <form class="scope-pick" method="get" action="/admin/spend">
+      <label for="scope">{{T "Show"}}</label>
+      <select id="scope" name="account">
+        <option value="all"{{if lt .Scope 0}} selected{{end}}>{{T "All businesses"}}</option>
+        {{range accounts .Scope}}{{if ne .Value "0"}}<option value="{{.Value}}"{{if and .Selected (ge $.Scope 0)}} selected{{end}}>{{.Label}}</option>{{end}}{{end}}
+      </select>
+      <button type="submit">{{T "Open"}}</button>
+    </form>
+    {{end}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "AI spend is off."}}</strong> {{T "It needs %s; set it for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  {{template "spend-banner"}}
+  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+  {{if .Unpriced}}
+  <div class="alert warn" role="status"><strong>{{T "Some models have no price yet, so their cost counts as $0:"}}</strong> {{range $i, $m := .Unpriced}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}. {{T "Ask your developer to add the price; past days are then priced too."}}</div>
+  {{end}}
+
+  <div class="spend-tiles">
+    <div class="spend-tile"><span class="stat-label">{{T "Today"}} · {{.ScopeName}}</span><span class="stat-num">{{.Today}}</span><span class="hint">{{T "%s model calls" .TodayCalls}}</span></div>
+    <div class="spend-tile"><span class="stat-label">{{.MonthName}}</span><span class="stat-num">{{.Month}}</span><span class="hint">{{T "%s model calls" .MonthCalls}}</span></div>
+  </div>
+
+  <section class="card" aria-labelledby="caps-now">
+    <h2 id="caps-now" class="card-title">{{T "Caps"}}</h2>
+    <p class="hint">{{T "At 80 and 100 percent of a cap you get one alert per day or month. The bot keeps answering past a cap."}}
+      {{if .Alerting}}{{T "Alerts go to Slack and show on this page."}}{{else}}{{T "Slack alerts are off (set %s); alerts show on this page only." "SPEND_SLACK_WEBHOOK_URL"}}{{end}}</p>
+    {{if .Meters}}
+    <ul class="meters">
+      {{range .Meters}}
+      <li>
+        <div class="meter-head"><span><strong>{{.Who}}</strong> · {{.Period}}</span>
+          <span><span class="lvl{{if ge .Level 100}} l100{{else if ge .Level 80}} l80{{end}}">{{.Percent}}%</span> · {{T "%s of %s" .Spent .Cap}}{{if ge .Level 100}} · {{T "over the cap"}}{{else if ge .Level 80}} · {{T "near the cap"}}{{end}}</span></div>
+        <div class="meter-track" role="img" aria-label="{{T "%d%% of the cap used" .Percent}}"><div class="meter-fill{{if ge .Level 100}} l100{{else if ge .Level 80}} l80{{end}}" style="width: {{.Fill}}%"></div></div>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">{{T "No caps yet. Add one below to get an alert before the money runs out."}}</p>
+    {{end}}
+  </section>
+
+  <section class="card" aria-labelledby="trend">
+    <h2 id="trend" class="card-title">{{T "Last 30 days"}}</h2>
+    <p class="hint">{{.ScopeName}} · {{T "highest day %s" .MaxDay}}</p>
+    <div class="trend" role="img" aria-label="{{T "Daily AI cost for the last 30 days; the table below has the numbers."}}">
+      {{range .Bars}}<div class="bar{{if .Today}} today{{end}}" title="{{.Label}}: {{.Cost}}"><span style="height: {{.Height}}%"></span></div>{{end}}
+    </div>
+    {{if .Bars}}<p class="trend-axis"><span>{{(index .Bars 0).Label}}</span><span>{{T "Today"}}</span></p>{{end}}
+    <details>
+      <summary>{{T "Show as a table"}}</summary>
+      <div class="scroll-x"><table>
+        <thead><tr><th scope="col">{{T "Day"}}</th><th scope="col" class="r">{{T "Cost"}}</th></tr></thead>
+        <tbody>{{range .Bars}}<tr><td>{{.Label}}</td><td class="r" data-label="{{T "Cost"}}">{{.Cost}}</td></tr>{{end}}</tbody>
+      </table></div>
+    </details>
+  </section>
+
+  <div class="cols2">
+    <section class="card" aria-labelledby="by-purpose">
+      <h2 id="by-purpose" class="card-title">{{T "This month by purpose"}}</h2>
+      {{if .ByPurpose}}
+      <div class="scroll-x"><table>
+        <thead><tr><th scope="col">{{T "Purpose"}}</th><th scope="col" class="r">{{T "Calls"}}</th><th scope="col" class="r">{{T "Cost"}}</th><th scope="col" class="r">{{T "Share"}}</th></tr></thead>
+        <tbody>{{range .ByPurpose}}<tr><td>{{.Name}}</td><td class="r" data-label="{{T "Calls"}}">{{.Calls}}</td><td class="r" data-label="{{T "Cost"}}">{{.Cost}}{{if not .Priced}}*{{end}}</td><td class="r" data-label="{{T "Share"}}">{{.Share}}%</td></tr>{{end}}</tbody>
+      </table></div>
+      {{else}}<p class="empty">{{T "No model calls this month yet."}}</p>{{end}}
+    </section>
+    <section class="card" aria-labelledby="by-model">
+      <h2 id="by-model" class="card-title">{{T "This month by model"}}</h2>
+      {{if .ByModel}}
+      <div class="scroll-x"><table>
+        <thead><tr><th scope="col">{{T "Model"}}</th><th scope="col" class="r">{{T "Tokens in"}}</th><th scope="col" class="r">{{T "Tokens out"}}</th><th scope="col" class="r">{{T "Cost"}}</th></tr></thead>
+        <tbody>{{range .ByModel}}<tr><td><code>{{.Name}}</code></td><td class="r" data-label="{{T "Tokens in"}}">{{.Input}}</td><td class="r" data-label="{{T "Tokens out"}}">{{.Output}}</td><td class="r" data-label="{{T "Cost"}}">{{.Cost}}{{if not .Priced}}*{{end}}</td></tr>{{end}}</tbody>
+      </table></div>
+      {{else}}<p class="empty">{{T "No model calls this month yet."}}</p>{{end}}
+    </section>
+  </div>
+  {{if .Unpriced}}<p class="hint">{{T "* includes calls to a model without a price."}}</p>{{end}}
+
+  <section class="card" aria-labelledby="set-cap">
+    <h2 id="set-cap" class="card-title">{{T "Set a cap"}}</h2>
+    <p class="hint">{{T "In US dollars. Account 0 is the whole service (every business together). Leave both empty to remove a cap."}}</p>
+    <form method="post" action="/admin/spend" class="cap-form" autocomplete="off">
+      <input type="hidden" name="action" value="save_cap">
+      <input type="hidden" name="scope" value="{{if ge .Scope 0}}{{.Scope}}{{else}}all{{end}}">
+      <div><label for="cap-account">{{T "Account"}}</label>
+        <input id="cap-account" name="account" type="number" min="0" step="1" required inputmode="numeric" value="{{if .FormAccount}}{{.FormAccount}}{{else if gt .Scope 0}}{{.Scope}}{{else}}0{{end}}"></div>
+      <div><label for="cap-daily">{{T "Daily cap ($)"}}</label>
+        <input id="cap-daily" name="daily" type="text" inputmode="decimal" placeholder="5.00" value="{{.FormDaily}}"></div>
+      <div><label for="cap-monthly">{{T "Monthly cap ($)"}}</label>
+        <input id="cap-monthly" name="monthly" type="text" inputmode="decimal" placeholder="100.00" value="{{.FormMonthly}}"></div>
+      <div class="actions"><button type="submit" class="primary">{{T "Save cap"}}</button></div>
+    </form>
+    {{if .Caps}}
+    <div class="scroll-x"><table>
+      <thead><tr><th scope="col">{{T "For"}}</th><th scope="col" class="r">{{T "Per day"}}</th><th scope="col" class="r">{{T "Per month"}}</th><th scope="col">{{T "Changed"}}</th><th scope="col"><span class="visually-hidden">{{T "Actions"}}</span></th></tr></thead>
+      <tbody>{{range .Caps}}<tr>
+        <td>{{.Who}}</td><td class="r" data-label="{{T "Per day"}}">{{if .Daily}}${{.Daily}}{{else}}—{{end}}</td><td class="r" data-label="{{T "Per month"}}">{{if .Monthly}}${{.Monthly}}{{else}}—{{end}}</td>
+        <td class="preview">{{.UpdatedAt}}{{with .UpdatedBy}} · {{.}}{{end}}</td>
+        <td class="row-actions"><form method="post" action="/admin/spend" class="inline">
+          <input type="hidden" name="action" value="save_cap"><input type="hidden" name="account" value="{{.AccountID}}">
+          <input type="hidden" name="scope" value="{{if ge $.Scope 0}}{{$.Scope}}{{else}}all{{end}}">
+          <button type="submit">{{T "Remove"}}<span class="visually-hidden">: {{.Who}}</span></button></form></td>
+      </tr>{{end}}</tbody>
+    </table></div>
+    {{end}}
+  </section>
+  <p class="hint">{{T "Prices: OpenAI standard list prices, checked %s; OpenRouter charges the same for OpenAI models. Usage is kept 400 days." .PricesAsOf}}</p>
+  {{end}}
+</main>
+</div>
+</body>
+</html>

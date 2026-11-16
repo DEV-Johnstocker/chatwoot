@@ -110,7 +110,10 @@ type Config struct {
 	CommentReviewer    string
 	CommentReviewModel string
 	TypeSafeAPIKey     string // for COMMENT_REVIEWER=jev (secret)
-	TypeSafeModel      string
+	// SpendSlackWebhookURL is the Slack incoming webhook for AI spend cap
+	// alerts (secret); empty = the cap warning shows on /admin only.
+	SpendSlackWebhookURL string
+	TypeSafeModel        string
 	// CommentAutoSend lets Jev send a private reply without the owner when
 	// every auto-send rule allows (comments.Queue.TryAutoSend). Needs
 	// COMMENT_REVIEWER=jev; sending also needs META_PAGE_TOKEN.
@@ -381,6 +384,7 @@ func loadMeta(cfg *Config, get func(key, def string) string, errs []error) []err
 	cfg.CommentReviewer = get("COMMENT_REVIEWER", "llm")
 	cfg.CommentReviewModel = get("COMMENT_REVIEW_MODEL", "")
 	cfg.TypeSafeAPIKey = get("TYPESAFE_API_KEY", "")
+	cfg.SpendSlackWebhookURL = get("SPEND_SLACK_WEBHOOK_URL", "")
 	cfg.TypeSafeModel = get("TYPESAFE_MODEL", JevModel)
 	cfg.CommentPublicReply = strings.TrimSpace(get("COMMENT_PUBLIC_REPLY", ""))
 	if utf8.RuneCountInString(cfg.CommentPublicReply) > 300 {

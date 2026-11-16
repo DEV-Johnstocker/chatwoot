@@ -64,6 +64,8 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 	// accounts and inboxes fill the dropdowns; replaced per request in renderPage.
 	"accounts": func(int64) []option { return nil },
 	"inboxes":  func(int64, string) []option { return nil },
+	// spendWarnings are the AI spend caps at 80% or more (spend.go); replaced per request.
+	"spendWarnings": func() []capView { return nil },
 	"dict": func(kv ...any) map[string]any {
 		m := make(map[string]any, len(kv)/2)
 		for i := 0; i+1 < len(kv); i += 2 {
@@ -145,6 +147,8 @@ type Handler struct {
 	// Alerts lists the bot's own problems going on now (alerts.Monitor),
 	// shown on Home; nil shows none.
 	Alerts AlertBoard
+	// Spend is the AI spend page and its caps; nil turns it off (no database).
+	Spend SpendBoard
 	// ChatwootURL is Chatwoot's public address for "Open chat" links; empty hides them.
 	ChatwootURL string
 	// Tester runs the reply pipeline for the test page; nil turns that page off.
@@ -207,6 +211,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("GET /admin/replies", wrap(h.showReplies))
 	mux.Handle("POST /admin/replies", wrap(h.submitReplies))
 	mux.Handle("GET /admin/gaps", wrap(h.showGaps))
+	mux.Handle("GET /admin/spend", wrap(h.showSpend))
+	mux.Handle("POST /admin/spend", wrap(h.submitSpend))
 	mux.Handle("POST /admin/gaps", wrap(h.submitGaps))
 	mux.Handle("GET /admin/approvals", wrap(h.showApprovals))
 	mux.Handle("POST /admin/approvals", wrap(h.submitApprovals))
@@ -459,7 +465,7 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, status int,
 		pk := h.newPickers(r)
 		t.Funcs(template.FuncMap{"theme": func() string { return theme }, "accounts": pk.accountOptions, "inboxes": pk.inboxOptions,
 			"lang": func() string { return lang }, "T": func(s string, args ...any) string { return tr(lang, s, args...) },
-			"pageAccount": func() string { return pageAcct }})
+			"pageAccount": func() string { return pageAcct }, "spendWarnings": func() []capView { return h.spendWarnings(lang) }})
 		var buf bytes.Buffer
 		if err = t.ExecuteTemplate(&buf, name, data); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")

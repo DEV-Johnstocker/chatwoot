@@ -370,3 +370,30 @@ func TestFetchGivesUpOnAMissingFile(t *testing.T) {
 		t.Fatalf("err = %v after %d calls, want an error after 4 tries", err, calls)
 	}
 }
+
+func TestTranscribeKeepsProviderUsage(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		want TranscriptionUsage
+	}{
+		"tokens":   {`{"text":"x","usage":{"type":"tokens","input_tokens":120,"output_tokens":9}}`, TranscriptionUsage{InputTokens: 120, OutputTokens: 9}},
+		"duration": {`{"text":"x","usage":{"type":"duration","seconds":42}}`, TranscriptionUsage{Seconds: 42}},
+		"none":     {`{"text":"x"}`, TranscriptionUsage{}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(c.body)) }))
+			defer srv.Close()
+			tr := &Transcriber{BaseURL: srv.URL, APIKey: "k", Model: "gpt-4o-mini-transcribe"}
+
+			// Act
+			_, err := tr.Transcribe(context.Background(), []byte("AUDIO"), "voice.ogg")
+
+			// Assert
+			if err != nil || tr.Used != c.want {
+				t.Fatalf("used=%+v err=%v", tr.Used, err)
+			}
+		})
+	}
+}

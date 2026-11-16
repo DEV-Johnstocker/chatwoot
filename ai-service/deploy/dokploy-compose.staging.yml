@@ -184,6 +184,8 @@ services:
       COMMENT_REVIEW_MODEL: ${COMMENT_REVIEW_MODEL:-}
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
       TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-1.14.0}
+      # Slack incoming webhook for AI spend cap alerts (/admin/spend); secret.
+      SPEND_SLACK_WEBHOOK_URL: ${SPEND_SLACK_WEBHOOK_URL:-}
       # on: Jev sends the safest private replies itself (leads and questions it
       # fully passes, not people chatting in the last 24 h). Needs jev + token.
       COMMENT_AUTO_SEND: ${COMMENT_AUTO_SEND:-off}
