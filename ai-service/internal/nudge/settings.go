@@ -126,6 +126,10 @@ type SettingsStore struct {
 	path     string
 	defaults Defaults
 	saved    map[int64]Rule
+	// damaged: the file exists but could not be read. Every account is then
+	// off and saves are refused, so neither the defaults nor a partial save
+	// override what the owner had chosen.
+	damaged error
 }
 
 type fileRule struct {
@@ -136,8 +140,9 @@ type fileRule struct {
 }
 
 // OpenSettings loads path, or starts from the defaults when there is no
-// file. A file that cannot be read or fails the checks is reported, and the
-// defaults are used so nothing unexpected is sent; the next save replaces it.
+// file. A file that cannot be read or parsed leaves every account off (not on
+// the defaults, which may be on) and refuses saves until it is fixed or
+// removed. An entry that fails the checks turns only that account off.
 func OpenSettings(path string, d Defaults) (*SettingsStore, error) {
 	s := &SettingsStore{path: path, defaults: d, saved: map[int64]Rule{}}
 	raw, err := os.ReadFile(path)
@@ -145,34 +150,40 @@ func OpenSettings(path string, d Defaults) (*SettingsStore, error) {
 		return s, nil
 	}
 	if err != nil {
-		return s, fmt.Errorf("read nudge settings: %w", err)
+		s.damaged = fmt.Errorf("read nudge settings: %w", err)
+		return s, s.damaged
 	}
 	var f map[string]fileRule
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return s, fmt.Errorf("parse nudge settings %s: %w", path, err)
+		s.damaged = fmt.Errorf("parse nudge settings %s: %w", path, err)
+		return s, s.damaged
 	}
-	loaded := map[int64]Rule{}
+	var errs []error
 	for key, fr := range f {
 		acct, err := strconv.ParseInt(key, 10, 64)
 		if err != nil || acct < 1 {
-			return s, fmt.Errorf("nudge settings %s: account %q is not a positive number", path, key)
+			errs = append(errs, fmt.Errorf("nudge settings %s: account %q is not a positive number (skipped)", path, key))
+			continue
 		}
 		r := Rule{On: fr.On, After: time.Duration(fr.AfterHours) * time.Hour, Text: fr.Text, Write: fr.Write}
 		// The auto-resolve time may have changed since the save: check the
 		// ranges only, and let the sweep send what the owner saved.
 		if err := r.Validate(0); err != nil {
-			return s, fmt.Errorf("nudge settings %s, account %d: %w", path, acct, err)
+			errs = append(errs, fmt.Errorf("nudge settings %s, account %d is off: %w", path, acct, err))
+			r.On = false
 		}
-		loaded[acct] = r
+		s.saved[acct] = r
 	}
-	s.saved = loaded
-	return s, nil
+	return s, errors.Join(errs...)
 }
 
 // For returns the account's saved rule, or the default.
 func (s *SettingsStore) For(acct int64) Rule {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.damaged != nil {
+		return Rule{}
+	}
 	if r, ok := s.saved[acct]; ok {
 		return r
 	}
@@ -202,6 +213,9 @@ func (s *SettingsStore) Save(acct int64, r Rule) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.damaged != nil {
+		return errors.New("the follow-up settings file is damaged, so every account is off; ask your developer to fix or remove nudge-settings.json")
+	}
 	next := maps.Clone(s.saved)
 	next[acct] = r
 	f := make(map[string]fileRule, len(next))

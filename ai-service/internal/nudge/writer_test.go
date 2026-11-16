@@ -97,6 +97,27 @@ func TestCheck_FemaleVoice(t *testing.T) {
 	}
 }
 
+func TestCheck_EnglishChatRefusesBotPressureAndLinks(t *testing.T) {
+	chat := []gaps.Message{{Incoming: true, Content: "how much is the course?"}, {Outgoing: true, FromBot: true, Content: "It is 9,900 baht."}}
+	for _, text := range []string{
+		"Hi! Our ai can help with the course.",
+		"Hi! This is the shop bot, ask me anything about the course.",
+		"Hurry, the course offer is limited!",
+		"Hi! There is a discount on the course this week.",
+		"Hi! See shop.xyz for the course.",
+		"Hi! I don't know if you saw the course details.",
+	} {
+		t.Run(text, func(t *testing.T) {
+			// Act
+			err := Check(text, chat)
+			// Assert
+			if err == nil {
+				t.Fatalf("Check(%q) = nil, want refused", text)
+			}
+		})
+	}
+}
+
 func TestCheck_EnglishChatRefusesThai(t *testing.T) {
 	// Arrange
 	chat := []gaps.Message{{Incoming: true, Content: "how much is the course?"}, {Outgoing: true, FromBot: true, Content: "It is 9,900 baht."}}

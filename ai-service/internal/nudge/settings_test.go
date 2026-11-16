@@ -119,25 +119,51 @@ func TestSettings_RejectedSaveChangesNothing(t *testing.T) {
 	}
 }
 
-func TestOpenSettings_BrokenFileUsesDefaults(t *testing.T) {
+func TestOpenSettings_DamagedFileTurnsEveryoneOff(t *testing.T) {
+	// Arrange: the defaults are on for every account.
+	path := filepath.Join(t.TempDir(), "nudge-settings.json")
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	on := Defaults{After: 20 * time.Hour, Text: "env"}
+	// Act
+	s, err := OpenSettings(path, on)
+	saveErr := s.Save(3, Rule{On: true, After: 20 * time.Hour, Text: "x"})
+	raw, _ := os.ReadFile(path)
+	// Assert
+	if err == nil || s.For(3).Active() || s.For(1).Active() {
+		t.Fatalf("err=%v rule=%+v, want an error and every account off", err, s.For(3))
+	}
+	if saveErr == nil || string(raw) != "{" {
+		t.Fatalf("save=%v file=%q, want the save refused and the file kept", saveErr, raw)
+	}
+}
+
+func TestOpenSettings_BadEntryTurnsOnlyThatAccountOff(t *testing.T) {
 	cases := map[string]string{
-		"not json":    "{",
-		"bad account": `{"x":{"on":true,"after_hours":20,"text":"a"}}`,
-		"bad hours":   `{"3":{"on":true,"after_hours":40,"text":"a"}}`,
-		"no text":     `{"3":{"on":true,"after_hours":20,"text":""}}`,
+		"bad hours":   `{"3":{"on":true,"after_hours":40,"text":"a"},"4":{"on":false,"after_hours":20,"text":"b"}}`,
+		"no text":     `{"3":{"on":true,"after_hours":20,"text":""},"4":{"on":false,"after_hours":20,"text":"b"}}`,
+		"bad account": `{"x":{"on":true,"after_hours":20,"text":"a"},"3":{"on":false,"after_hours":20,"text":"c"},"4":{"on":false,"after_hours":20,"text":"b"}}`,
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
-			// Arrange
+			// Arrange: defaults on for every account; 4 was saved off.
 			path := filepath.Join(t.TempDir(), "nudge-settings.json")
 			if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			// Act
-			s, err := OpenSettings(path, Defaults{})
+			s, err := OpenSettings(path, Defaults{After: 20 * time.Hour, Text: "env"})
 			// Assert
-			if err == nil || s == nil || s.For(3).Active() || s.Saved(3) {
-				t.Fatalf("err=%v rule=%+v, want an error and the (off) defaults", err, s.For(3))
+			if err == nil || s.For(3).Active() || s.For(4).Active() || !s.For(5).Active() {
+				t.Fatalf("err=%v 3=%+v 4=%+v 5=%+v, want 3 and 4 off, 5 on the default", err, s.For(3), s.For(4), s.For(5))
+			}
+			if saveErr := s.Save(5, Rule{On: true, After: 20 * time.Hour, Text: "y"}); saveErr != nil {
+				t.Fatalf("save = %v", saveErr)
+			}
+			again, _ := OpenSettings(path, Defaults{After: 20 * time.Hour, Text: "env"})
+			if again.For(4).Active() || !again.Saved(4) {
+				t.Fatal("a later save dropped account 4's saved off")
 			}
 		})
 	}

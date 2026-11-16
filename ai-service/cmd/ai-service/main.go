@@ -648,14 +648,14 @@ func startAutoResolve(cfg config.Config, reader *chatwoot.Reader, logger *slog.L
 
 // openNudgeSettings loads the owner's per-account follow-up settings
 // (/admin/nudge), kept next to the AI provider settings on the data volume.
-// BOT_NUDGE_* give the values until the owner saves an account. A broken file
-// is logged and the defaults are used; the next save replaces it.
+// BOT_NUDGE_* give the values until the owner saves an account. A damaged
+// file turns every account off (bad entries only their account) and is logged.
 func openNudgeSettings(cfg config.Config, logger *slog.Logger) *nudge.SettingsStore {
 	path := filepath.Join(filepath.Dir(cfg.SettingsPath), "nudge-settings.json")
 	s, err := nudge.OpenSettings(path, nudge.Defaults{After: cfg.BotNudgeAfter, Text: cfg.BotNudgeText,
 		Write: cfg.BotNudgeWrite, Accounts: cfg.BotNudgeAccounts, ResolveAfter: cfg.BotResolveAfter})
 	if err != nil {
-		logger.Error("nudge settings not loaded: using the defaults", "error", err)
+		logger.Error("nudge settings: damaged file or entries are off", "error", err)
 	}
 	return s
 }

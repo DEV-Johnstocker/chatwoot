@@ -127,7 +127,10 @@ var wrongVoice = map[voice][]string{
 }
 
 var (
-	linkLike = regexp.MustCompile(`(?i)https?:|www\.|@|\b[a-z0-9-]+\.(com|net|org|co|th|io|me|ly|shop|example)\b`)
+	// linkLike: a scheme, www., a handle, or anything shaped like a domain.
+	linkLike = regexp.MustCompile(`(?i)https?:|www\.|@|[a-z0-9-]\.[a-z]{2,}\b`)
+	// englishForbidden: bot words, pressure and promotions in an English draft.
+	englishForbidden = regexp.MustCompile(`(?i)\b(ai|a\.i|bot|chatbot|robot|automated|assistant|hurry|urgent|limited|last chance|deadline|discount|promo|promotion|sale|offer ends|don'?t know|not sure)\b`)
 	// forbidden phrases: unknowns the owner dislikes, pressure and
 	// promotions, and words that say a bot wrote it.
 	forbidden = []string{
@@ -156,10 +159,14 @@ func Check(text string, msgs []gaps.Message) error {
 	case linkLike.MatchString(text):
 		return errors.New("contains a link or handle")
 	}
+	lower := strings.ToLower(text)
 	for _, f := range forbidden {
-		if strings.Contains(text, f) {
+		if strings.Contains(lower, strings.ToLower(f)) {
 			return fmt.Errorf("contains a forbidden phrase")
 		}
+	}
+	if englishForbidden.MatchString(text) {
+		return fmt.Errorf("contains a forbidden phrase")
 	}
 	v := voiceOf(msgs)
 	if v == voiceEnglish {
