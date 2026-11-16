@@ -201,7 +201,7 @@ func run() error {
 	}, cfg.Workers, cfg.QueueSize)
 	b.Start(context.Background())
 	startAutoResolve(cfg, reader, logger)
-	startNudge(cfg, reader, botHours, logger)
+	startNudge(cfg, reader, botHours, rewriteLLM, logger)
 	if webSyncer != nil {
 		go webSyncer.Run(context.Background(), 10*time.Minute)
 	}
@@ -643,7 +643,7 @@ func startAutoResolve(cfg config.Config, reader *chatwoot.Reader, logger *slog.L
 
 // startNudge sends the one follow-up to quiet priced chats, every 15 minutes.
 // Like auto-resolve it needs the reader token to list conversations.
-func startNudge(cfg config.Config, reader *chatwoot.Reader, hours bot.Hours, logger *slog.Logger) {
+func startNudge(cfg config.Config, reader *chatwoot.Reader, hours bot.Hours, small llm.Completer, logger *slog.Logger) {
 	if cfg.BotNudgeAfter <= 0 || reader == nil {
 		logger.Info("follow-up nudge off: needs CHATWOOT_READER_TOKEN, BOT_NUDGE_AFTER and BOT_NUDGE_TEXT")
 		return
@@ -660,7 +660,10 @@ func startNudge(cfg config.Config, reader *chatwoot.Reader, hours bot.Hours, log
 	if hours != nil {
 		s.Hours = hours
 	}
-	logger.Info("follow-up nudge on", "after", cfg.BotNudgeAfter.String(), "accounts", cfg.BotNudgeAccounts)
+	if cfg.BotNudgeWrite {
+		s.Writer = &nudge.LLMWriter{LLM: small} // the rewrite (small) model; BOT_NUDGE_TEXT is the fallback
+	}
+	logger.Info("follow-up nudge on", "after", cfg.BotNudgeAfter.String(), "accounts", cfg.BotNudgeAccounts, "written", cfg.BotNudgeWrite)
 	go s.Run(context.Background(), 15*time.Minute)
 }
 

@@ -86,7 +86,12 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   message is sent, so it is followed up at most once. `BOT_NUDGE_ACCOUNTS`
   (comma-separated) limits it to some accounts. Needs
   `CHATWOOT_READER_TOKEN`. Auto-resolve then closes the chat a full
-  `BOT_RESOLVE_AFTER` after the follow-up.
+  `BOT_RESOLVE_AFTER` after the follow-up. With `BOT_NUDGE_WRITE=true` the
+  small model (`REWRITE_MODEL`) writes each follow-up from the chat (public
+  messages only), in the shop's voice and the customer's language; a draft
+  with any number, link, promotion or pressure word, "ไม่ทราบ", "บอท"/"AI",
+  more than 220 characters, the wrong ครับ/ค่ะ voice or no "คุณลูกค้า" in a
+  Thai chat is not sent, and `BOT_NUDGE_TEXT` goes out instead.
 - **Unanswered questions** (`/admin/gaps`): chats the bot handed over only
   because it had no answer (label `kb-gap`), read live from Chatwoot with
   `CHATWOOT_READER_TOKEN`: the customer's words, the bot's summary and the

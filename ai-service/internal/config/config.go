@@ -41,7 +41,8 @@ type Config struct {
 	BotResolveAfter    time.Duration // quiet time before the bot resolves a chat it finished; 0 = off
 	Alerts             Alerts        // the bot's own alerts and the per-customer reply limit (alerts.go)
 	BotNudgeAfter      time.Duration // follow-up after the customer's last message in a priced chat; 0 = off
-	BotNudgeText       string        // the owner-approved follow-up message
+	BotNudgeText       string        // the owner-approved follow-up message (the fallback when BotNudgeWrite)
+	BotNudgeWrite      bool          // the small model writes each follow-up from the chat
 	BotNudgeAccounts   []int64       // accounts with follow-ups on; empty = every account
 	SystemPrompt       string
 
@@ -340,6 +341,7 @@ func loadNudge(get func(key, def string) string, cfg *Config) []error {
 	}
 	cfg.BotNudgeAfter = after
 	cfg.BotNudgeText = strings.TrimSpace(strings.ReplaceAll(get("BOT_NUDGE_TEXT", ""), `\n`, "\n"))
+	cfg.BotNudgeWrite = get("BOT_NUDGE_WRITE", "") == "true"
 	if after > 0 && cfg.BotNudgeText == "" {
 		errs = append(errs, fmt.Errorf("BOT_NUDGE_TEXT is required when BOT_NUDGE_AFTER is set"))
 	}

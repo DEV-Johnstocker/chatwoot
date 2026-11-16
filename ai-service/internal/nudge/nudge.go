@@ -150,7 +150,8 @@ type Sweeper struct {
 	Hours    Hours
 	Accounts map[int64]bool // accounts with nudges on; empty = every account
 	After    time.Duration  // time after the customer's last message; 0 = off
-	Text     string         // the owner-approved follow-up; empty = off
+	Text     string         // the owner-approved follow-up; empty = off. Also the fallback for Writer
+	Writer   Writer         // optional: drafts a follow-up from the chat; nil = always Text
 	Now      func() time.Time
 	Logger   *slog.Logger
 }
@@ -237,10 +238,12 @@ func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, now tim
 	if !added {
 		return false
 	}
-	if err := s.Chat.SendMessage(ctx, acct, c.ID, s.Text); err != nil {
+	text, written := s.message(ctx, msgs)
+	if err := s.Chat.SendMessage(ctx, acct, c.ID, text); err != nil {
 		log.Warn("nudge: send", "error", err)
 		return false
 	}
+	log.Info("nudge: sent", "written", written)
 	return true
 }
 
