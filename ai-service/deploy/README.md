@@ -66,6 +66,9 @@ a chat.
   compose file. `BOT_NUDGE_AFTER` / `BOT_NUDGE_TEXT` / `BOT_NUDGE_ACCOUNTS`
   (one follow-up to quiet priced chats; off by default, see the ai-service
   README).
+  The alert and reply-limit variables are defaults: once the owner saves
+  `/admin/alerts`, `/data/alert-settings.json` wins (it sits on the same
+  volume as `settings.json` and, like it, is not in the database backup).
 - `CHATWOOT_READER_TOKEN` is the access token of a dedicated Chatwoot user,
   "AI Reader", used to re-read chats and to assign handoffs by workload. Keep
   that user an **Agent** (never Administrator), a member **only** of the

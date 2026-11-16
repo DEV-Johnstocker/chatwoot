@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -162,7 +163,8 @@ func run() error {
 	// Private replies sent from the comment queue, until Meta's echo of each
 	// reaches its Chatwoot chat; the bot then adds the comment-lead note.
 	commentEchoes := &commentecho.Echoes{}
-	monitor := startAlerts(cfg, logger)
+	alertSettings := openAlertSettings(cfg, logger)
+	monitor := startAlerts(cfg, alertSettings, logger)
 	leadStore := leadsStore(profiles) // who asked about price, for /admin → Leads
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
@@ -194,6 +196,7 @@ func run() error {
 		ReplyDelay:        cfg.ReplyDelay,
 		ReplyLimit:        cfg.Alerts.ReplyLimit,
 		ReplyLimitWindow:  cfg.Alerts.ReplyLimitWindow,
+		ReplyLimits:       alertSettings.ReplyLimitFor,
 		Alerts:            monitor,
 		Logger:            logger,
 		// Primary + fallback calls, plus Chatwoot API calls.
@@ -277,9 +280,9 @@ func run() error {
 			Gaps: adminGaps(reader), ChatwootURL: cfg.ChatwootPublicURL,
 			Ratings: adminRatings(profiles), Replies: adminReplies(reader),
 			Sales:  adminSales(saleStore),
-			Alerts: monitor,
-			Spend:  adminSpend(profiles, spendMonitor),
-			Leads:  adminLeads(leadStore),
+			Alerts: monitor, AlertSettings: alertSettings, SlackConfigured: cfg.Alerts.SlackWebhookURL != "",
+			Spend: adminSpend(profiles, spendMonitor),
+			Leads: adminLeads(leadStore),
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -699,15 +702,29 @@ func adminReplies(reader *chatwoot.Reader) admin.ReplyFeed {
 	return &ratings.Feed{Source: reader}
 }
 
+// openAlertSettings loads the owner's Alerts page settings, kept next to the
+// AI provider settings on the data volume. The environment gives the values
+// until the owner saves. A broken file is logged and the defaults are used, so
+// the bot keeps answering; the next save on /admin/alerts replaces it.
+func openAlertSettings(cfg config.Config, logger *slog.Logger) *alerts.SettingsStore {
+	path := filepath.Join(filepath.Dir(cfg.SettingsPath), "alert-settings.json")
+	s, err := alerts.OpenSettings(path, alerts.Defaults{SpikeShare: cfg.Alerts.HandoffSpikeShare,
+		ReplyLimit: alerts.Limit{Max: cfg.Alerts.ReplyLimit, Window: cfg.Alerts.ReplyLimitWindow}})
+	if err != nil {
+		logger.Error("alert settings not loaded: using the defaults", "error", err)
+	}
+	return s
+}
+
 // startAlerts watches the bot for its own failures, checked every minute.
 // Without a Slack webhook they show on /admin and in the log only.
-func startAlerts(cfg config.Config, logger *slog.Logger) *alerts.Monitor {
+func startAlerts(cfg config.Config, rules alerts.Rules, logger *slog.Logger) *alerts.Monitor {
 	var n alerts.Notifier // nil interface without a webhook
 	if cfg.Alerts.SlackWebhookURL != "" {
 		n = alerts.Slack{URL: cfg.Alerts.SlackWebhookURL}
 	}
 	m := alerts.New(alerts.Options{Notifier: n, Label: cfg.Alerts.Environment, SpikeShare: cfg.Alerts.HandoffSpikeShare,
-		Location: cfg.Location, Logger: logger.With("component", "alerts")})
+		Rules: rules, Location: cfg.Location, Logger: logger.With("component", "alerts")})
 	logger.Info("bot alerts on", "slack", n != nil, "reply_limit", cfg.Alerts.ReplyLimit, "reply_limit_window", cfg.Alerts.ReplyLimitWindow.String())
 	go m.Run(context.Background(), time.Minute)
 	return m

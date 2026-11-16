@@ -92,6 +92,13 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   with any number, link, promotion or pressure word, "ไม่ทราบ", "บอท"/"AI",
   more than 220 characters, the wrong ครับ/ค่ะ voice or no "คุณลูกค้า" in a
   Thai chat is not sent, and `BOT_NUDGE_TEXT` goes out instead.
+- **Alerts page** (`/admin/alerts`): the owner changes the reply limit per
+  account (or switches it off), the hand-off spike share and minimum, and
+  turns each alert kind on or off. The error thresholds are fixed and shown
+  read-only; the Slack link shows only as set or not set. Saves apply at once
+  (no restart), are recorded in the change history (old → new), and live in
+  `alert-settings.json` next to `SETTINGS_PATH` on the data volume. The
+  environment variables above are the defaults until the owner saves.
 - **Unanswered questions** (`/admin/gaps`): chats the bot handed over only
   because it had no answer (label `kb-gap`), read live from Chatwoot with
   `CHATWOOT_READER_TOKEN`: the customer's words, the bot's summary and the

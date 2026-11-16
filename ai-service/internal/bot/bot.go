@@ -142,6 +142,9 @@ type Options struct {
 	// (limit.go); 0 turns the limit off.
 	ReplyLimit       int
 	ReplyLimitWindow time.Duration
+	// ReplyLimits, when set, gives each account's live limit (the owner's
+	// /admin/alerts setting) and wins over ReplyLimit and ReplyLimitWindow.
+	ReplyLimits func(acct int64) alerts.Limit
 	// Alerts counts failures for the owner's alerts; nil: none.
 	Alerts Alerts
 }
