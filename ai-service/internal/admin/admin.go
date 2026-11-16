@@ -71,6 +71,12 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 	"navCounts": func() navCounts { return navCounts{} },
 	"navOpen":   func(group, page string) bool { return true },
 	"navIcon":   navIcon,
+	// navAccount and navHref keep the owner's account across pages
+	// (account.go); replaced per request.
+	"navAccount":      func() int64 { return 1 },
+	"navHref":         navHrefFunc(1),
+	"navSwitchHref":   navSwitchHref,
+	"navSwitchAction": navSwitchAction,
 	"dict": func(kv ...any) map[string]any {
 		m := make(map[string]any, len(kv)/2)
 		for i := 0; i+1 < len(kv); i += 2 {
@@ -210,44 +216,44 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	wrap := func(f http.HandlerFunc) http.Handler {
 		return secureHeaders(h.requireAuth(protect.Handler(f)))
 	}
-	mux.Handle("GET /admin", wrap(h.showHome))
+	mux.Handle("GET /admin", wrap(h.keepAccount(h.showHome)))
 	mux.Handle("GET /admin/providers", wrap(h.show))
 	mux.Handle("POST /admin/providers", wrap(h.submit))
 	mux.Handle("POST /admin/theme", wrap(h.setTheme))
 	mux.Handle("POST /admin/lang", wrap(h.setLang))
 	mux.Handle("GET /admin/static/admin.js", wrap(serveScript))
-	mux.Handle("GET /admin/connections", wrap(h.showConnections))
+	mux.Handle("GET /admin/connections", wrap(h.keepAccount(h.showConnections)))
 	mux.Handle("POST /admin/connections", wrap(h.submitConnections))
-	mux.Handle("GET /admin/test", wrap(h.showTest))
+	mux.Handle("GET /admin/test", wrap(h.keepAccount(h.showTest)))
 	mux.Handle("POST /admin/test", wrap(h.submitTest))
-	mux.Handle("GET /admin/knowledge", wrap(h.showKnowledge))
+	mux.Handle("GET /admin/knowledge", wrap(h.keepAccount(h.showKnowledge)))
 	mux.Handle("POST /admin/knowledge", wrap(h.submitKnowledge))
-	mux.Handle("GET /admin/hours", wrap(h.showHours))
+	mux.Handle("GET /admin/hours", wrap(h.keepAccount(h.showHours)))
 	mux.Handle("POST /admin/hours", wrap(h.submitHours))
-	mux.Handle("GET /admin/alerts", wrap(h.showAlertSettings))
+	mux.Handle("GET /admin/alerts", wrap(h.keepAccount(h.showAlertSettings)))
 	mux.Handle("POST /admin/alerts", wrap(h.submitAlertSettings))
-	mux.Handle("GET /admin/business", wrap(h.showBusiness))
+	mux.Handle("GET /admin/business", wrap(h.keepAccount(h.showBusiness)))
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
-	mux.Handle("GET /admin/images", wrap(h.showImages))
+	mux.Handle("GET /admin/images", wrap(h.keepAccount(h.showImages)))
 	mux.Handle("POST /admin/images", wrap(h.submitImage))
-	mux.Handle("GET /admin/sales", wrap(h.showSales))
-	mux.Handle("GET /admin/replies", wrap(h.showReplies))
+	mux.Handle("GET /admin/sales", wrap(h.keepAccount(h.showSales)))
+	mux.Handle("GET /admin/replies", wrap(h.keepAccount(h.showReplies)))
 	mux.Handle("POST /admin/replies", wrap(h.submitReplies))
-	mux.Handle("GET /admin/gaps", wrap(h.showGaps))
+	mux.Handle("GET /admin/gaps", wrap(h.keepAccount(h.showGaps)))
 	mux.Handle("GET /admin/spend", wrap(h.showSpend))
 	mux.Handle("POST /admin/spend", wrap(h.submitSpend))
 	mux.Handle("POST /admin/gaps", wrap(h.submitGaps))
-	mux.Handle("GET /admin/approvals", wrap(h.showApprovals))
+	mux.Handle("GET /admin/approvals", wrap(h.keepAccount(h.showApprovals)))
 	mux.Handle("POST /admin/approvals", wrap(h.submitApprovals))
-	mux.Handle("GET /admin/comments", wrap(h.showComments))
+	mux.Handle("GET /admin/comments", wrap(h.keepAccount(h.showComments)))
 	mux.Handle("POST /admin/comments", wrap(h.submitComments))
-	mux.Handle("GET /admin/history", wrap(h.showHistory))
+	mux.Handle("GET /admin/history", wrap(h.keepAccount(h.showHistory)))
 	mux.Handle("POST /admin/history", wrap(h.submitHistory))
-	mux.Handle("GET /admin/nudge", wrap(h.showNudge))
+	mux.Handle("GET /admin/nudge", wrap(h.keepAccount(h.showNudge)))
 	mux.Handle("POST /admin/nudge", wrap(h.submitNudge))
-	mux.Handle("GET /admin/leads", wrap(h.showLeads))
+	mux.Handle("GET /admin/leads", wrap(h.keepAccount(h.showLeads)))
 	mux.Handle("GET /admin/leads.csv", wrap(h.exportLeads))
-	mux.Handle("GET /admin/promotions", wrap(h.showPromos))
+	mux.Handle("GET /admin/promotions", wrap(h.keepAccount(h.showPromos)))
 }
 
 type providerView struct {
@@ -488,6 +494,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, dat
 // after it has run).
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, status int, name string, data any) {
 	theme, lang, pageAcct := themeOf(r), langOf(r), r.URL.Query().Get("account")
+	acct := currentAccount(r) // the menu's account: this page's, else the remembered one
 	t, err := pages.Clone()
 	if err == nil {
 		pk := h.newPickers(r)
@@ -495,8 +502,9 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, status int,
 			"lang": func() string { return lang }, "T": func(s string, args ...any) string { return tr(lang, s, args...) },
 			"pageAccount": func() string { return pageAcct }, "spendWarnings": func() []capView { return h.spendWarnings(lang) },
 			// The menu is drawn twice (sidebar and phone menu); count once.
-			"navCounts": sync.OnceValue(func() navCounts { return h.menuCounts(r.Context(), accountParam(pageAcct)) }),
-			"navOpen":   navOpenFunc(foldedGroups(r))})
+			"navCounts":  sync.OnceValue(func() navCounts { return h.menuCounts(r.Context(), acct) }),
+			"navAccount": func() int64 { return acct }, "navHref": navHrefFunc(acct),
+			"navOpen": navOpenFunc(foldedGroups(r))})
 		var buf bytes.Buffer
 		if err = t.ExecuteTemplate(&buf, name, data); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")

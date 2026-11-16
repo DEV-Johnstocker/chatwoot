@@ -19,7 +19,7 @@ import (
 // an icon per page and counts the work waiting. Issue: DEV-Johnstocker/chatwoot#1
 
 var navGroupRE = regexp.MustCompile(`(?s)<details class="nav-group" data-group="([a-z]+)"( open)?>\s*<summary class="nav-head">([^<]+)(.*?)</details>`)
-var navHrefRE = regexp.MustCompile(`<a href="(/admin[^"]*)"`)
+var navHrefRE = regexp.MustCompile(`<a href="(/admin[^"?]*)(?:\?account=\d+)?"`)
 
 type navEnv struct {
 	mux   *http.ServeMux
@@ -56,6 +56,9 @@ func sidebarOf(body string) string {
 // linkHTML is the <a> for href in s.
 func linkHTML(s, href string) string {
 	i := strings.Index(s, `<a href="`+href+`"`)
+	if i < 0 {
+		i = strings.Index(s, `<a href="`+href+`?account=`)
+	}
 	if i < 0 {
 		return ""
 	}
@@ -104,7 +107,7 @@ func TestNav_GroupsEveryPageOnceUnderAHeading(t *testing.T) {
 			t.Errorf("%s appears %d times in the sidebar", href, n)
 		}
 	}
-	if !strings.Contains(sidebar, `<a href="/admin"`) {
+	if !strings.Contains(sidebar, `<a href="/admin?account=3"`) {
 		t.Error("Home link missing above the groups")
 	}
 	if !strings.Contains(linkHTML(sidebar, "/admin/nudge"), `aria-current="page"`) {

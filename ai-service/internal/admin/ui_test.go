@@ -79,7 +79,7 @@ func TestUI_EveryPageHasThePhoneMenu(t *testing.T) {
 		menu := body[i:]
 		menu = menu[:strings.Index(menu, "</header>")] // the menu holds folding groups (details) of its own
 		for _, link := range adminPages {
-			if !strings.Contains(menu, `href="`+link+`"`) {
+			if !strings.Contains(menu, `href="`+link+`"`) && !strings.Contains(menu, `href="`+link+`?account=`) {
 				t.Errorf("%s: phone menu misses %s", path, link)
 			}
 		}

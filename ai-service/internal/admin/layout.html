@@ -172,9 +172,19 @@
   form.acct select { min-width: 0; }
   .acct-one { margin: 0; display: flex; gap: 8px; align-items: baseline; }
   .acct-one span { font-weight: 600; font-size: .875rem; }
-  details.acct-other summary { font-size: .875rem; color: var(--muted); }
-  details.acct-other form.acct { margin-top: 6px; grid-template-columns: auto 7rem auto; }
-  @media (max-width: 640px) { .page-head { gap: 8px; } .page-head .lead { margin-bottom: 8px; } .acct-pick { justify-items: stretch; width: 100%; gap: 0; } form.acct { grid-template-columns: minmax(0, 1fr) auto; } form.acct label { grid-column: 1 / -1; } details.acct-other form.acct { grid-template-columns: minmax(0, 1fr) auto; } }
+  /* Account switch at the top of the menu: the account every page shows, kept across pages. */
+  .acct-switch { margin: 0 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  details.acct-switch > summary { min-height: 48px; padding: 6px 12px; color: var(--text); font-weight: 400; }
+  .acct-now { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .acct-now strong { font-size: .95rem; overflow-wrap: anywhere; }
+  .acct-cap { font-size: .75rem; font-weight: 600; color: var(--muted); }
+  .acct-menu { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 10px; }
+  .acct-menu > a { display: flex; align-items: center; min-height: 40px; padding: 6px 8px; border-radius: 8px; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+  .acct-menu > a:hover { background: var(--card); }
+  .acct-menu form.acct { margin-top: 6px; grid-template-columns: minmax(0, 1fr) auto; }
+  .acct-menu form.acct label { grid-column: 1 / -1; font-size: .875rem; }
+  .menu-panel .acct-switch { margin: 0 12px 12px; }
+  @media (max-width: 640px) { .page-head { gap: 8px; } .page-head .lead { margin-bottom: 8px; } .acct-pick { justify-items: stretch; width: 100%; gap: 0; } form.acct { grid-template-columns: minmax(0, 1fr) auto; } form.acct label { grid-column: 1 / -1; } }
   form.acct label { margin: 0; }
   form.acct .field-hint { grid-column: 1 / -1; margin: 0; }
   .span2 { grid-column: 1 / -1; }
@@ -466,25 +476,23 @@
 
 {{define "account-picker"}}
 <div class="acct-pick">
-  {{$list := accounts .Current}}{{if eq (len $list) 1}}
-  <p class="acct-one"><span>{{T "Account"}}</span> <strong>{{(index $list 0).Label}}</strong></p>
-  {{else}}
-  <form class="acct" method="get" action="{{.Action}}">
-    <label for="account">{{T "Account"}}</label>
-    <select id="account" name="account">{{range $list}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
-    <button type="submit">{{T "Open"}}</button>
-  </form>
-  {{end}}
-  <details class="acct-other">
-    <summary>{{T "Another account"}}</summary>
-    <form class="acct" method="get" action="{{.Action}}">
-      <label for="account-other">ID</label>
-      <input id="account-other" name="account" type="number" min="1" inputmode="numeric" required aria-describedby="account-hint">
-      <button type="submit">{{T "Open"}}</button>
-      <p class="field-hint" id="account-hint">{{T "From the Chatwoot URL:"}} /app/accounts/<strong>1</strong>/…</p>
-    </form>
-  </details>
+  <p class="acct-one"><span>{{T "Account"}}</span> <strong>{{range accounts .Current}}{{if .Selected}}{{.Label}}{{end}}{{end}}</strong></p>
 </div>
+{{end}}
+
+{{define "acct-switch"}}{{$list := accounts navAccount}}{{$page := .page}}
+<details class="acct-switch">
+  <summary><span class="acct-now"><span class="acct-cap">{{T "Account"}}</span><strong>{{range $list}}{{if .Selected}}{{.Label}}{{end}}{{end}}</strong></span></summary>
+  <div class="acct-menu">
+    {{range $list}}{{if not .Selected}}<a href="{{navSwitchHref $page .Value}}">{{.Label}}</a>{{end}}{{end}}
+    <form class="acct" method="get" action="{{navSwitchAction $page}}">
+      <label for="acct-id-{{.id}}">{{T "Account ID"}}</label>
+      <input id="acct-id-{{.id}}" name="account" type="number" min="1" inputmode="numeric" required aria-describedby="acct-hint-{{.id}}">
+      <button type="submit">{{T "Open"}}</button>
+      <p class="field-hint" id="acct-hint-{{.id}}">{{T "From the Chatwoot URL:"}} /app/accounts/<strong>1</strong>/…</p>
+    </form>
+  </div>
+</details>
 {{end}}
 
 {{define "inbox-select"}}{{$list := inboxes .Account .Current}}
@@ -495,53 +503,53 @@
 {{if not $list}}<p class="field-hint">{{T "Inboxes appear here by name after a customer writes in them."}}</p>{{end}}
 {{end}}
 
-{{define "nav-link"}}<a href="{{.href}}"{{if eq .page .key}} aria-current="page"{{end}}>{{navIcon .key}}<span class="nav-label">{{.label}}</span>{{with .count}}<span class="nav-count">{{.}}{{if $.more}}+{{end}}<span class="visually-hidden"> {{$.countLabel}}</span></span>{{end}}{{if eq .key "spend"}}{{with spendWarnings}}<span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}{{end}}</a>{{end}}
+{{define "nav-link"}}<a href="{{navHref .key}}"{{if eq .page .key}} aria-current="page"{{end}}>{{navIcon .key}}<span class="nav-label">{{.label}}</span>{{with .count}}<span class="nav-count">{{.}}{{if $.more}}+{{end}}<span class="visually-hidden"> {{$.countLabel}}</span></span>{{end}}{{if eq .key "spend"}}{{with spendWarnings}}<span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}{{end}}</a>{{end}}
 
 {{define "nav-sum"}}{{with .}}<span class="nav-count nav-sum">{{.}}<span class="visually-hidden"> {{T "waiting"}}</span></span>{{end}}{{end}}
 
 {{define "nav-links"}}{{$p := .}}{{$c := navCounts}}
-    {{template "nav-link" dict "page" $p "key" "home" "href" "/admin" "label" (T "Home")}}
+    {{template "nav-link" dict "page" $p "key" "home" "label" (T "Home")}}
     <details class="nav-group" data-group="bot"{{if navOpen "bot" $p}} open{{end}}>
       <summary class="nav-head">{{T "Bot"}}</summary>
       <div class="nav-items" role="group" aria-label="{{T "Bot"}}">
-      {{template "nav-link" dict "page" $p "key" "hours" "href" "/admin/hours" "label" (T "Bot on/off")}}
-      {{template "nav-link" dict "page" $p "key" "test" "href" "/admin/test" "label" (T "Test bot")}}
-      {{template "nav-link" dict "page" $p "key" "nudge" "href" "/admin/nudge" "label" (T "Follow-up")}}
+      {{template "nav-link" dict "page" $p "key" "hours" "label" (T "Bot on/off")}}
+      {{template "nav-link" dict "page" $p "key" "test" "label" (T "Test bot")}}
+      {{template "nav-link" dict "page" $p "key" "nudge" "label" (T "Follow-up")}}
       </div>
     </details>
     <details class="nav-group" data-group="knows"{{if navOpen "knows" $p}} open{{end}}>
       <summary class="nav-head">{{T "What the bot knows"}}</summary>
       <div class="nav-items" role="group" aria-label="{{T "What the bot knows"}}">
-      {{template "nav-link" dict "page" $p "key" "business" "href" "/admin/business" "label" (T "Business profile")}}
-      {{template "nav-link" dict "page" $p "key" "knowledge" "href" "/admin/knowledge" "label" (T "Knowledge base")}}
-      {{template "nav-link" dict "page" $p "key" "promos" "href" "/admin/promotions" "label" (T "Promotions")}}
-      {{template "nav-link" dict "page" $p "key" "images" "href" "/admin/images" "label" (T "Bot images")}}
+      {{template "nav-link" dict "page" $p "key" "business" "label" (T "Business profile")}}
+      {{template "nav-link" dict "page" $p "key" "knowledge" "label" (T "Knowledge base")}}
+      {{template "nav-link" dict "page" $p "key" "promos" "label" (T "Promotions")}}
+      {{template "nav-link" dict "page" $p "key" "images" "label" (T "Bot images")}}
       </div>
     </details>
     <details class="nav-group" data-group="improve"{{if navOpen "improve" $p}} open{{end}}>
       <summary class="nav-head">{{T "Improve answers"}}{{template "nav-sum" $c.Improve}}</summary>
       <div class="nav-items" role="group" aria-label="{{T "Improve answers"}}">
-      {{template "nav-link" dict "page" $p "key" "replies" "href" "/admin/replies" "label" (T "Rate replies")}}
-      {{template "nav-link" dict "page" $p "key" "gaps" "href" "/admin/gaps" "label" (T "Unanswered questions") "count" $c.Gaps "more" $c.GapsMore "countLabel" (T "questions without an answer")}}
-      {{template "nav-link" dict "page" $p "key" "approvals" "href" "/admin/approvals" "label" (T "AI approvals") "count" $c.Approvals "countLabel" (T "changes waiting for you")}}
+      {{template "nav-link" dict "page" $p "key" "replies" "label" (T "Rate replies")}}
+      {{template "nav-link" dict "page" $p "key" "gaps" "label" (T "Unanswered questions") "count" $c.Gaps "more" $c.GapsMore "countLabel" (T "questions without an answer")}}
+      {{template "nav-link" dict "page" $p "key" "approvals" "label" (T "AI approvals") "count" $c.Approvals "countLabel" (T "changes waiting for you")}}
       </div>
     </details>
     <details class="nav-group" data-group="sales"{{if navOpen "sales" $p}} open{{end}}>
       <summary class="nav-head">{{T "Sales and leads"}}{{template "nav-sum" $c.Sales}}</summary>
       <div class="nav-items" role="group" aria-label="{{T "Sales and leads"}}">
-      {{template "nav-link" dict "page" $p "key" "sales" "href" "/admin/sales" "label" (T "Sales")}}
-      {{template "nav-link" dict "page" $p "key" "leads" "href" "/admin/leads" "label" (T "Leads") "count" $c.Slips "countLabel" (T "payment slips to confirm")}}
-      {{template "nav-link" dict "page" $p "key" "comments" "href" "/admin/comments" "label" (T "Comment leads")}}
+      {{template "nav-link" dict "page" $p "key" "sales" "label" (T "Sales")}}
+      {{template "nav-link" dict "page" $p "key" "leads" "label" (T "Leads") "count" $c.Slips "countLabel" (T "payment slips to confirm")}}
+      {{template "nav-link" dict "page" $p "key" "comments" "label" (T "Comment leads")}}
       </div>
     </details>
     <details class="nav-group" data-group="settings"{{if navOpen "settings" $p}} open{{end}}>
       <summary class="nav-head">{{T "Settings"}}</summary>
       <div class="nav-items" role="group" aria-label="{{T "Settings"}}">
-      {{template "nav-link" dict "page" $p "key" "alerts" "href" "/admin/alerts" "label" (T "Alerts")}}
-      {{template "nav-link" dict "page" $p "key" "spend" "href" "/admin/spend" "label" (T "AI spend")}}
-      {{template "nav-link" dict "page" $p "key" "providers" "href" "/admin/providers" "label" (T "AI providers")}}
-      {{template "nav-link" dict "page" $p "key" "connections" "href" "/admin/connections" "label" (T "Connect AI tools")}}
-      {{template "nav-link" dict "page" $p "key" "history" "href" "/admin/history" "label" (T "History")}}
+      {{template "nav-link" dict "page" $p "key" "alerts" "label" (T "Alerts")}}
+      {{template "nav-link" dict "page" $p "key" "spend" "label" (T "AI spend")}}
+      {{template "nav-link" dict "page" $p "key" "providers" "label" (T "AI providers")}}
+      {{template "nav-link" dict "page" $p "key" "connections" "label" (T "Connect AI tools")}}
+      {{template "nav-link" dict "page" $p "key" "history" "label" (T "History")}}
       </div>
     </details>
 {{end}}
@@ -579,6 +587,7 @@
 {{define "nav"}}
 <aside class="sidebar">
   <p class="brand">{{wordmark}}<span>AI admin</span></p>
+  {{template "acct-switch" (dict "page" . "id" "side")}}
   <nav aria-label="{{T "Admin sections"}}" lang="{{lang}}">{{template "nav-links" .}}</nav>
   {{template "theme-form" .}}
 </aside>
@@ -588,6 +597,7 @@
   <details class="menu">
     <summary>{{T "Menu"}}{{with navCounts.Total}} <span class="nav-count">{{.}}<span class="visually-hidden"> {{T "waiting"}}</span></span>{{end}}{{with spendWarnings}} <span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}</summary>
     <div class="menu-panel">
+      {{template "acct-switch" (dict "page" . "id" "menu")}}
       <nav aria-label="{{T "Admin sections"}}" lang="{{lang}}">{{template "nav-links" .}}</nav>
       {{template "theme-form" .}}
     </div>

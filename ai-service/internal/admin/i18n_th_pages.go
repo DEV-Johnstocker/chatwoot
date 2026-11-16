@@ -28,6 +28,8 @@ func init() {
 		"questions without an answer": "คำถามที่ยังไม่มีคำตอบ",
 		"changes waiting for you":     "รายการรอคุณอนุมัติ",
 		"payment slips to confirm":    "สลิปรอยืนยัน",
+		// Account switch at the top of the menu (layout.html)
+		"Account ID": "รหัสบัญชี",
 		"Ask something your customers ask, for example the price, how to pay, or what the course includes.": "ลองถามแบบที่ลูกค้าถาม เช่น ราคา วิธีจ่ายเงิน หรือคอร์สมีอะไรบ้าง",
 		"Sending…":              "กำลังส่ง…",
 		"Reply as the customer": "ตอบในฐานะลูกค้า",
