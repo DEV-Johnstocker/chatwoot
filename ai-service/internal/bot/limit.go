@@ -90,11 +90,11 @@ func (b *Bot) overLimit(key limitKey) bool {
 	return ok && b.now().Sub(at) < limit.Window
 }
 
-// pruneLimits drops counts older than the longest window the owner can set,
-// at most once a minute, so the maps stay as small as the number of recently
-// active customers. Each account's own window is applied when it is read.
+// pruneLimits drops counts that left their account's window, at most once a
+// minute, so the maps stay as small as the number of recently active
+// customers. Each account's window is looked up once per sweep (it is the
+// owner's live setting).
 func (b *Bot) pruneLimits(now time.Time) {
-	from := now.Add(-alerts.MaxReplyWindow)
 	if b.replies == nil {
 		b.replies, b.limited = map[limitKey][]time.Time{}, map[limitKey]time.Time{}
 	}
@@ -102,13 +102,22 @@ func (b *Bot) pruneLimits(now time.Time) {
 		return
 	}
 	b.limitPruned = now
+	windows := map[int64]time.Duration{}
+	since := func(acct int64) time.Time {
+		w, ok := windows[acct]
+		if !ok {
+			w = b.limitFor(acct).Window
+			windows[acct] = w
+		}
+		return now.Add(-w)
+	}
 	for k, ts := range b.replies {
-		if len(ts) == 0 || !ts[len(ts)-1].After(from) {
+		if len(ts) == 0 || !ts[len(ts)-1].After(since(k.acct)) {
 			delete(b.replies, k)
 		}
 	}
 	for k, at := range b.limited {
-		if !at.After(from) {
+		if !at.After(since(k.acct)) {
 			delete(b.limited, k)
 		}
 	}

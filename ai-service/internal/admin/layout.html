@@ -323,8 +323,16 @@
   form.alert-settings .limit-fields { display: flex; flex-wrap: wrap; gap: 12px 16px; margin-top: 8px; }
   form.alert-settings .limit-fields > div { flex: 1 1 200px; max-width: 280px; }
   form.alert-settings label.check input[type="checkbox"], table.alert-rules input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color: var(--accent); }
-  table.alert-rules th[scope="row"] { font-weight: 600; text-align: left; }
+  table.alert-rules th[scope="row"] { font-weight: 600; text-align: left; color: var(--text); font-size: .95rem; }
   table.alert-rules td.on { width: 3.5em; }
+  /* Phones: "☑ Alert name" on one line, when it is sent below. */
+  @media (max-width: 640px) {
+    table.alert-rules thead { display: none; }
+    table.alert-rules tr { display: grid; grid-template-columns: 2.5em minmax(0, 1fr); gap: 2px 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    table.alert-rules th, table.alert-rules td { display: block; padding: 0; border: 0; min-width: 0; }
+    table.alert-rules td.on { width: auto; }
+    table.alert-rules td:last-child { grid-column: 2; color: var(--muted); }
+  }
   .slack-state { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin: 8px 0 12px; }
   fieldset.spike { margin-top: 20px; }
   /* Bot on/off */

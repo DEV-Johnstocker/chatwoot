@@ -33,6 +33,7 @@ func init() {
 		"%d hours":                             "%d ชั่วโมง",
 		"%d minutes":                           "%d นาที",
 		"off":                                  "ปิด",
-		"%d replies per %s":                    "%d ครั้งต่อ %s",
+		"The saved alert settings could not be read, so the server defaults are in use. Saving this page replaces them.": "อ่านการตั้งค่าการแจ้งเตือนที่บันทึกไว้ไม่ได้ ตอนนี้จึงใช้ค่าเริ่มต้นของเซิร์ฟเวอร์ การบันทึกหน้านี้จะแทนที่ค่าเดิม",
+		"%d replies per %s": "%d ครั้งต่อ %s",
 	})
 }

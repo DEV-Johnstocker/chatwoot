@@ -281,8 +281,8 @@ func run() error {
 			Ratings: adminRatings(profiles), Replies: adminReplies(reader),
 			Sales:  adminSales(saleStore),
 			Alerts: monitor, AlertSettings: alertSettings, SlackConfigured: cfg.Alerts.SlackWebhookURL != "",
-			Spend:  adminSpend(profiles, spendMonitor),
-			Leads:  adminLeads(leadStore),
+			Spend: adminSpend(profiles, spendMonitor),
+			Leads: adminLeads(leadStore),
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")

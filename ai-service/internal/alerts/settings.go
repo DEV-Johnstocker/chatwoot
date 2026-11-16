@@ -80,7 +80,7 @@ func (s Settings) Validate() error {
 			errs = append(errs, fmt.Errorf("unknown alert %q", string(k)))
 		}
 	}
-	if s.SpikeShare < MinSpikeShare || s.SpikeShare > MaxSpikeShare {
+	if !(s.SpikeShare >= MinSpikeShare && s.SpikeShare <= MaxSpikeShare) { // NaN fails too
 		errs = append(errs, errors.New("the hand-off share must be 10% to 100%"))
 	}
 	if s.SpikeMinTurns < MinSpikeTurns || s.SpikeMinTurns > MaxSpikeTurns {
@@ -108,10 +108,12 @@ type Defaults struct {
 // cheap, so the bot and the monitor ask it on every use: a save applies at
 // once, with no restart.
 type SettingsStore struct {
-	mu       sync.Mutex
+	saveMu   sync.Mutex // one save at a time: read, change, write
+	mu       sync.Mutex // guards cur and loadErr; never held during disk I/O
 	path     string
 	defaults Defaults
 	cur      Settings
+	loadErr  error
 }
 
 // fileSettings is the file format: durations in minutes, accounts as keys.
@@ -132,7 +134,7 @@ type fileReplyLimit struct {
 // file that cannot be read or fails the checks is reported, and the defaults
 // are used so the bot keeps running; the next save replaces the file.
 func OpenSettings(path string, d Defaults) (*SettingsStore, error) {
-	if d.SpikeShare < MinSpikeShare || d.SpikeShare > MaxSpikeShare {
+	if !(d.SpikeShare >= MinSpikeShare && d.SpikeShare <= MaxSpikeShare) {
 		d.SpikeShare = DefaultSpikeShare
 	}
 	s := &SettingsStore{path: path, defaults: d, cur: Settings{SpikeShare: d.SpikeShare, SpikeMinTurns: SpikeMinTurns}}
@@ -141,18 +143,21 @@ func OpenSettings(path string, d Defaults) (*SettingsStore, error) {
 		return s, nil
 	}
 	if err != nil {
-		return s, fmt.Errorf("read alert settings: %w", err)
+		s.loadErr = fmt.Errorf("read alert settings: %w", err)
+		return s, s.loadErr
 	}
 	var f fileSettings
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return s, fmt.Errorf("parse alert settings %s: %w", path, err)
+		s.loadErr = fmt.Errorf("parse alert settings %s: %w", path, err)
+		return s, s.loadErr
 	}
 	loaded, err := fromFile(f)
 	if err == nil {
 		err = loaded.Validate()
 	}
 	if err != nil {
-		return s, fmt.Errorf("alert settings %s: %w", path, err)
+		s.loadErr = fmt.Errorf("alert settings %s: %w", path, err)
+		return s, s.loadErr
 	}
 	s.cur = loaded
 	return s, nil
@@ -164,6 +169,9 @@ func fromFile(f fileSettings) (Settings, error) {
 		acct, err := strconv.ParseInt(key, 10, 64)
 		if err != nil {
 			return s, fmt.Errorf("account %q is not a number", key)
+		}
+		if l.WindowMinutes < 1 || l.WindowMinutes > int(MaxReplyWindow/time.Minute) {
+			return s, fmt.Errorf("account %d: the reply limit window must be 1 minute to 24 hours", acct)
 		}
 		if s.ReplyLimits == nil {
 			s.ReplyLimits = map[int64]Limit{}
@@ -218,23 +226,57 @@ func (s *SettingsStore) Spike() (float64, int) {
 	return s.cur.SpikeShare, s.cur.SpikeMinTurns
 }
 
-// Save validates, writes atomically and makes the settings current.
+// LoadError is why the saved file could not be used at start (nil when it
+// was fine or absent); the defaults apply until the next save.
+func (s *SettingsStore) LoadError() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadErr
+}
+
+// Save replaces every setting (see Update).
 func (s *SettingsStore) Save(next Settings) error {
-	next = clone(next)
+	_, _, err := s.Update(func(cur *Settings) error {
+		*cur = clone(next)
+		return nil
+	})
+	return err
+}
+
+// Update applies change to a copy of the current settings, validates and
+// writes it, then makes it current. Saves run one at a time, so two pages
+// saving different accounts never undo each other. Readers are not held up
+// by the disk write. It returns the settings before and after.
+func (s *SettingsStore) Update(change func(*Settings) error) (old, next Settings, err error) {
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	old = s.Get()
+	next = clone(old)
+	if err := change(&next); err != nil {
+		return old, next, err
+	}
 	if err := next.Validate(); err != nil {
-		return err
+		return old, next, err
 	}
 	buf, err := json.MarshalIndent(toFile(next), "", "  ")
 	if err != nil {
-		return err
+		return old, next, err
+	}
+	if err := writeAtomic(s.path, buf); err != nil {
+		return old, next, err
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := writeAtomic(s.path, buf); err != nil {
-		return err
+	s.cur, s.loadErr = clone(next), nil
+	s.mu.Unlock()
+	return old, next, nil
+}
+
+// LimitIn is an account's limit within given settings, or the default.
+func (s *SettingsStore) LimitIn(set Settings, acct int64) Limit {
+	if l, ok := set.ReplyLimits[acct]; ok {
+		return l
 	}
-	s.cur = next
-	return nil
+	return s.defaults.ReplyLimit
 }
 
 func writeAtomic(path string, buf []byte) error {
@@ -255,11 +297,20 @@ func writeAtomic(path string, buf []byte) error {
 		tmp.Close()
 		return err
 	}
+	// Flush before the rename, so a crash never leaves an empty file.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
 		return fmt.Errorf("write alert settings: %w", err)
+	}
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync() // best effort: keeps the rename itself on disk
+		d.Close()
 	}
 	return nil
 }

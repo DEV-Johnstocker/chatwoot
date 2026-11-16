@@ -21,6 +21,7 @@
   {{else}}
   {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next customer message."}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+  {{if .LoadFailed}}<div class="alert warn" role="status">{{T "The saved alert settings could not be read, so the server defaults are in use. Saving this page replaces them."}}</div>{{end}}
 
   <form class="alert-settings" method="post" action="/admin/alerts" autocomplete="off">
     <input type="hidden" name="account" value="{{.AccountID}}">

@@ -24,7 +24,9 @@ type AlertSettings interface {
 	Get() alerts.Settings
 	ReplyLimitFor(acct int64) alerts.Limit
 	DefaultReplyLimit() alerts.Limit
-	Save(alerts.Settings) error
+	LimitIn(s alerts.Settings, acct int64) alerts.Limit
+	Update(change func(*alerts.Settings) error) (old, next alerts.Settings, err error)
+	LoadError() error
 }
 
 // maxAlertForm bounds the form: a few numbers and five switches.
@@ -65,6 +67,7 @@ type alertSettingsData struct {
 	MaxLimit   int
 	Saved      bool
 	Error      string
+	LoadFailed bool // the saved file could not be used: defaults apply
 }
 
 func (h *Handler) showAlertSettings(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +79,7 @@ func (h *Handler) showAlertSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s := h.AlertSettings.Get()
 	_, data.Custom = s.ReplyLimits[acct]
+	data.LoadFailed = h.AlertSettings.LoadError() != nil
 	h.renderAlertSettings(w, r, http.StatusOK, acct, s, h.AlertSettings.ReplyLimitFor(acct), data)
 }
 
@@ -96,20 +100,25 @@ func (h *Handler) submitAlertSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "account must be a positive number", http.StatusBadRequest)
 		return
 	}
-	old := h.AlertSettings.Get()
-	oldLimit := h.AlertSettings.ReplyLimitFor(acct)
-	next, limit, err := alertSettingsFromForm(old, acct, f.Get)
-	if err == nil {
-		err = h.AlertSettings.Save(next)
-	}
+	// The form is applied inside Update, over the settings as they are at
+	// that moment, so a save for another account in another tab is kept.
+	var shown alerts.Settings
+	var limit alerts.Limit
+	old, _, err := h.AlertSettings.Update(func(cur *alerts.Settings) error {
+		var ferr error
+		shown, limit, ferr = alertSettingsFromForm(*cur, acct, f.Get)
+		*cur = shown
+		return ferr
+	})
 	if err != nil {
 		h.Logger.Warn("alert settings not saved", "account_id", acct, "error", err)
 		data := alertSettingsData{Enabled: true, Error: err.Error()}
 		_, data.Custom = old.ReplyLimits[acct]
-		h.renderAlertSettings(w, r, http.StatusUnprocessableEntity, acct, next, limit, data)
+		h.renderAlertSettings(w, r, http.StatusUnprocessableEntity, acct, shown, limit, data)
 		return
 	}
-	if limit != oldLimit {
+	next := shown
+	if oldLimit := h.AlertSettings.LimitIn(old, acct); limit != oldLimit {
 		h.record(r, acct, "reply limit saved", oldLimit.String()+" → "+limit.String(), nil)
 	}
 	if was, now := serverRules(old), serverRules(next); was != now {
@@ -135,8 +144,11 @@ func alertSettingsFromForm(old alerts.Settings, acct int64, get func(string) str
 	} else if !limit.Off {
 		errs = append(errs, errors.New("replies per customer must be a whole number"))
 	}
-	if m, err := strconv.Atoi(strings.TrimSpace(get("limit_window"))); err == nil {
-		limit.Window = time.Duration(m) * time.Minute
+	maxMin := int(alerts.MaxReplyWindow / time.Minute)
+	if m, err := strconv.Atoi(strings.TrimSpace(get("limit_window"))); err == nil && m >= 1 && m <= maxMin {
+		limit.Window = time.Duration(m) * time.Minute // bounded first: no overflow
+	} else if err == nil {
+		errs = append(errs, errors.New("the reply limit window must be 1 minute to 24 hours"))
 	} else {
 		errs = append(errs, errors.New("pick a time window for the reply limit"))
 	}
@@ -148,7 +160,7 @@ func alertSettingsFromForm(old alerts.Settings, acct int64, get func(string) str
 			next.Off = append(next.Off, k)
 		}
 	}
-	if pct, err := strconv.ParseFloat(strings.TrimSpace(get("spike_share")), 64); err == nil && !math.IsNaN(pct) {
+	if pct, err := strconv.ParseFloat(strings.TrimSpace(get("spike_share")), 64); err == nil && !math.IsNaN(pct) && !math.IsInf(pct, 0) {
 		next.SpikeShare = pct / 100
 	} else {
 		errs = append(errs, errors.New("the hand-off share must be a number"))
