@@ -75,6 +75,18 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   once when a whole window passes clean; `ALERT_ENVIRONMENT` names the
   deployment. Messages hold counts and account ids only. Active problems
   also show on `/admin` Home. Counts are in memory, so a restart resets them.
+- **One follow-up to quiet priced chats** (off by default): every 15 minutes
+  the bot sends `BOT_NUDGE_TEXT` once to a chat it still owns when one of its
+  replies quoted a baht amount, its reply was the last message, no staff
+  member is assigned or wrote in the chat (reply or note, last 60 messages),
+  there is no `bot-handoff` label,
+  the bot is switched on, and the customer's last message is
+  `BOT_NUDGE_AFTER` old (e.g. `20h`; 1h–22h, shorter than `BOT_RESOLVE_AFTER`;
+  nothing goes out after 23h). The chat gets the label `nudged` before the
+  message is sent, so it is followed up at most once. `BOT_NUDGE_ACCOUNTS`
+  (comma-separated) limits it to some accounts. Needs
+  `CHATWOOT_READER_TOKEN`. Auto-resolve then closes the chat a full
+  `BOT_RESOLVE_AFTER` after the follow-up.
 - **Unanswered questions** (`/admin/gaps`): chats the bot handed over only
   because it had no answer (label `kb-gap`), read live from Chatwoot with
   `CHATWOOT_READER_TOKEN`: the customer's words, the bot's summary and the

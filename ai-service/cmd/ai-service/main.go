@@ -35,6 +35,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/mcp"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/media"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/nudge"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/oauth"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pdftext"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/pending"
@@ -187,6 +188,7 @@ func run() error {
 	}, cfg.Workers, cfg.QueueSize)
 	b.Start(context.Background())
 	startAutoResolve(cfg, reader, logger)
+	startNudge(cfg, reader, botHours, logger)
 	if webSyncer != nil {
 		go webSyncer.Run(context.Background(), 10*time.Minute)
 	}
@@ -611,6 +613,36 @@ func startAutoResolve(cfg config.Config, reader *chatwoot.Reader, logger *slog.L
 	}
 	logger.Info("auto-resolve on", "after", cfg.BotResolveAfter.String())
 	go s.Run(context.Background(), 15*time.Minute)
+}
+
+// startNudge sends the one follow-up to quiet priced chats, every 15 minutes.
+// Like auto-resolve it needs the reader token to list conversations.
+func startNudge(cfg config.Config, reader *chatwoot.Reader, hours bot.Hours, logger *slog.Logger) {
+	if cfg.BotNudgeAfter <= 0 || reader == nil {
+		logger.Info("follow-up nudge off: needs CHATWOOT_READER_TOKEN, BOT_NUDGE_AFTER and BOT_NUDGE_TEXT")
+		return
+	}
+	accounts := map[int64]bool{}
+	for _, id := range cfg.BotNudgeAccounts {
+		accounts[id] = true
+	}
+	s := &nudge.Sweeper{
+		List: reader, Chat: nudgeChat{Reader: reader, Client: chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil)},
+		Accounts: accounts, After: cfg.BotNudgeAfter, Text: cfg.BotNudgeText,
+		Now: time.Now, Logger: logger.With("component", "nudge"),
+	}
+	if hours != nil {
+		s.Hours = hours
+	}
+	logger.Info("follow-up nudge on", "after", cfg.BotNudgeAfter.String(), "accounts", cfg.BotNudgeAccounts)
+	go s.Run(context.Background(), 15*time.Minute)
+}
+
+// nudgeChat reads messages with the reader token and writes with the bot
+// token, so the follow-up is sent as the bot.
+type nudgeChat struct {
+	*chatwoot.Reader
+	*chatwoot.Client
 }
 
 // adminGaps reads the gap report from Chatwoot with the reader token; without

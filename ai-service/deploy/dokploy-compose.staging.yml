@@ -137,6 +137,10 @@ services:
       # chat after a restart or when a closed chat reopens. Bot tokens cannot.
       CHATWOOT_READER_TOKEN: ${CHATWOOT_READER_TOKEN:-}
       BOT_RESOLVE_AFTER: ${BOT_RESOLVE_AFTER:-22h}
+      # One follow-up to quiet chats where the bot gave a price (off by default).
+      BOT_NUDGE_AFTER: ${BOT_NUDGE_AFTER:-0}
+      BOT_NUDGE_TEXT: ${BOT_NUDGE_TEXT:-}
+      BOT_NUDGE_ACCOUNTS: ${BOT_NUDGE_ACCOUNTS:-}
       # Required: the webhook path bypasses Access, so a missing or guessable
       # secret would let anyone drive the bot. Keep the "ai" profile off until
       # the Agent Bot exists and both values are set.

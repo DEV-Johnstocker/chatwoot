@@ -347,3 +347,48 @@ func TestLoad_CommentPublicReply(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_BotNudge(t *testing.T) {
+	// Arrange
+	load := func(extra map[string]string) (Config, error) {
+		m := map[string]string{"CHATWOOT_BASE_URL": "http://x", "CHATWOOT_BOT_TOKEN": "t", "CHATWOOT_WEBHOOK_SECRET": "s"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return Load(func(k string) (string, bool) { v, ok := m[k]; return v, ok })
+	}
+
+	// Act
+	def, errDef := load(nil)
+	on, errOn := load(map[string]string{
+		"BOT_NUDGE_AFTER": "20h", "BOT_NUDGE_TEXT": ` สวัสดีค่ะ\nคุณลูกค้า `, "BOT_NUDGE_ACCOUNTS": "3, 1",
+	})
+	_, errNoText := load(map[string]string{"BOT_NUDGE_AFTER": "20h"})
+	_, errShort := load(map[string]string{"BOT_NUDGE_AFTER": "30m", "BOT_NUDGE_TEXT": "x"})
+	_, errLong := load(map[string]string{"BOT_NUDGE_AFTER": "23h", "BOT_NUDGE_TEXT": "x"})
+	_, errAfterResolve := load(map[string]string{"BOT_NUDGE_AFTER": "20h", "BOT_NUDGE_TEXT": "x", "BOT_RESOLVE_AFTER": "12h"})
+	noResolve, errNoResolve := load(map[string]string{"BOT_NUDGE_AFTER": "20h", "BOT_NUDGE_TEXT": "x", "BOT_RESOLVE_AFTER": "0"})
+	_, errAccounts := load(map[string]string{"BOT_NUDGE_ACCOUNTS": "3,abc"})
+	_, errZero := load(map[string]string{"BOT_NUDGE_ACCOUNTS": "0"})
+	_, errBig := load(map[string]string{"BOT_NUDGE_AFTER": "20h", "BOT_NUDGE_TEXT": strings.Repeat("ก", 1001)})
+
+	// Assert
+	if errDef != nil || def.BotNudgeAfter != 0 || def.BotNudgeText != "" || len(def.BotNudgeAccounts) != 0 {
+		t.Errorf("default = %+v %v, want off", def.BotNudgeAfter, errDef)
+	}
+	if errOn != nil || on.BotNudgeAfter != 20*time.Hour || on.BotNudgeText != "สวัสดีค่ะ\nคุณลูกค้า" ||
+		len(on.BotNudgeAccounts) != 2 || on.BotNudgeAccounts[0] != 3 || on.BotNudgeAccounts[1] != 1 {
+		t.Errorf("on = %v %q %v %v", on.BotNudgeAfter, on.BotNudgeText, on.BotNudgeAccounts, errOn)
+	}
+	if errNoResolve != nil || noResolve.BotNudgeAfter != 20*time.Hour {
+		t.Errorf("nudge with auto-resolve off = %v, want allowed", errNoResolve)
+	}
+	for name, err := range map[string]error{
+		"no text": errNoText, "under 1h": errShort, "over 22h": errLong, "not before resolve": errAfterResolve,
+		"bad account": errAccounts, "zero account": errZero, "text too long": errBig,
+	} {
+		if err == nil {
+			t.Errorf("%s: err = nil, want refused", name)
+		}
+	}
+}
