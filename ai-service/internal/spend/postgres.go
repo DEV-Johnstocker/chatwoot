@@ -13,7 +13,7 @@ import (
 )
 
 // Postgres stores usage, caps and sent alerts in the tables the knowledge
-// base migration creates (schema v20).
+// base migration creates (schema v22).
 type Postgres struct {
 	Pool *pgxpool.Pool
 }
