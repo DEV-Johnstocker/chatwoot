@@ -64,8 +64,10 @@ a chat.
   `ALERT_HANDOFF_SHARE` (default `0.5`), `REPLY_LIMIT` (default `30`, `0` =
   off), `REPLY_LIMIT_WINDOW` (default `1h`). `ALERT_ENVIRONMENT` is set in the
   compose file. `BOT_NUDGE_AFTER` / `BOT_NUDGE_TEXT` / `BOT_NUDGE_ACCOUNTS`
-  (one follow-up to quiet priced chats; off by default, see the ai-service
-  README).
+  / `BOT_NUDGE_WRITE` (one follow-up to quiet priced chats; off by default,
+  see the ai-service README). They are only the defaults: the owner's
+  per-account choices on `/admin/nudge` are kept in `nudge-settings.json` on
+  the data volume (not in the database backup either) and win.
   The alert and reply-limit variables are defaults: once the owner saves
   `/admin/alerts`, `/data/alert-settings.json` wins (it sits on the same
   volume as `settings.json` and, like it, is not in the database backup).

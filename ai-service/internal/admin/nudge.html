@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Follow-up · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "nudge"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Follow-up"}}</h1>
+      <p class="lead">{{T "One message to a customer who went quiet after the bot told them a price, while Messenger still lets the page write to them. Changes apply within 15 minutes."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/nudge" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "Follow-up settings are off."}}</strong> {{T "Set %s for ai-service and restart it." "SETTINGS_PATH"}}</div>
+  {{else}}
+  {{if not .Ready}}<div class="alert err" role="alert"><strong>{{T "Follow-ups cannot be sent yet."}}</strong> {{T "Set %s for ai-service and restart it." "CHATWOOT_READER_TOKEN"}}</div>{{end}}
+  {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next check (every 15 minutes)."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+
+  <form class="nudge-settings" method="post" action="/admin/nudge" autocomplete="off">
+    <input type="hidden" name="account" value="{{.AccountID}}">
+
+    <section class="card" aria-labelledby="nudge-title">
+      <h2 class="card-title" id="nudge-title">{{T "Follow-up for this account"}}</h2>
+      <label class="check"><input id="on" name="on" type="checkbox"{{if .On}} checked{{end}}>
+        <span><strong>{{T "Send one follow-up"}}</strong><span class="field-hint">{{T "Only to chats that still match every rule below."}}</span></span></label>
+
+      <div class="nudge-fields">
+        <label for="after_hours">{{T "Wait after the customer's last message"}}</label>
+        <select id="after_hours" name="after_hours">
+          {{range .Hours}}<option value="{{.Hours}}"{{if .Selected}} selected{{end}}>{{T "%d hours" .Hours}}</option>{{end}}
+        </select>
+        <p class="field-hint">{{if .Resolve}}{{T "Must be shorter than auto-resolve (%d hours), so the chat is still open." .Resolve}}{{else}}{{T "At most 22 hours: Messenger lets a page write for 24 hours after the customer's last message."}}{{end}}</p>
+      </div>
+
+      <fieldset class="mode-choice">
+        <legend>{{T "Who writes it"}}</legend>
+        <label><input type="radio" name="mode" value="write"{{if .Write}} checked{{end}}>
+          <span><strong>{{T "AI writes it from the chat"}}</strong><span class="field-hint">{{T "Names what the customer asked about. A draft that breaks a writing rule is not sent; the fixed text below goes instead."}}</span></span></label>
+        <label><input type="radio" name="mode" value="fixed"{{if not .Write}} checked{{end}}>
+          <span><strong>{{T "Always the fixed text"}}</strong><span class="field-hint">{{T "Every customer gets the same message."}}</span></span></label>
+      </fieldset>
+
+      <div class="nudge-fields">
+        <label for="text">{{T "Fixed text"}}</label>
+        <textarea id="text" name="text" rows="4" maxlength="{{.MaxText}}" required data-preview="nudge-preview" data-count="nudge-count">{{.Text}}</textarea>
+        <p class="field-hint"><span id="nudge-count">{{.TextLen}}</span> / {{.MaxText}} · {{T "Also sent when the AI draft is refused."}}</p>
+      </div>
+
+      <div class="nudge-preview">
+        <p class="field-hint">{{T "Preview: what the customer sees"}}</p>
+        <div class="chat"><div class="bubble assistant" id="nudge-preview">{{.Text}}</div></div>
+      </div>
+
+      <p class="field-hint">{{if .Custom}}{{T "This account uses its own setting. The server default is: %s." .Default}}{{else}}{{T "This account uses the server default (%s) until you save." .Default}}{{end}}</p>
+      <div class="card-foot"><button type="submit" class="primary">{{T "Save"}}</button></div>
+    </section>
+  </form>
+
+  <section class="card" aria-labelledby="rules-title">
+    <h2 class="card-title" id="rules-title">{{T "Fixed rules"}} <span class="badge">{{T "fixed"}}</span></h2>
+    <p class="hint">{{T "A follow-up goes out only when all of these are true. They are set in code and keep the message polite and safe."}}</p>
+    <ul class="nudge-rules">
+      <li>{{T "The bot already told this customer a price in the chat."}}</li>
+      <li>{{T "No staff member replied, wrote a note, or was assigned; the chat is still waiting (Pending)."}}</li>
+      <li>{{T "The bot spoke last, and the customer's last message is between the wait and 23 hours old."}}</li>
+      <li>{{T "Once per chat: the chat gets the label %s before sending, and a chat with that label or %s is skipped." "nudged" "bot-handoff"}}</li>
+      <li>{{T "Only while the bot is on (Bot on/off page)."}}</li>
+      <li>{{T "An AI draft must have no prices, numbers or links, no pressure or promotions, no \"don't know\", no mention of a bot, at most 2 lines and 220 characters, the shop's own ครับ/ค่ะ, and \"คุณลูกค้า\" in Thai."}}</li>
+    </ul>
+  </section>
+  {{end}}
+</main>
+</div>
+</body>
+</html>

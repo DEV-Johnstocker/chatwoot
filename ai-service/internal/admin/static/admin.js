@@ -1,6 +1,6 @@
 // fallow-ignore-file unused-file -- loaded by layout.html, embedded with go:embed
 // Small enhancements for the ai-service admin pages. Every page works
-// without this file; it only adds Copy buttons, "are you sure?" checks,
+// without this file; it only adds Copy buttons, "are you sure?" checks, text previews,
 // Enter-to-send and a "bot is replying" state in the test chat.
 // Rules: never build HTML from strings, no eval, no inline handlers (the CSP allows
 // only this file and enforces Trusted Types).
@@ -154,6 +154,20 @@
       menu.querySelector('summary').focus();
     });
   }
+
+  // <textarea data-preview="ID" data-count="ID">: show the text as typed in
+  // the preview element and its length (characters, as the server counts)
+  // in the counter. Text only (textContent), never HTML.
+  const livePreview = (box) => {
+    const preview = document.getElementById(box.dataset.preview);
+    const count = document.getElementById(box.dataset.count || '');
+    box.addEventListener('input', () => {
+      const text = box.value.trim();
+      if (preview) preview.textContent = text;
+      if (count) count.textContent = String([...text].length);
+    });
+  };
+  document.querySelectorAll('textarea[data-preview]').forEach(livePreview);
 
   // <form data-confirm="Question?"> asks before it is sent.
   document.addEventListener('submit', (event) => {

@@ -1,0 +1,42 @@
+package admin
+
+// Thai lines for the Follow-up page (see i18n_th.go). Issue: DEV-Johnstocker/chatwoot#1
+func init() {
+	addThai(map[string]string{
+		"Follow-up · Pronto": "ข้อความติดตาม · Pronto",
+		"Follow-up":          "ข้อความติดตาม",
+		"One message to a customer who went quiet after the bot told them a price, while Messenger still lets the page write to them. Changes apply within 15 minutes.": "ส่งข้อความหนึ่งครั้งถึงลูกค้าที่เงียบไปหลังบอตแจ้งราคา ในช่วงที่ Messenger ยังให้เพจทักลูกค้าได้ การเปลี่ยนแปลงมีผลภายใน 15 นาที",
+		"Follow-up settings are off.":                               "การตั้งค่าข้อความติดตามใช้งานไม่ได้",
+		"Follow-ups cannot be sent yet.":                            "ยังส่งข้อความติดตามไม่ได้",
+		"Saved. It applies from the next check (every 15 minutes).": "บันทึกแล้ว มีผลตั้งแต่รอบตรวจถัดไป (ทุก 15 นาที)",
+		"Follow-up for this account":                                "ข้อความติดตามของบัญชีนี้",
+		"Send one follow-up":                                        "ส่งข้อความติดตามหนึ่งครั้ง",
+		"Only to chats that still match every rule below.":          "เฉพาะแชทที่ยังตรงกับกฎด้านล่างทุกข้อ",
+		"Wait after the customer's last message":                    "รอหลังข้อความล่าสุดของลูกค้า",
+		"%d hours":                                                  "%d ชั่วโมง",
+		"Must be shorter than auto-resolve (%d hours), so the chat is still open.":                      "ต้องสั้นกว่าเวลาปิดแชทอัตโนมัติ (%d ชั่วโมง) เพื่อให้แชทยังเปิดอยู่",
+		"At most 22 hours: Messenger lets a page write for 24 hours after the customer's last message.": "ไม่เกิน 22 ชั่วโมง: Messenger ให้เพจทักลูกค้าได้ภายใน 24 ชั่วโมงหลังข้อความล่าสุดของลูกค้า",
+		"Who writes it":              "ใครเป็นคนเขียน",
+		"AI writes it from the chat": "AI เขียนจากแชทนั้น",
+		"Names what the customer asked about. A draft that breaks a writing rule is not sent; the fixed text below goes instead.": "พูดถึงสิ่งที่ลูกค้าถาม ถ้าร่างไหนผิดกฎการเขียน จะไม่ส่งร่างนั้น และส่งข้อความตายตัวด้านล่างแทน",
+		"Always the fixed text":                                         "ใช้ข้อความตายตัวเสมอ",
+		"Every customer gets the same message.":                         "ลูกค้าทุกคนได้รับข้อความเดียวกัน",
+		"Fixed text":                                                    "ข้อความตายตัว",
+		"Also sent when the AI draft is refused.":                       "ใช้ส่งแทนเมื่อร่างของ AI ไม่ผ่านกฎด้วย",
+		"Preview: what the customer sees":                               "ตัวอย่าง: สิ่งที่ลูกค้าจะเห็น",
+		"This account uses its own setting. The server default is: %s.": "บัญชีนี้ใช้การตั้งค่าของตัวเอง ค่าเริ่มต้นของเซิร์ฟเวอร์คือ: %s",
+		"This account uses the server default (%s) until you save.":     "บัญชีนี้ใช้ค่าเริ่มต้นของเซิร์ฟเวอร์ (%s) จนกว่าคุณจะบันทึก",
+		"fixed":       "ค่าคงที่",
+		"off":         "ปิด",
+		"Fixed rules": "กฎที่ตั้งไว้ตายตัว",
+		"A follow-up goes out only when all of these are true. They are set in code and keep the message polite and safe.": "ข้อความติดตามจะส่งเมื่อทุกข้อด้านล่างเป็นจริงเท่านั้น กฎเหล่านี้ตั้งไว้ในโค้ด เพื่อให้ข้อความสุภาพและปลอดภัย",
+		"The bot already told this customer a price in the chat.":                                                          "บอตเคยแจ้งราคาให้ลูกค้าคนนี้ในแชทแล้ว",
+		"No staff member replied, wrote a note, or was assigned; the chat is still waiting (Pending).":                     "ยังไม่มีทีมงานตอบ เขียนโน้ต หรือรับแชท และแชทยังรออยู่ (Pending)",
+		"The bot spoke last, and the customer's last message is between the wait and 23 hours old.":                        "บอตเป็นฝ่ายตอบล่าสุด และข้อความล่าสุดของลูกค้าผ่านมาแล้วไม่น้อยกว่าเวลารอ แต่ไม่เกิน 23 ชั่วโมง",
+		"Once per chat: the chat gets the label %s before sending, and a chat with that label or %s is skipped.":           "ครั้งเดียวต่อแชท: ติดป้าย %s ก่อนส่ง และข้ามแชทที่มีป้ายนั้นหรือ %s",
+		"Only while the bot is on (Bot on/off page).":                                                                      "เฉพาะตอนที่บอตเปิดอยู่ (หน้าเปิด/ปิดบอต)",
+		"An AI draft must have no prices, numbers or links, no pressure or promotions, no \"don't know\", no mention of a bot, at most 2 lines and 220 characters, the shop's own ครับ/ค่ะ, and \"คุณลูกค้า\" in Thai.": "ร่างของ AI ต้องไม่มีราคา ตัวเลข หรือลิงก์ ไม่เร่งรัดหรือพูดถึงโปรโมชั่น ไม่พูดว่า \"ไม่ทราบ\" ไม่พูดถึงบอต ยาวไม่เกิน 2 บรรทัดและ 220 ตัวอักษร ใช้ครับ/ค่ะ ตามที่ร้านใช้ และเรียกลูกค้าว่า \"คุณลูกค้า\" เมื่อเป็นภาษาไทย",
+		"on, after %d hours, written by AI": "เปิด ส่งหลัง %d ชั่วโมง AI เขียน",
+		"on, after %d hours, fixed text":    "เปิด ส่งหลัง %d ชั่วโมง ข้อความตายตัว",
+	})
+}

@@ -130,12 +130,17 @@ type fakeList struct {
 	convs    map[int64][]Conversation
 	gotFrom  time.Time
 	gotTo    time.Time
+	lastTo   map[int64]time.Time
 	err      error
 }
 
 func (f *fakeList) Accounts(context.Context) ([]int64, error) { return f.accounts, f.err }
 func (f *fakeList) PendingBetween(_ context.Context, acct int64, from, to time.Time) ([]Conversation, error) {
 	f.gotFrom, f.gotTo = from, to
+	if f.lastTo == nil {
+		f.lastTo = map[int64]time.Time{}
+	}
+	f.lastTo[acct] = to
 	return f.convs[acct], nil
 }
 
@@ -191,9 +196,22 @@ func (f fakeHours) Get(_ context.Context, acct int64) (schedule.Schedule, error)
 	return s, nil
 }
 
+// fixedRules gives every account the same rule, or the account's own.
+type fixedRules struct {
+	all  Rule
+	each map[int64]Rule
+}
+
+func (f *fixedRules) For(acct int64) Rule {
+	if r, ok := f.each[acct]; ok {
+		return r
+	}
+	return f.all
+}
+
 func newSweeper(list *fakeList, chat *fakeChat) *Sweeper {
 	return &Sweeper{
-		List: list, Chat: chat, After: after, Text: "สวัสดีค่ะ คุณลูกค้า",
+		List: list, Chat: chat, Rules: &fixedRules{all: Rule{On: true, After: after, Text: "สวัสดีค่ะ คุณลูกค้า"}},
 		Now: func() time.Time { return now }, Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
@@ -260,8 +278,9 @@ func TestSweep_StaffTookItSinceListing(t *testing.T) {
 
 func TestSweep_Off(t *testing.T) {
 	cases := map[string]func(s *Sweeper){
-		"after zero": func(s *Sweeper) { s.After = 0 },
-		"no text":    func(s *Sweeper) { s.Text = "  " },
+		"switched off": func(s *Sweeper) { s.Rules.(*fixedRules).all.On = false },
+		"after zero":   func(s *Sweeper) { s.Rules.(*fixedRules).all.After = 0 },
+		"no text":      func(s *Sweeper) { s.Rules.(*fixedRules).all.Text = "  " },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -279,16 +298,23 @@ func TestSweep_Off(t *testing.T) {
 	}
 }
 
-func TestSweep_OnlyListedAccounts(t *testing.T) {
-	// Arrange
+func TestSweep_UsesEachAccountsRule(t *testing.T) {
+	// Arrange: account 3 is off; account 4 waits longer than the chat is old.
 	list, chat := dueSetup()
+	c := list.convs[3][0]
+	list.accounts = []int64{3, 4}
+	list.convs[4] = []Conversation{c}
 	s := newSweeper(list, chat)
-	s.Accounts = map[int64]bool{1: true}
+	rules := s.Rules.(*fixedRules)
+	rules.each = map[int64]Rule{3: {On: false, After: after, Text: "x"}, 4: {On: true, After: 22 * time.Hour, Text: "x"}}
 	// Act
 	n := s.Sweep(context.Background())
 	// Assert
 	if n != 0 || len(chat.calls) != 0 {
-		t.Fatalf("n=%d calls=%v, want account 3 skipped when only 1 is on", n, chat.calls)
+		t.Fatalf("n=%d calls=%v, want nothing: 3 is off and 4's wait is not over", n, chat.calls)
+	}
+	if list.lastTo[4] != now.Add(-22*time.Hour) {
+		t.Fatalf("account 4 listed up to %v, want its own 22h wait", list.lastTo[4])
 	}
 }
 

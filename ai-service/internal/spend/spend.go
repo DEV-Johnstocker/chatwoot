@@ -20,12 +20,13 @@ const (
 	PurposeCommentReview = "comment_review"
 	PurposeEmbedding     = "embedding"
 	PurposeTranscription = "transcription"
-	PurposeTest          = "test" // the owner's test chat on /admin and MCP test_bot
+	PurposeNudge         = "nudge" // the AI-written follow-up to a quiet chat
+	PurposeTest          = "test"  // the owner's test chat on /admin and MCP test_bot
 )
 
 // Purposes lists every purpose in display order.
 var Purposes = []string{PurposeReply, PurposeRewrite, PurposeNote, PurposeSticker, PurposeComment,
-	PurposeCommentReview, PurposeEmbedding, PurposeTranscription, PurposeTest}
+	PurposeCommentReview, PurposeEmbedding, PurposeTranscription, PurposeNudge, PurposeTest}
 
 // Event is one model call's usage. It never carries message text.
 type Event struct {

@@ -191,20 +191,21 @@ func thaiChat(msgs []gaps.Message) bool {
 	return false
 }
 
-// message is the follow-up for this chat: the Writer's draft when it passes
-// Check, else the fixed Text. written reports which one.
-func (s *Sweeper) message(ctx context.Context, msgs []gaps.Message) (text string, written bool) {
-	if s.Writer == nil {
-		return s.Text, false
+// message is the follow-up for this chat: the Writer's draft when the rule
+// asks for one and it passes Check, else the rule's fixed text. written
+// reports which one.
+func (s *Sweeper) message(ctx context.Context, rule Rule, msgs []gaps.Message) (text string, written bool) {
+	if !rule.Write || s.Writer == nil {
+		return rule.Text, false
 	}
 	draft, err := s.Writer.Write(ctx, msgs)
 	if err != nil {
 		s.Logger.Warn("nudge: write follow-up; sending the fixed text", "error", err)
-		return s.Text, false
+		return rule.Text, false
 	}
 	if err := Check(draft, msgs); err != nil {
 		s.Logger.Info("nudge: written follow-up refused; sending the fixed text", "reason", err.Error())
-		return s.Text, false
+		return rule.Text, false
 	}
 	return draft, true
 }

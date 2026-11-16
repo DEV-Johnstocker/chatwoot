@@ -19,11 +19,11 @@ import (
 	"log/slog"
 	"regexp"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/spend"
 )
 
 // Label marks a conversation that already got its follow-up.
@@ -145,23 +145,23 @@ type Hours interface {
 
 // Sweeper sends due follow-ups on every Sweep.
 type Sweeper struct {
-	List     Lister
-	Chat     Chat
-	Hours    Hours
-	Accounts map[int64]bool // accounts with nudges on; empty = every account
-	After    time.Duration  // time after the customer's last message; 0 = off
-	Text     string         // the owner-approved follow-up; empty = off. Also the fallback for Writer
-	Writer   Writer         // optional: drafts a follow-up from the chat; nil = always Text
-	Now      func() time.Time
-	Logger   *slog.Logger
+	List   Lister
+	Chat   Chat
+	Hours  Hours
+	Rules  Rules  // each account's setting, read on every sweep
+	Writer Writer // drafts a follow-up when the rule asks; nil = always the fixed text
+	Now    func() time.Time
+	Logger *slog.Logger
+}
+
+// Rules gives an account's follow-up rule (SettingsStore).
+type Rules interface {
+	For(acct int64) Rule
 }
 
 // Sweep sends every due follow-up once and returns how many it sent.
 // Errors are logged; the next sweep tries again.
 func (s *Sweeper) Sweep(ctx context.Context) int {
-	if s.After <= 0 || strings.TrimSpace(s.Text) == "" {
-		return 0
-	}
 	now := s.Now()
 	accounts, err := s.List.Accounts(ctx)
 	if err != nil {
@@ -170,13 +170,11 @@ func (s *Sweeper) Sweep(ctx context.Context) int {
 	}
 	total := 0
 	for _, acct := range accounts {
-		if len(s.Accounts) > 0 && !s.Accounts[acct] {
+		rule := s.Rules.For(acct)
+		if !rule.Active() || !s.botOn(ctx, acct, now) {
 			continue
 		}
-		if !s.botOn(ctx, acct, now) {
-			continue
-		}
-		total += s.sweepAccount(ctx, acct, now)
+		total += s.sweepAccount(ctx, acct, rule, now)
 	}
 	if total > 0 {
 		s.Logger.Info("nudge: sent follow-ups", "count", total)
@@ -198,8 +196,9 @@ func (s *Sweeper) botOn(ctx context.Context, acct int64, now time.Time) bool {
 
 // sweepAccount lists chats whose last activity (the bot's answer, seconds
 // after the customer's message) falls in the nudge window.
-func (s *Sweeper) sweepAccount(ctx context.Context, acct int64, now time.Time) int {
-	convs, err := s.List.PendingBetween(ctx, acct, now.Add(-window), now.Add(-s.After))
+func (s *Sweeper) sweepAccount(ctx context.Context, acct int64, rule Rule, now time.Time) int {
+	ctx = spend.WithAccount(ctx, acct) // AI-written follow-ups count against this business
+	convs, err := s.List.PendingBetween(ctx, acct, now.Add(-window), now.Add(-rule.After))
 	if err != nil {
 		s.Logger.Warn("nudge: list conversations", "account_id", acct, "error", err)
 	}
@@ -208,21 +207,21 @@ func (s *Sweeper) sweepAccount(ctx context.Context, acct int64, now time.Time) i
 		if ctx.Err() != nil {
 			return n
 		}
-		if s.nudge(ctx, acct, c, now) {
+		if s.nudge(ctx, acct, c, rule, now) {
 			n++
 		}
 	}
 	return n
 }
 
-func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, now time.Time) bool {
+func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, rule Rule, now time.Time) bool {
 	log := s.Logger.With("account_id", acct, "conversation_id", c.ID)
 	msgs, err := s.Chat.ChatMessages(ctx, acct, c.ID)
 	if err != nil {
 		log.Warn("nudge: read messages", "error", err)
 		return false
 	}
-	if !Due(c, msgs, now, s.After) {
+	if !Due(c, msgs, now, rule.After) {
 		return false
 	}
 	if !s.stillBots(ctx, acct, c.ID, log) {
@@ -238,7 +237,7 @@ func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, now tim
 	if !added {
 		return false
 	}
-	text, written := s.message(ctx, msgs)
+	text, written := s.message(ctx, rule, msgs)
 	if err := s.Chat.SendMessage(ctx, acct, c.ID, text); err != nil {
 		log.Warn("nudge: send", "error", err)
 		return false

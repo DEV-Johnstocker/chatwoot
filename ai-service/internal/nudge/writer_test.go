@@ -149,6 +149,19 @@ func TestLLMWriter_SendsPublicTranscriptOnly(t *testing.T) {
 	}
 }
 
+func TestWriteOnlyWhenTheRuleAsks(t *testing.T) {
+	// Arrange
+	s := newSweeper(nil, nil)
+	f := &fakeLLM{reply: "สวัสดีครับคุณลูกค้า ทักมาได้เลยครับ"}
+	s.Writer = &LLMWriter{LLM: f}
+	// Act
+	got, written := s.message(context.Background(), Rule{On: true, Text: "fixed"}, sampleThaiChat())
+	// Assert
+	if got != "fixed" || written || f.got != nil {
+		t.Fatalf("got %q written=%v calls=%v, want the fixed text and no model call", got, written, f.got)
+	}
+}
+
 func TestWriteOrFallback(t *testing.T) {
 	cases := map[string]struct {
 		w    Writer
@@ -163,9 +176,9 @@ func TestWriteOrFallback(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Arrange
 			s := newSweeper(nil, nil)
-			s.Text, s.Writer = "fixed", tc.w
+			s.Writer = tc.w
 			// Act
-			got, _ := s.message(context.Background(), sampleThaiChat())
+			got, _ := s.message(context.Background(), Rule{On: true, Text: "fixed", Write: true}, sampleThaiChat())
 			// Assert
 			if got != tc.want {
 				t.Fatalf("message = %q, want %q", got, tc.want)
