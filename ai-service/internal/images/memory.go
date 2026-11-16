@@ -9,9 +9,16 @@ import (
 
 // Memory is a Store in memory (tests).
 type Memory struct {
-	mu     sync.Mutex
-	nextID int64
-	rows   map[int64]Image
+	mu      sync.Mutex
+	nextID  int64
+	rows    map[int64]Image
+	removed []removedCopy // oldest first
+	lastRm  int64
+}
+
+type removedCopy struct {
+	RemovedImage
+	img Image
 }
 
 // List implements Store.
@@ -132,9 +139,78 @@ func (m *Memory) Update(_ context.Context, meta Meta, data []byte) error {
 func (m *Memory) Delete(_ context.Context, accountID, id int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if img, ok := m.rows[id]; ok && img.AccountID == accountID {
-		delete(m.rows, id)
-		return nil
+	img, ok := m.rows[id]
+	if !ok || img.AccountID != accountID {
+		return ErrNotFound
+	}
+	delete(m.rows, id)
+	m.lastRm++
+	m.removed = append(m.removed, removedCopy{img: img, RemovedImage: RemovedImage{ID: m.lastRm, ImageID: id, AccountID: accountID,
+		Name: img.Name, When: img.When, Caption: img.Caption, Size: len(img.Data), RemovedAt: time.Now()}})
+	// Keep the newest MaxRemovedKept of this account, none past RemovedKeepDays.
+	n, cutoff := 0, removedCutoff()
+	for i := len(m.removed) - 1; i >= 0; i-- {
+		if m.removed[i].AccountID != accountID {
+			continue
+		}
+		if n++; n > MaxRemovedKept || m.removed[i].RemovedAt.Before(cutoff) {
+			m.removed = append(m.removed[:i], m.removed[i+1:]...)
+		}
+	}
+	return nil
+}
+
+// Removed implements Store.
+func (m *Memory) Removed(_ context.Context, accountID int64) ([]RemovedImage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []RemovedImage
+	for i := len(m.removed) - 1; i >= 0; i-- {
+		if m.removed[i].AccountID == accountID && !m.removed[i].RemovedAt.Before(removedCutoff()) {
+			out = append(out, m.removed[i].RemovedImage)
+		}
+	}
+	return out, nil
+}
+
+// Restore implements Store.
+func (m *Memory) Restore(ctx context.Context, accountID, removedID int64) (int64, error) {
+	m.mu.Lock()
+	var img Image
+	found := false
+	for _, r := range m.removed {
+		if r.ID == removedID && r.AccountID == accountID && !r.RemovedAt.Before(removedCutoff()) {
+			img, found = r.img, true
+		}
+	}
+	m.mu.Unlock()
+	if !found {
+		return 0, ErrNotFound
+	}
+	id, err := m.Add(ctx, img)
+	if err != nil {
+		return 0, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, r := range m.removed {
+		if r.ID == removedID {
+			m.removed = append(m.removed[:i], m.removed[i+1:]...)
+			break
+		}
+	}
+	return id, nil
+}
+
+// Forget implements Store.
+func (m *Memory) Forget(_ context.Context, accountID, removedID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, r := range m.removed {
+		if r.ID == removedID && r.AccountID == accountID {
+			m.removed = append(m.removed[:i], m.removed[i+1:]...)
+			return nil
+		}
 	}
 	return ErrNotFound
 }

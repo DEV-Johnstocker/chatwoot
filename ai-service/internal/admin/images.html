@@ -61,7 +61,7 @@
             <input type="hidden" name="account" value="{{$.Account}}">
             <input type="hidden" name="id" value="{{.ID}}">
             <input type="hidden" name="confirm" value="yes">
-            <p class="field-hint">{{T "The bot stops sending it at once. This cannot be undone."}}</p>
+            <p class="field-hint">{{T "The bot stops sending it at once. You can put it back from History for %d days." 30}}</p>
             <button type="submit" name="action" value="remove" class="danger small">{{T "Yes, remove it"}}</button>
           </form>
         </details>

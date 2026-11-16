@@ -212,6 +212,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/approvals", wrap(h.submitApprovals))
 	mux.Handle("GET /admin/comments", wrap(h.showComments))
 	mux.Handle("POST /admin/comments", wrap(h.submitComments))
+	mux.Handle("GET /admin/history", wrap(h.showHistory))
+	mux.Handle("POST /admin/history", wrap(h.submitHistory))
 }
 
 type providerView struct {

@@ -5,6 +5,7 @@ package audit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -107,4 +108,82 @@ func (p *Postgres) Recent(ctx context.Context, accountID int64, limit int) ([]Ev
 		e.Global = src == 2
 		return e, err
 	})
+}
+
+// Where a history entry is kept.
+const (
+	SourceAdmin = "admin" // admin_events: the admin pages and approvals
+	SourceAI    = "ai"    // kb_audit: AI tools (MCP) editing knowledge
+)
+
+// ErrNotFound means the account has no such history entry.
+var ErrNotFound = errors.New("change not found in the history")
+
+// Entry is one change with the copy kept from before it, for the History
+// page (QA F-C-03). AI-tool entries use the same action names as Recent.
+type Entry struct {
+	Source     string // SourceAdmin or SourceAI
+	ID         int64
+	Actor      string
+	Action     string
+	Summary    string
+	DocumentID int64  // AI-tool entries: the document changed
+	SourceKey  string // AI-tool entries: its key
+	Before     json.RawMessage
+	At         time.Time
+}
+
+// The columns of each log as one Entry shape.
+const (
+	adminCols = `'admin' AS src, id, actor, action, summary, 0::bigint AS document_id, '' AS source_key, before, at`
+	aiCols    = `'ai', id,
+		CASE WHEN actor LIKE 'mcp:%' THEN substr(actor, 5) || ' (AI tool)' ELSE actor END,
+		CASE action WHEN 'create' THEN 'knowledge added' WHEN 'update' THEN 'knowledge edited' ELSE 'knowledge deleted' END,
+		COALESCE(before->>'title', source_key, 'document ' || document_id::text, ''),
+		COALESCE(document_id, 0), COALESCE(source_key, ''), before, at`
+)
+
+func scanEntry(r pgx.CollectableRow) (Entry, error) {
+	var e Entry
+	var before []byte
+	err := r.Scan(&e.Source, &e.ID, &e.Actor, &e.Action, &e.Summary, &e.DocumentID, &e.SourceKey, &before, &e.At)
+	e.Before = before
+	return e, err
+}
+
+// History lists the account's changes from both logs, newest first, with
+// the copies kept before each (service-wide settings are left out).
+func (p *Postgres) History(ctx context.Context, accountID int64, limit int) ([]Entry, error) {
+	rows, err := p.Pool.Query(ctx, `SELECT src, id, actor, action, summary, document_id, source_key, before, at FROM (
+		(SELECT `+adminCols+` FROM admin_events WHERE account_id = $1 ORDER BY at DESC, id DESC LIMIT $2)
+		UNION ALL
+		(SELECT `+aiCols+` FROM kb_audit WHERE account_id = $1 ORDER BY at DESC, id DESC LIMIT $2)
+	) e ORDER BY at DESC, src, id DESC LIMIT $2`, accountID, max(limit, 1))
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanEntry)
+}
+
+// Entry returns one of the account's history entries; ErrNotFound when the
+// account has none with that source and ID.
+func (p *Postgres) Entry(ctx context.Context, accountID int64, source string, id int64) (Entry, error) {
+	var q string
+	switch source {
+	case SourceAdmin:
+		q = `SELECT ` + adminCols + ` FROM admin_events WHERE account_id = $1 AND id = $2`
+	case SourceAI:
+		q = `SELECT ` + aiCols + ` FROM kb_audit WHERE account_id = $1 AND id = $2`
+	default:
+		return Entry{}, ErrNotFound
+	}
+	rows, err := p.Pool.Query(ctx, q, accountID, id)
+	if err != nil {
+		return Entry{}, err
+	}
+	e, err := pgx.CollectExactlyOneRow(rows, scanEntry)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Entry{}, ErrNotFound
+	}
+	return e, err
 }

@@ -211,3 +211,161 @@ func TestStore_CapPerAccount(t *testing.T) {
 		}
 	})
 }
+
+// A removed picture is kept (QA F-C-03): it can be listed and put back with
+// the same checks as an upload, by its own account only, and only once.
+func TestStore_RemoveKeepsPictureAndRestores(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		id, err := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "รีวิว AutoCut", When: "ขอดูรีวิว", Caption: "รีวิวจริง"}, Data: jpegBytes(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		orig, _ := s.Get(ctx, acct, id)
+		if err := s.Delete(ctx, acct, id); err != nil {
+			t.Fatal(err)
+		}
+
+		// Act
+		removed, listErr := s.Removed(ctx, acct)
+		otherList, _ := s.Removed(ctx, acct+1)
+		var rid int64
+		if len(removed) == 1 {
+			rid = removed[0].ID
+		}
+		_, otherAcct := s.Restore(ctx, acct+1, rid)
+		newID, restoreErr := s.Restore(ctx, acct, rid)
+		back, getErr := s.Get(ctx, acct, newID)
+		_, again := s.Restore(ctx, acct, rid)
+		after, _ := s.Removed(ctx, acct)
+
+		// Assert
+		if listErr != nil || len(removed) != 1 || removed[0].Name != "รีวิว AutoCut" || removed[0].ImageID != id || removed[0].Size == 0 || removed[0].RemovedAt.IsZero() {
+			t.Fatalf("removed %+v err %v", removed, listErr)
+		}
+		if len(otherList) != 0 || !errors.Is(otherAcct, ErrNotFound) {
+			t.Fatalf("other account sees %d, restore %v", len(otherList), otherAcct)
+		}
+		if restoreErr != nil || getErr != nil || back.Name != orig.Name || back.When != orig.When || back.Caption != orig.Caption || back.ContentType != orig.ContentType || len(back.Data) == 0 {
+			t.Fatalf("restore %v get %v back %+v", restoreErr, getErr, back.Meta)
+		}
+		if !errors.Is(again, ErrNotFound) || len(after) != 0 {
+			t.Fatalf("second restore %v, still removed %d", again, len(after))
+		}
+	})
+}
+
+// Putting a picture back follows the upload rules: the name must be free and
+// the account under its cap; a refused restore keeps the removed copy.
+func TestStore_RestoreRefusedKeepsRemovedCopy(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		id, _ := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "price list"}, Data: pngBytes(t, 2, 2)})
+		_ = s.Delete(ctx, acct, id)
+		if _, err := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "Price  List"}, Data: pngBytes(t, 2, 2)}); err != nil {
+			t.Fatal(err)
+		}
+		removed, _ := s.Removed(ctx, acct)
+		if len(removed) != 1 {
+			t.Fatalf("removed %d", len(removed))
+		}
+
+		// Act
+		_, err := s.Restore(ctx, acct, removed[0].ID)
+		kept, _ := s.Removed(ctx, acct)
+
+		// Assert
+		if !errors.Is(err, ErrName) || len(kept) != 1 {
+			t.Fatalf("err %v kept %d", err, len(kept))
+		}
+	})
+}
+
+// Only the newest MaxRemovedKept removed pictures are kept per account.
+func TestStore_RemovedIsCapped(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		for i := range MaxRemovedKept + 2 {
+			id, err := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "img " + strconv.Itoa(i)}, Data: pngBytes(t, 1, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = s.Delete(ctx, acct, id)
+		}
+
+		// Act
+		removed, err := s.Removed(ctx, acct)
+
+		// Assert
+		if err != nil || len(removed) != MaxRemovedKept || removed[0].Name != "img "+strconv.Itoa(MaxRemovedKept+1) {
+			t.Fatalf("err %v removed %d first %+v", err, len(removed), removed)
+		}
+	})
+}
+
+// The owner can erase a removed picture for good (it may show a customer's
+// name), only their own, and it cannot be put back afterwards.
+func TestStore_ForgetRemovedErasesIt(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		id, _ := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "รีวิวมีชื่อลูกค้า"}, Data: pngBytes(t, 2, 2)})
+		_ = s.Delete(ctx, acct, id)
+		removed, _ := s.Removed(ctx, acct)
+
+		// Act
+		other := s.Forget(ctx, acct+1, removed[0].ID)
+		err := s.Forget(ctx, acct, removed[0].ID)
+		after, _ := s.Removed(ctx, acct)
+		_, restore := s.Restore(ctx, acct, removed[0].ID)
+		again := s.Forget(ctx, acct, removed[0].ID)
+
+		// Assert
+		if !errors.Is(other, ErrNotFound) || err != nil || len(after) != 0 || !errors.Is(restore, ErrNotFound) || !errors.Is(again, ErrNotFound) {
+			t.Fatalf("other %v forget %v left %d restore %v again %v", other, err, len(after), restore, again)
+		}
+	})
+}
+
+// Removed pictures older than RemovedKeepDays are no longer listed or
+// restorable, and the next removal erases them.
+func TestStore_RemovedExpires(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		id, _ := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "old"}, Data: pngBytes(t, 2, 2)})
+		_ = s.Delete(ctx, acct, id)
+		switch st := s.(type) {
+		case *Memory:
+			st.removed[0].RemovedAt = time.Now().AddDate(0, 0, -RemovedKeepDays-1)
+		case *Postgres:
+			if _, err := st.Pool.Exec(ctx, `UPDATE bot_images_removed SET removed_at = now() - make_interval(days => $2 + 1) WHERE account_id = $1`, acct, RemovedKeepDays); err != nil {
+				t.Fatal(err)
+			}
+		}
+		old, _ := s.Removed(ctx, acct)
+		id2, _ := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "new"}, Data: pngBytes(t, 2, 2)})
+
+		// Act
+		_ = s.Delete(ctx, acct, id2)
+		removed, err := s.Removed(ctx, acct)
+
+		// Assert
+		if len(old) != 0 {
+			t.Fatalf("expired copy still listed: %+v", old)
+		}
+		if err != nil || len(removed) != 1 || removed[0].Name != "new" {
+			t.Fatalf("err %v removed %+v", err, removed)
+		}
+		if st, ok := s.(*Postgres); ok {
+			var n int
+			_ = st.Pool.QueryRow(ctx, `SELECT count(*) FROM bot_images_removed WHERE account_id = $1`, acct).Scan(&n)
+			if n != 1 {
+				t.Fatalf("expired row not erased: %d rows", n)
+			}
+		}
+	})
+}

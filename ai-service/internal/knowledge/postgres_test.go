@@ -28,7 +28,7 @@ func openTestDB(t *testing.T) *Postgres {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS kb_chunks, kb_documents, business_profiles, kb_audit, mcp_tokens, oauth_codes, oauth_grants, oauth_clients, team_members, admin_events, web_sources, chatwoot_inboxes, ai_pending_changes, fb_comments, bot_schedules, bot_images, reply_ratings, sales, kb_schema_version"); err != nil {
+	if _, err := pool.Exec(ctx, "DROP TABLE IF EXISTS kb_chunks, kb_documents, business_profiles, kb_audit, mcp_tokens, oauth_codes, oauth_grants, oauth_clients, team_members, admin_events, web_sources, chatwoot_inboxes, ai_pending_changes, fb_comments, bot_schedules, bot_images, reply_ratings, sales, bot_images_removed, kb_schema_version"); err != nil {
 		t.Fatal(err)
 	}
 	p := &Postgres{Pool: pool}
@@ -1207,5 +1207,65 @@ func TestPostgres_V17UpgradeShutsOutAPIRoles(t *testing.T) {
 	_, bad := db.Pool.Exec(ctx, `INSERT INTO bot_images (account_id, name, name_key, content_type, data) VALUES (0, 'x', 'x', 'image/png', '\x01')`)
 	if bad == nil {
 		t.Error("account 0 must be refused")
+	}
+}
+
+// v21 on a Supabase-like database: the upgrade from v20 must create the
+// removed-pictures table with row level security on, anon/authenticated shut
+// out of the table and its id sequence, and refuse rows the store never
+// writes; existing pictures are untouched.
+func TestMigrate_V21KeepsRemovedPicturesPrivate(t *testing.T) {
+	// Arrange
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+		END $$;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+		DROP TABLE bot_images_removed;
+		UPDATE kb_schema_version SET version = 20;
+		INSERT INTO bot_images (account_id, name, name_key, content_type, data) VALUES (987001, 'kept', 'kept', 'image/png', '\x01');`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+			DELETE FROM bot_images WHERE account_id = 987001;`)
+	})
+
+	// Act
+	err := db.Migrate(ctx)
+	again := db.Migrate(ctx)
+	insert := func(acct int, name, ct string) error {
+		_, err := db.Pool.Exec(ctx, `INSERT INTO bot_images_removed (account_id, image_id, name, content_type, data)
+			VALUES ($1, 1, $2, $3, '\x01')`, acct, name, ct)
+		return err
+	}
+	okErr := insert(987001, "รีวิว", "image/png")
+	badAcct, noName, badType := insert(0, "x", "image/png"), insert(987001, "", "image/png"), insert(987001, "x", "image/gif")
+	_, _ = db.Pool.Exec(ctx, `DELETE FROM bot_images_removed WHERE account_id = 987001`)
+
+	// Assert
+	if err != nil || again != nil {
+		t.Fatalf("migrate %v, again %v", err, again)
+	}
+	var version, kept int
+	var rls, tableOpen, seqOpen bool
+	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
+		(SELECT count(*) FROM bot_images WHERE account_id = 987001),
+		(SELECT relrowsecurity FROM pg_class WHERE relname = 'bot_images_removed'),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_table_privilege(r.rolname, 'bot_images_removed', 'SELECT,INSERT,UPDATE,DELETE')),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_sequence_privilege(r.rolname, 'bot_images_removed_id_seq', 'USAGE,SELECT,UPDATE'))`).Scan(&version, &kept, &rls, &tableOpen, &seqOpen); err != nil {
+		t.Fatal(err)
+	}
+	if version != SchemaVersion || kept != 1 || !rls || tableOpen || seqOpen {
+		t.Fatalf("version=%d kept=%d rls=%v table open=%v sequence open=%v", version, kept, rls, tableOpen, seqOpen)
+	}
+	if okErr != nil || badAcct == nil || noName == nil || badType == nil {
+		t.Fatalf("insert ok=%v bad account=%v no name=%v bad type=%v", okErr, badAcct, noName, badType)
 	}
 }

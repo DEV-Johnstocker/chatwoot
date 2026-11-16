@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "History · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "history"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "History"}}</h1>
+      <p class="lead">{{T "Every change to the business profile, the knowledge base and the bot pictures: who made it, what it changed, and a button to put the old version back. A restore is a change like any other, so it can be undone here too."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/history" "Current" .AccountID)}}
+  </div>
+
+  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+
+  {{if .CanExport}}
+  <section class="card spaced-lg" aria-labelledby="dl-h">
+    <h2 id="dl-h" class="card-title">{{T "Download profile and answers"}}</h2>
+    <p class="hint">{{T "Your own copy of the business profile and every knowledge document. The CSV file uses the data-file columns (id, question, answer, title, content, start_date, last_day): put it in a Google Sheet, publish it as CSV and add it on the Knowledge page to load it again. Text that starts with = + - or @ gets a ' in front so a spreadsheet does not run it as a formula; check those cells before loading the file again. Pictures, passwords and keys are not in the files."}}</p>
+    <form method="post" action="/admin/history" class="actions hist-dl">
+      <input type="hidden" name="account" value="{{.AccountID}}">
+      <button type="submit" name="action" value="export_csv">{{T "Answers as CSV"}}</button>
+      <button type="submit" name="action" value="export_json" class="primary">{{T "Profile and answers as JSON"}}</button>
+    </form>
+  </section>
+  {{end}}
+
+  {{if .ShowRemoved}}
+  <section class="card spaced-lg" aria-labelledby="rm-h">
+    <h2 id="rm-h" class="card-title">{{T "Removed pictures"}}</h2>
+    <p class="hint">{{T "The last %d removed pictures are kept for %d days, then deleted for good. Delete one now if it shows a customer who asked to be removed." 10 30}}</p>
+    {{if .Removed}}
+    <ul class="hist-removed">
+      {{range .Removed}}
+      <li>
+        <span><strong>{{.Name}}</strong> <span class="hint">{{T "removed %s" .Removed}} · {{.Size}}</span>{{with .When}}<br><span class="hint">{{.}}</span>{{end}}</span>
+        <span class="hist-rm-actions">
+          <form method="post" action="/admin/history">
+            <input type="hidden" name="account" value="{{$.AccountID}}">
+            <input type="hidden" name="id" value="{{.ID}}">
+            <button type="submit" name="action" value="restore_image">{{T "Put back"}}</button>
+          </form>
+          <details class="img-remove">
+            <summary>{{T "Delete for good…"}}</summary>
+            <form method="post" action="/admin/history" class="img-remove-form">
+              <input type="hidden" name="account" value="{{$.AccountID}}">
+              <input type="hidden" name="id" value="{{.ID}}">
+              <input type="hidden" name="confirm" value="yes">
+              <p class="field-hint">{{T "It cannot be put back after this."}}</p>
+              <button type="submit" name="action" value="forget_image" class="danger small">{{T "Yes, delete for good"}}</button>
+            </form>
+          </details>
+        </span>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="empty">{{T "No removed pictures."}}</p>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "The history is off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  <h2 class="hist-title">{{T "Changes"}}</h2>
+  {{if and (not .Entries) (not .Error)}}<p class="empty">{{T "No changes yet."}}</p>{{end}}
+  {{range $i, $e := .Entries}}
+  <section class="card hist-entry" aria-labelledby="h-{{$i}}">
+    <div class="change-head">
+      <h3 id="h-{{$i}}" class="sub"><strong>{{.What}}</strong>{{with .Summary}} <span class="preview">{{.}}</span>{{end}}</h3>
+      <p class="hint">{{.When}} · {{.Who}}</p>
+    </div>
+    {{if .Changes}}
+    <details{{if lt $i 5}} open{{end}}>
+      <summary>{{if .Gone}}{{T "What was deleted"}}{{else}}{{T "What changed"}}{{end}}</summary>
+      {{$gone := .Gone}}
+      {{range .Changes}}
+      <div class="diff">
+        <h4 class="diff-field">{{.Label}}</h4>
+        {{if or $gone (not .AfterKnown)}}
+        <pre class="code diff-now">{{range .Before}}{{.Text}}
+{{else}}{{T "(empty)"}}{{end}}</pre>
+        {{else}}
+        <div class="diff-cols">
+          <div><p class="diff-label">{{T "Before"}}</p><pre class="code diff-now hist-lines">{{range .Before}}<span{{if .Changed}} class="chg"{{end}}>{{.Text}}
+</span>{{else}}{{T "(empty)"}}{{end}}</pre></div>
+          <div><p class="diff-label">{{T "After"}}</p><pre class="code diff-new hist-lines">{{range .After}}<span{{if .Changed}} class="chg"{{end}}>{{.Text}}
+</span>{{else}}{{T "(empty)"}}{{end}}</pre></div>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+      {{with .Unchanged}}<p class="hint">{{T "Unchanged: %s" .}}</p>{{end}}
+    </details>
+    {{end}}
+    {{with .Note}}<p class="hint">{{.}}</p>{{end}}
+    {{with .Restore}}
+    <form method="post" action="/admin/history" class="actions">
+      <input type="hidden" name="account" value="{{$.AccountID}}">
+      <input type="hidden" name="source" value="{{.Source}}">
+      <input type="hidden" name="id" value="{{.ID}}">
+      {{if eq .Action "restore_profile"}}<input type="hidden" name="version" value="{{$.ProfileVersion}}">{{else}}<input type="hidden" name="version" value="{{.Version}}">{{end}}
+      <button type="submit" name="action" value="{{.Action}}">{{.Label}}</button>
+    </form>
+    {{end}}
+  </section>
+  {{end}}
+  {{if .Full}}<p class="hint">{{T "Showing the newest %d changes." .Limit}}</p>{{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>

@@ -77,6 +77,15 @@ func (s *Postgres) Add(ctx context.Context, img Image) (int64, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	id, err := insertTx(ctx, tx, m, ct, data)
+	if err != nil {
+		return 0, err
+	}
+	return id, tx.Commit(ctx)
+}
+
+// insertTx adds a checked image inside tx, under the per-account cap.
+func insertTx(ctx context.Context, tx pgx.Tx, m Meta, ct string, data []byte) (int64, error) {
 	// Serialise adds per account so two at once cannot pass the cap together.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('bot_images'), $1::int)`, m.AccountID%2147483647); err != nil {
 		return 0, err
@@ -89,12 +98,12 @@ func (s *Postgres) Add(ctx context.Context, img Image) (int64, error) {
 		return 0, ErrFull
 	}
 	var id int64
-	err = tx.QueryRow(ctx, `INSERT INTO bot_images (account_id, name, name_key, when_to_send, caption, content_type, data)
+	err := tx.QueryRow(ctx, `INSERT INTO bot_images (account_id, name, name_key, when_to_send, caption, content_type, data)
 		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, m.AccountID, m.Name, Key(m.Name), m.When, m.Caption, ct, data).Scan(&id)
 	if err != nil {
 		return 0, nameTaken(err)
 	}
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // Update implements Store.
@@ -125,16 +134,81 @@ func (s *Postgres) Update(ctx context.Context, m Meta, data []byte) error {
 	return nil
 }
 
-// Delete implements Store.
+// Delete implements Store: the row moves to bot_images_removed (schema v21)
+// in one statement, and the account's older removed copies beyond
+// MaxRemovedKept, or older than RemovedKeepDays, are erased.
 func (s *Postgres) Delete(ctx context.Context, accountID, id int64) error {
-	tag, err := s.Pool.Exec(ctx, `DELETE FROM bot_images WHERE account_id = $1 AND id = $2`, accountID, id)
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `WITH gone AS (
+			DELETE FROM bot_images WHERE account_id = $1 AND id = $2
+			RETURNING account_id, id, name, when_to_send, caption, content_type, data)
+		INSERT INTO bot_images_removed (account_id, image_id, name, when_to_send, caption, content_type, data)
+		SELECT account_id, id, name, when_to_send, caption, content_type, data FROM gone`, accountID, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `DELETE FROM bot_images_removed WHERE account_id = $1 AND (
+			removed_at < now() - make_interval(days => $3) OR id NOT IN (
+			SELECT id FROM bot_images_removed WHERE account_id = $1 ORDER BY removed_at DESC, id DESC LIMIT $2))`,
+		accountID, MaxRemovedKept, RemovedKeepDays); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// Removed implements Store.
+func (s *Postgres) Removed(ctx context.Context, accountID int64) ([]RemovedImage, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id, image_id, account_id, name, when_to_send, caption, octet_length(data), removed_at
+		FROM bot_images_removed WHERE account_id = $1 AND removed_at >= now() - make_interval(days => $3)
+		ORDER BY removed_at DESC, id DESC LIMIT $2`, accountID, MaxRemovedKept, RemovedKeepDays)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (RemovedImage, error) {
+		var m RemovedImage
+		err := r.Scan(&m.ID, &m.ImageID, &m.AccountID, &m.Name, &m.When, &m.Caption, &m.Size, &m.RemovedAt)
+		return m, err
+	})
+}
+
+// Restore implements Store: the copy is checked like an upload, added and
+// dropped from the removed ones in one transaction.
+func (s *Postgres) Restore(ctx context.Context, accountID, removedID int64) (int64, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	img := Image{Meta: Meta{AccountID: accountID}}
+	err = tx.QueryRow(ctx, `DELETE FROM bot_images_removed WHERE account_id = $1 AND id = $2
+		AND removed_at >= now() - make_interval(days => $3)
+		RETURNING name, when_to_send, caption, data`, accountID, removedID, RemovedKeepDays).Scan(&img.Name, &img.When, &img.Caption, &img.Data)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	m, err := CleanText(img.Meta)
+	if err != nil {
+		return 0, err
+	}
+	ct, data, err := Prepare(img.Data)
+	if err != nil {
+		return 0, err
+	}
+	id, err := insertTx(ctx, tx, m, ct, data)
+	if err != nil {
+		return 0, err // rolled back: the removed copy stays
+	}
+	return id, tx.Commit(ctx)
 }
 
 // nameTaken turns a unique violation into ErrName.
@@ -144,4 +218,16 @@ func nameTaken(err error) error {
 		return ErrName
 	}
 	return err
+}
+
+// Forget implements Store.
+func (s *Postgres) Forget(ctx context.Context, accountID, removedID int64) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM bot_images_removed WHERE account_id = $1 AND id = $2`, accountID, removedID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
