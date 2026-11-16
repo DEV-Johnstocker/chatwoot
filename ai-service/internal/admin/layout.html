@@ -396,6 +396,16 @@
   pre.diff-now { color: var(--muted); }
   pre.diff-new { border-color: var(--accent); }
   @media (max-width: 640px) { .diff-cols { grid-template-columns: 1fr; } }
+  /* History page: changed lines marked in the before/after columns. */
+  .hist-title { margin: 28px 0 12px; font-size: 1.1rem; }
+  .hist-entry { margin-bottom: 12px; }
+  .hist-entry .diff-field { margin: 0 0 4px; font-size: .9rem; }
+  pre.hist-lines span { display: block; }
+  pre.hist-lines span.chg { background: var(--warn-bg); color: var(--warn-text); }
+  .hist-removed { list-style: none; margin: 0; padding: 0; }
+  .hist-removed li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .hist-removed li:first-child { border-top: 0; }
+  .hist-rm-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
   .empty { color: var(--muted); text-align: center; padding: 32px 16px; border: 1px dashed var(--border); border-radius: var(--radius); margin: 0 0 16px; }
   .test-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
   .test-grid > .card { margin: 0; }
@@ -454,12 +464,13 @@
     <a href="/admin/replies"{{if eq . "replies"}} aria-current="page"{{end}}>{{T "Rate replies"}}</a>
     <a href="/admin/gaps"{{if eq . "gaps"}} aria-current="page"{{end}}>{{T "Unanswered questions"}}</a>
     <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
+    <a href="/admin/history"{{if eq . "history"}} aria-current="page"{{end}}>{{T "History"}}</a>
     <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
     <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
     <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>
 {{end}}
 
-{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
+{{define "page-name"}}{{if eq . "home"}}{{T "Home"}}{{else if eq . "test"}}{{T "Test bot"}}{{else if eq . "business"}}{{T "Business profile"}}{{else if eq . "knowledge"}}{{T "Knowledge base"}}{{else if eq . "images"}}{{T "Bot images"}}{{else if eq . "approvals"}}{{T "AI approvals"}}{{else if eq . "history"}}{{T "History"}}{{else if eq . "comments"}}{{T "Comment leads"}}{{else if eq . "connections"}}{{T "Connect AI tools"}}{{else if eq . "providers"}}{{T "AI providers"}}{{end}}{{end}}
 
 {{define "theme-form"}}
   <form class="theme" method="post" action="/admin/theme" aria-label="{{T "Colour theme"}}">

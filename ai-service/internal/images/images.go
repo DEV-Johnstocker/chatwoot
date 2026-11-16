@@ -27,6 +27,12 @@ const (
 	MaxWhenRunes    = 300
 	MaxCaptionRunes = 200
 	MaxSide         = 2048 // pixels; bounds decode memory (about 16 MB) and refuses decompression bombs
+	// MaxRemovedKept: removed pictures kept per account so the owner can put
+	// one back (QA F-C-03); older ones are dropped for good.
+	MaxRemovedKept = 10
+	// RemovedKeepDays: a removed picture is erased after this many days.
+	// Review pictures can show customers' names, so copies do not linger.
+	RemovedKeepDays = 30
 )
 
 // Meta is an image without its bytes: what the prompt and the admin list need.
@@ -149,6 +155,32 @@ type Store interface {
 	Add(ctx context.Context, img Image) (int64, error)
 	// Update changes an image's texts, and its picture when data is not nil.
 	Update(ctx context.Context, m Meta, data []byte) error
-	// Delete removes one image; deleting nothing is not an error.
+	// Delete removes one image and keeps a copy among the removed ones
+	// (newest MaxRemovedKept per account, at most RemovedKeepDays old);
+	// ErrNotFound when there is none.
 	Delete(ctx context.Context, accountID, id int64) error
+	// Removed lists the account's removed images, newest first, without bytes.
+	Removed(ctx context.Context, accountID int64) ([]RemovedImage, error)
+	// Restore adds a removed image back with the same checks as Add and
+	// returns its new ID; the removed copy stays when that fails.
+	// ErrNotFound when it is not one of the account's removed images.
+	Restore(ctx context.Context, accountID, removedID int64) (int64, error)
+	// Forget erases a removed image for good; ErrNotFound when it is not one
+	// of the account's removed images.
+	Forget(ctx context.Context, accountID, removedID int64) error
 }
+
+// RemovedImage is a removed picture kept so it can be put back.
+type RemovedImage struct {
+	ID        int64 // of the removed copy
+	ImageID   int64 // the image's ID before it was removed
+	AccountID int64
+	Name      string
+	When      string
+	Caption   string
+	Size      int
+	RemovedAt time.Time
+}
+
+// removedCutoff is the oldest removal time still kept.
+func removedCutoff() time.Time { return time.Now().AddDate(0, 0, -RemovedKeepDays) }

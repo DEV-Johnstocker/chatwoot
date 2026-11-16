@@ -108,7 +108,10 @@ func run() error {
 	var botHours bot.Hours
 	var adminHours schedule.Store
 	if kb != nil {
-		imageStore = &images.Postgres{Pool: profiles.Pool}
+		imagePG := &images.Postgres{Pool: profiles.Pool}
+		imageStore = imagePG
+		// Removed pictures are erased for good after images.RemovedKeepDays.
+		go images.RunPurge(context.Background(), imagePG, time.Hour, logger.With("component", "images"))
 		hours := &schedule.Postgres{Pool: profiles.Pool}
 		botHours, adminHours = hours, hours
 		mcpStore = &mcp.Postgres{Pool: profiles.Pool}

@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -74,5 +75,69 @@ func TestPostgres_RecordAndRecentMergesAITools(t *testing.T) {
 	var kept string
 	if err := pool.QueryRow(ctx, `SELECT before->>'content' FROM admin_events WHERE action = 'knowledge deleted'`).Scan(&kept); err != nil || kept != "2,900" {
 		t.Fatalf("old text not kept: %q %v", kept, err)
+	}
+}
+
+// History lists one account's changes from the admin pages and AI tools with
+// the copies kept before each change; Entry reads one back, never another
+// account's (QA F-C-03).
+func TestPostgres_HistoryAndEntryAreAccountScoped(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	// Arrange
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := (&knowledge.Postgres{Pool: pool}).Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const acct, other = 880001, 880002
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM admin_events WHERE account_id IN (880001, 880002);
+			DELETE FROM kb_audit WHERE account_id IN (880001, 880002)`)
+	})
+	db := &Postgres{Pool: pool}
+	if _, err := pool.Exec(ctx, `INSERT INTO kb_audit (account_id, document_id, source_key, action, actor, before, at)
+		VALUES (880001, 5, 'product-017', 'delete', 'mcp:Claude', '{"title":"ราคา","content":"2,900"}', now() - interval '1 minute')`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Record(ctx, Event{AccountID: acct, Actor: "john@example.com", Action: "knowledge edited", Summary: "promo", Before: map[string]any{"id": 7, "content": "old"}})
+	_ = db.Record(ctx, Event{AccountID: other, Actor: "x", Action: "knowledge deleted", Summary: "other", Before: map[string]any{"id": 9}})
+	_ = db.Record(ctx, Event{Actor: "admin password", Action: "providers saved", Summary: "service-wide"})
+
+	// Act
+	list, err := db.History(ctx, acct, 50)
+	var admin, ai Entry
+	for _, e := range list {
+		if e.Source == SourceAdmin {
+			admin = e
+		} else {
+			ai = e
+		}
+	}
+	one, oneErr := db.Entry(ctx, acct, SourceAI, ai.ID)
+	_, crossErr := db.Entry(ctx, other, SourceAdmin, admin.ID)
+	_, badSrc := db.Entry(ctx, acct, "nope", admin.ID)
+
+	// Assert
+	if err != nil || len(list) != 2 || list[0].Source != SourceAdmin {
+		t.Fatalf("history %+v err %v: want the admin edit then the AI delete, nothing else", list, err)
+	}
+	if admin.Action != "knowledge edited" || string(admin.Before) == "" || admin.Actor != "john@example.com" {
+		t.Fatalf("admin entry %+v", admin)
+	}
+	if ai.Action != "knowledge deleted" || ai.Actor != "Claude (AI tool)" || ai.DocumentID != 5 || ai.SourceKey != "product-017" || ai.Summary != "ราคา" {
+		t.Fatalf("ai entry %+v", ai)
+	}
+	if oneErr != nil || one.ID != ai.ID || string(one.Before) != string(ai.Before) {
+		t.Fatalf("entry %+v err %v", one, oneErr)
+	}
+	if !errors.Is(crossErr, ErrNotFound) || !errors.Is(badSrc, ErrNotFound) {
+		t.Fatalf("cross-account %v, bad source %v: want ErrNotFound", crossErr, badSrc)
 	}
 }
