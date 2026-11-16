@@ -281,3 +281,34 @@ func TestAlerts_CustomerAskingForPersonIsNotASpike(t *testing.T) {
 		t.Errorf("turns %v events %v, want nothing counted", a.turns, a.events)
 	}
 }
+
+func TestReplyLimit_LiveSettingPerAccount(t *testing.T) {
+	// Arrange: account 1 allows 1 reply, account 2 has the limit off
+	now := time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)
+	b, cw, l, _ := limitedBot(30, &now)
+	limits := map[int64]alerts.Limit{1: {Max: 1, Window: time.Hour}, 2: {Max: 0, Window: time.Hour}}
+	b.opts.ReplyLimits = func(acct int64) alerts.Limit { return limits[acct] }
+	other := func(text string) Job {
+		j := fromContact(text, 9, 66)
+		j.Event.Account.ID = 2
+		return j
+	}
+
+	// Act
+	b.Process(context.Background(), fromContact("a", 7, 55))
+	b.Process(context.Background(), fromContact("b", 7, 55))
+	for i := 0; i < 3; i++ {
+		b.Process(context.Background(), other("x"))
+	}
+	limits[1] = alerts.Limit{Max: 5, Window: time.Hour} // the owner raises it: no restart
+	cw.calls = nil
+	b.Process(context.Background(), fromContact("c", 8, 77))
+
+	// Assert
+	if l.calls != 5 {
+		t.Errorf("model calls = %d, want 5 (1 for account 1, 3 for account 2 with the limit off, 1 after raising it)", l.calls)
+	}
+	if !strings.Contains(cw.joined(), "msg:ok") {
+		t.Errorf("a new customer was not answered after the limit was raised: %s", cw.joined())
+	}
+}

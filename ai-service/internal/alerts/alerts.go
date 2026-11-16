@@ -91,6 +91,7 @@ type Monitor struct {
 	notifier   Notifier // nil: alerts show on the admin page and in the log only
 	label      string   // environment shown in every message, e.g. "STAGING"
 	spikeShare float64
+	rules      Rules          // nil: every alert on, spike rule from SpikeShare
 	loc        *time.Location // for times in messages
 	now        func() time.Time
 	log        *slog.Logger
@@ -115,11 +116,19 @@ type state struct {
 	since, sent time.Time
 }
 
+// Rules are the owner's live choices (SettingsStore): which alerts are on
+// and when a hand-off spike counts. They are read on every check.
+type Rules interface {
+	Enabled(k Kind) bool
+	Spike() (share float64, minTurns int)
+}
+
 // Options configures a Monitor.
 type Options struct {
 	Notifier   Notifier
 	Label      string           // environment name for messages; "" leaves it out
-	SpikeShare float64          // 0 uses DefaultSpikeShare
+	SpikeShare float64          // 0 uses DefaultSpikeShare; Rules win when set
+	Rules      Rules            // nil: every alert on
 	Location   *time.Location   // times in messages; nil uses UTC
 	Now        func() time.Time // nil uses time.Now
 	Logger     *slog.Logger
@@ -127,7 +136,7 @@ type Options struct {
 
 // New returns a Monitor.
 func New(o Options) *Monitor {
-	m := &Monitor{notifier: o.Notifier, label: o.Label, spikeShare: o.SpikeShare, loc: o.Location, now: o.Now, log: o.Logger,
+	m := &Monitor{notifier: o.Notifier, label: o.Label, spikeShare: o.SpikeShare, rules: o.Rules, loc: o.Location, now: o.Now, log: o.Logger,
 		events: map[Kind][]event{}, active: map[Kind]*state{}}
 	if m.spikeShare <= 0 || m.spikeShare > 1 {
 		m.spikeShare = DefaultSpikeShare
@@ -226,6 +235,9 @@ func (m *Monitor) decide() []message {
 		firing, detail := m.firing(k, now)
 		s := m.active[k]
 		switch {
+		case !m.enabled(k):
+			// Switched off by the owner: forget it quietly, no recovery message.
+			delete(m.active, k)
 		case firing && s == nil:
 			out = append(out, message{k, m.line(":warning:", "Bot alert: "+Titles[k], detail+" "+advice[k]), true})
 		case firing && now.Sub(s.sent) >= Remind:
@@ -266,7 +278,11 @@ func (m *Monitor) send(ctx context.Context, text string) error {
 
 // firing reports whether kind's rule holds now, with the counts behind it.
 func (m *Monitor) firing(k Kind, now time.Time) (bool, string) {
+	if !m.enabled(k) {
+		return false, ""
+	}
 	if k == HandoffSpike {
+		share, minTurns := m.spikeRule()
 		m.turns = pruneTurns(m.turns, now.Add(-SpikeWindow))
 		handed := 0
 		for _, t := range m.turns {
@@ -275,7 +291,7 @@ func (m *Monitor) firing(k Kind, now time.Time) (bool, string) {
 			}
 		}
 		total := len(m.turns)
-		if total < SpikeMinTurns || float64(handed) < m.spikeShare*float64(total) {
+		if total < minTurns || float64(handed) < share*float64(total) {
 			return false, ""
 		}
 		return true, fmt.Sprintf("%d of the last %d answered messages (%d%%) in the last hour went to staff.", handed, total, handed*100/total)
@@ -286,6 +302,19 @@ func (m *Monitor) firing(k Kind, now time.Time) (bool, string) {
 		return false, ""
 	}
 	return true, fmt.Sprintf("%d in the last %d min (%s).", len(evs), int(Window.Minutes()), accounts(evs))
+}
+
+func (m *Monitor) enabled(k Kind) bool {
+	return m.rules == nil || m.rules.Enabled(k)
+}
+
+// spikeRule is the share of answered messages handed to staff, and the least
+// number of answered messages, that raise the hand-off spike.
+func (m *Monitor) spikeRule() (float64, int) {
+	if m.rules == nil {
+		return m.spikeShare, SpikeMinTurns
+	}
+	return m.rules.Spike()
 }
 
 // cleared is true when the problem has really gone: no event in a whole
@@ -339,3 +368,6 @@ func pruneTurns(ts []turn, after time.Time) []turn {
 	}
 	return ts[i:]
 }
+
+// MinEvents is how many events in Window raise an event kind (fixed in code).
+func MinEvents(k Kind) int { return minEvents[k] }

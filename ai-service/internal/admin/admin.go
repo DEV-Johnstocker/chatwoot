@@ -152,6 +152,11 @@ type Handler struct {
 	// Leads lists customers who showed buying interest; nil turns the
 	// Leads page off (no database).
 	Leads LeadList
+	// AlertSettings holds the Alerts page values (alerts.SettingsStore); nil
+	// turns that page off. SlackConfigured says whether the Slack link is set
+	// (the link itself is never shown).
+	AlertSettings   AlertSettings
+	SlackConfigured bool
 	// ChatwootURL is Chatwoot's public address for "Open chat" links; empty hides them.
 	ChatwootURL string
 	// Tester runs the reply pipeline for the test page; nil turns that page off.
@@ -206,6 +211,8 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/knowledge", wrap(h.submitKnowledge))
 	mux.Handle("GET /admin/hours", wrap(h.showHours))
 	mux.Handle("POST /admin/hours", wrap(h.submitHours))
+	mux.Handle("GET /admin/alerts", wrap(h.showAlertSettings))
+	mux.Handle("POST /admin/alerts", wrap(h.submitAlertSettings))
 	mux.Handle("GET /admin/business", wrap(h.showBusiness))
 	mux.Handle("POST /admin/business", wrap(h.submitBusiness))
 	mux.Handle("GET /admin/images", wrap(h.showImages))

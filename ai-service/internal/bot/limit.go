@@ -41,29 +41,34 @@ func limitKeyFor(acct, inbox, conv, contact int64) limitKey {
 // limitPruneEvery bounds how often the reply counts are swept for old entries.
 const limitPruneEvery = time.Minute
 
-// limitOn reports whether the reply limit is configured.
-func (b *Bot) limitOn() bool {
-	return b.opts.ReplyLimit > 0 && b.opts.ReplyLimitWindow > 0
+// limitFor is the account's reply limit now: the owner's saved setting, or
+// the environment default.
+func (b *Bot) limitFor(acct int64) alerts.Limit {
+	if b.opts.ReplyLimits != nil {
+		return b.opts.ReplyLimits(acct)
+	}
+	return alerts.Limit{Max: b.opts.ReplyLimit, Window: b.opts.ReplyLimitWindow}
 }
 
 // takeReply counts one bot reply for key and reports whether it is allowed.
 // The first refused reply also marks key as handed off for the window.
 func (b *Bot) takeReply(key limitKey) bool {
-	if !b.limitOn() {
+	limit := b.limitFor(key.acct)
+	if !limit.On() {
 		return true
 	}
 	now := b.now()
-	from := now.Add(-b.opts.ReplyLimitWindow)
+	from := now.Add(-limit.Window)
 	b.limitMu.Lock()
 	defer b.limitMu.Unlock()
-	b.pruneLimits(now, from)
+	b.pruneLimits(now)
 	times := b.replies[key]
 	i := 0
 	for i < len(times) && !times[i].After(from) {
 		i++
 	}
 	times = times[i:]
-	if len(times) >= b.opts.ReplyLimit {
+	if len(times) >= limit.Max {
 		b.replies[key] = times
 		b.limited[key] = now
 		return false
@@ -75,18 +80,21 @@ func (b *Bot) takeReply(key limitKey) bool {
 // overLimit reports whether key was handed off for the reply limit within
 // the window: its later messages are not answered or even read.
 func (b *Bot) overLimit(key limitKey) bool {
-	if !b.limitOn() {
+	limit := b.limitFor(key.acct)
+	if !limit.On() {
 		return false
 	}
 	b.limitMu.Lock()
 	defer b.limitMu.Unlock()
 	at, ok := b.limited[key]
-	return ok && b.now().Sub(at) < b.opts.ReplyLimitWindow
+	return ok && b.now().Sub(at) < limit.Window
 }
 
-// pruneLimits drops counts that left the window, at most once a minute, so
-// the maps stay as small as the number of recently active customers.
-func (b *Bot) pruneLimits(now, from time.Time) {
+// pruneLimits drops counts older than the longest window the owner can set,
+// at most once a minute, so the maps stay as small as the number of recently
+// active customers. Each account's own window is applied when it is read.
+func (b *Bot) pruneLimits(now time.Time) {
+	from := now.Add(-alerts.MaxReplyWindow)
 	if b.replies == nil {
 		b.replies, b.limited = map[limitKey][]time.Time{}, map[limitKey]time.Time{}
 	}
@@ -110,7 +118,8 @@ func (b *Bot) pruneLimits(now, from time.Time) {
 // message to the customer, a private note with the reason, and an alert.
 func (b *Bot) handOffReplyLimit(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, tr *trace.Turn) {
 	tr.Outcome = "handoff:" + ReasonReplyLimit
-	log.Warn("reply limit reached: chat passed to staff", "limit", b.opts.ReplyLimit, "window", b.opts.ReplyLimitWindow.String())
+	limit := b.limitFor(acct)
+	log.Warn("reply limit reached: chat passed to staff", "limit", limit.Max, "window", limit.Window.String())
 	if b.opts.Alerts != nil {
 		b.opts.Alerts.Record(alerts.ReplyLimit, acct)
 	}

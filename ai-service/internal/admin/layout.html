@@ -318,6 +318,15 @@
   form.sched { display: inline-flex; gap: 6px; align-items: center; }
   form.sched select { min-height: 36px; padding: 4px 8px; width: auto; }
   @media (max-width: 640px) { td.row-actions { text-align: left; } }
+  /* Alerts */
+  form.alert-settings { display: grid; gap: 16px; }
+  form.alert-settings .limit-fields { display: flex; flex-wrap: wrap; gap: 12px 16px; margin-top: 8px; }
+  form.alert-settings .limit-fields > div { flex: 1 1 200px; max-width: 280px; }
+  form.alert-settings label.check input[type="checkbox"], table.alert-rules input[type="checkbox"] { width: 22px; height: 22px; min-height: 0; accent-color: var(--accent); }
+  table.alert-rules th[scope="row"] { font-weight: 600; text-align: left; }
+  table.alert-rules td.on { width: 3.5em; }
+  .slack-state { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin: 8px 0 12px; }
+  fieldset.spike { margin-top: 20px; }
   /* Bot on/off */
   .bot-state { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
   .bot-state .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
@@ -457,6 +466,7 @@
 {{define "nav-links"}}
     <a href="/admin"{{if eq . "home"}} aria-current="page"{{end}}>{{T "Home"}}</a>
     <a href="/admin/hours"{{if eq . "hours"}} aria-current="page"{{end}}>{{T "Bot on/off"}}</a>
+    <a href="/admin/alerts"{{if eq . "alerts"}} aria-current="page"{{end}}>{{T "Alerts"}}</a>
     <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
     <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
     <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>

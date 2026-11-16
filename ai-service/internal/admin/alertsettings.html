@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Alerts · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "alerts"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Alerts"}}</h1>
+      <p class="lead">{{T "How many times the bot answers one customer, and when the bot warns you that something is wrong. Changes apply at once."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/alerts" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "Alert settings are off."}}</strong> {{T "Set %s for ai-service and restart it." "SETTINGS_PATH"}}</div>
+  {{else}}
+  {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next customer message."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+
+  <form class="alert-settings" method="post" action="/admin/alerts" autocomplete="off">
+    <input type="hidden" name="account" value="{{.AccountID}}">
+
+    <section class="card" aria-labelledby="limit-title">
+      <h2 class="card-title" id="limit-title">{{T "Reply limit for this account"}}</h2>
+      <p class="hint">{{T "Stops one customer who sends message after message from using up AI credit. When a customer reaches the limit, the bot stops answering them for the rest of the time window and passes the chat to your team once, with a private note. The customer gets no message."}}</p>
+      <label class="check"><input id="limit_on" name="limit_on" type="checkbox"{{if .LimitOn}} checked{{end}}>
+        <span><strong>{{T "Limit bot replies per customer"}}</strong></span></label>
+      <div class="limit-fields">
+        <div>
+          <label for="limit_max">{{T "Replies per customer"}}</label>
+          <input id="limit_max" name="limit_max" type="number" min="1" max="{{.MaxLimit}}" step="1" inputmode="numeric" value="{{.LimitMax}}">
+        </div>
+        <div>
+          <label for="limit_window">{{T "Within"}}</label>
+          <select id="limit_window" name="limit_window">
+            {{range .Windows}}<option value="{{.Minutes}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+          </select>
+        </div>
+      </div>
+      <p class="field-hint">{{if .Custom}}{{T "This account uses its own limit. The server default is %s." .Default}}{{else}}{{T "This account uses the server default (%s) until you save." .Default}}{{end}}</p>
+    </section>
+
+    <section class="card" aria-labelledby="rules-title">
+      <h2 class="card-title" id="rules-title">{{T "Bot alerts"}}</h2>
+      <p class="hint">{{T "These apply to every account on this server. An alert goes to Slack once when a problem starts, again every 6 hours while it lasts, and once when it has been quiet for 15 minutes. It also shows on Home."}}</p>
+      <p class="slack-state"><span class="badge {{if .SlackSet}}on{{else}}scheduled{{end}}">{{if .SlackSet}}{{T "Slack: set"}}{{else}}{{T "Slack: not set"}}{{end}}</span>
+        <span class="field-hint">{{if .SlackSet}}{{T "The Slack link is a server secret; it is not shown here."}}{{else}}{{T "Alerts show on Home and in the log only. Set %s in Dokploy to send them to Slack." "SLACK_ALERT_WEBHOOK_URL"}}{{end}}</span></p>
+      <table class="alert-rules">
+        <thead><tr><th scope="col">{{T "On"}}</th><th scope="col">{{T "Alert"}}</th><th scope="col">{{T "Sent when"}}</th></tr></thead>
+        <tbody>
+        {{range .Rules}}
+          <tr>
+            <td class="on"><input type="checkbox" name="alert_{{.Kind}}" aria-labelledby="rule-{{.Kind}}"{{if .On}} checked{{end}}></td>
+            <th scope="row" id="rule-{{.Kind}}">{{.Title}}</th>
+            <td>{{if .When}}{{.When}} <span class="badge">{{T "fixed"}}</span>{{else}}{{T "Set below"}}{{end}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+      <fieldset class="spike">
+        <legend>{{T "Unusually many chats handed to staff"}}</legend>
+        <p class="hint">{{T "Counts customer messages the bot answered or handed to staff in the last hour. Chats where the customer asked for a person, the bot was off, or the reply limit was reached are not counted."}}</p>
+        <div class="limit-fields">
+          <div>
+            <label for="spike_share">{{T "Share handed to staff (%)"}}</label>
+            <input id="spike_share" name="spike_share" type="number" min="10" max="100" step="1" inputmode="numeric" value="{{.SharePct}}">
+          </div>
+          <div>
+            <label for="spike_min">{{T "At least this many answered messages"}}</label>
+            <input id="spike_min" name="spike_min" type="number" min="{{.MinTurnsLo}}" max="{{.MinTurnsHi}}" step="1" inputmode="numeric" value="{{.MinTurns}}">
+          </div>
+        </div>
+      </fieldset>
+      <div class="card-foot"><button type="submit" class="primary">{{T "Save"}}</button></div>
+    </section>
+  </form>
+  {{end}}
+</main>
+</div>
+</body>
+</html>
