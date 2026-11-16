@@ -8,7 +8,9 @@ package webhook
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/corrections"
 )
@@ -35,6 +37,14 @@ type Event struct {
 	// SourceID is the channel's own id for the message: for Messenger, Meta's
 	// message id (an echo of a page's message carries the id Meta returned).
 	SourceID string `json:"source_id"`
+	// Conversation events only: the chat's labels, custom attributes, inbox
+	// and what changed. Kept raw so an unexpected shape never fails the
+	// whole event; LabelList and Attribute read them.
+	RawLabels         json.RawMessage `json:"labels"`
+	RawChannel        json.RawMessage `json:"channel"`
+	RawAttributes     json.RawMessage `json:"custom_attributes"`
+	InboxID           json.RawMessage `json:"inbox_id"`
+	ChangedAttributes json.RawMessage `json:"changed_attributes"`
 	// ContentAttributes carries Chatwoot's message flags; external_echo marks
 	// a reply sent outside Chatwoot (e.g. from the Messenger app).
 	ContentAttributes struct {
@@ -64,6 +74,69 @@ func (ev Event) AttachmentNote() string {
 		noun = "files"
 	}
 	return fmt.Sprintf("[The customer attached %d %s: %s]", len(types), noun, strings.Join(types, ", "))
+}
+
+// LabelList is a conversation event's labels; ok is false when the field is
+// absent or malformed (then the labels are unknown, not empty).
+func (ev Event) LabelList() (labels []string, ok bool) {
+	if len(ev.RawLabels) == 0 || json.Unmarshal(ev.RawLabels, &labels) != nil || labels == nil && string(ev.RawLabels) == "null" {
+		return nil, false
+	}
+	return labels, true
+}
+
+// Channel is a conversation event's channel type, e.g. "Channel::FacebookPage";
+// "" when absent or odd.
+func (ev Event) Channel() string {
+	var c string
+	if json.Unmarshal(ev.RawChannel, &c) != nil {
+		return ""
+	}
+	return c
+}
+
+// UpdatedTime is a conversation event's updated_at; zero when absent or odd.
+func (ev Event) UpdatedTime() time.Time {
+	var f float64
+	if json.Unmarshal(ev.UpdatedAt, &f) != nil || f <= 0 || f > 1e11 {
+		return time.Time{}
+	}
+	sec, frac := math.Modf(f)
+	return time.Unix(int64(sec), int64(frac*1e9))
+}
+
+// Attribute is one of a conversation event's custom attributes, raw; nil
+// when absent or malformed.
+func (ev Event) Attribute(name string) json.RawMessage {
+	var attrs map[string]json.RawMessage
+	if json.Unmarshal(ev.RawAttributes, &attrs) != nil {
+		return nil
+	}
+	return attrs[name]
+}
+
+// ConversationInbox is a conversation event's inbox id; 0 when absent.
+func (ev Event) ConversationInbox() int64 {
+	var id int64
+	if json.Unmarshal(ev.InboxID, &id) != nil || id < 0 {
+		return 0
+	}
+	return id
+}
+
+// Changed lists the attribute names a conversation_updated event changed;
+// ok is false when Chatwoot did not say (then assume anything changed).
+func (ev Event) Changed() (names []string, ok bool) {
+	var list []map[string]json.RawMessage
+	if json.Unmarshal(ev.ChangedAttributes, &list) != nil || len(list) == 0 {
+		return nil, false
+	}
+	for _, m := range list {
+		for k := range m {
+			names = append(names, k)
+		}
+	}
+	return names, true
 }
 
 // Account identifies the Chatwoot account.

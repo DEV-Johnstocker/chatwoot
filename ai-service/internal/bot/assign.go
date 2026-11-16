@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/sales"
 	"log/slog"
 	"math/rand/v2"
 	"time"
@@ -65,11 +66,14 @@ func pickAssignee(staff []chatwoot.Staff, open map[int64]int, current int64) int
 // staff member before it opens, so Chatwoot's own turn-taking (which only
 // fills empty assignees) does not override it. Every step is best effort:
 // when one fails, Chatwoot's own assignment still runs when the chat opens.
-func (b *Bot) route(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, gap bool) {
+func (b *Bot) route(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, gap, slip bool) {
 	if l, ok := b.opts.Chatwoot.(Labeler); ok {
 		labels := []string{HandoffLabel}
 		if gap {
 			labels = append(labels, KBGapLabel)
+		}
+		if slip {
+			labels = append(labels, sales.LabelSlip)
 		}
 		for _, label := range labels {
 			if err := l.AddLabel(ctx, acct, conv, label); err != nil {

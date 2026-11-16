@@ -112,6 +112,9 @@ type Options struct {
 	// Images gives each account's pictures, sent where the model writes
 	// profile.ImageMarker; nil: the bot never offers any.
 	Images ImageStore
+	// Sales records a payment slip the bot saw ("paid-unconfirmed"), for the
+	// sales dashboard; nil skips it (the label is still added).
+	Sales SlipRecorder
 	// Corrections turns a staff "#fix" note into an FAQ waiting for the
 	// owner's approval; nil answers such a note with "not turned on".
 	Corrections    Corrector
@@ -654,12 +657,15 @@ func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, inbox, conv i
 			log.Error("send handoff message failed", "error", err)
 		}
 	}
-	note, gap := b.staffNote(ctx, log, acct, conv, customerMsg, reason, images)
+	note, gap, slip := b.staffNote(ctx, log, acct, conv, customerMsg, reason, images)
 	if err := cw.SendPrivateNote(ctx, acct, conv, note); err != nil {
 		log.Warn("handoff note failed", "error", err)
 	}
 	if reason != ReasonStaffReplied { // an admin already answering keeps the chat
-		b.route(ctx, log, acct, inbox, conv, gap)
+		b.route(ctx, log, acct, inbox, conv, gap, slip != nil)
+	}
+	if slip != nil {
+		b.recordSlip(ctx, log, acct, inbox, conv, slip)
 	}
 	if err := cw.Handoff(ctx, acct, conv); err != nil {
 		log.Error("handoff failed", "error", err, "reason", reason)

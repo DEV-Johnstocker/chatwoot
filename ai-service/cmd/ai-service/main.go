@@ -41,6 +41,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/recentchat"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/sales"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/settings"
@@ -142,6 +143,9 @@ func run() error {
 		historyReader, staff = reader, reader
 		logger.Info("chat recall and workload assignment on")
 	}
+	// Paid chats and payment slips for the sales dashboard (needs the database).
+	saleStore := salesStore(profiles)
+	saleRecorder := startSales(saleStore, reader, chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil), logger)
 	// Private replies sent from the comment queue, until Meta's echo of each
 	// reaches its Chatwoot chat; the bot then adds the comment-lead note.
 	commentEchoes := &commentecho.Echoes{}
@@ -162,6 +166,7 @@ func run() error {
 		CommentEchoes:     commentEchoes,
 		Images:            imageStore,
 		Corrections:       staffCorrections(cfg, mcpStore, profiles, reader),
+		Sales:             botSales(saleStore),
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),
@@ -188,6 +193,9 @@ func run() error {
 		Seen:   memory.NewSeen(30*time.Minute, nil),
 		Logger: logger,
 		Chats:  chats,
+	}
+	if saleRecorder != nil {
+		h.Sales = saleRecorder
 	}
 	placeStore := placesStore(profiles)
 	if placeStore != nil {
@@ -247,6 +255,7 @@ func run() error {
 			Comments: commentQueue, Hours: adminHours,
 			Gaps: adminGaps(reader), ChatwootURL: cfg.ChatwootPublicURL,
 			Ratings: adminRatings(profiles), Replies: adminReplies(reader),
+			Sales: adminSales(saleStore),
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -450,6 +459,44 @@ func pendingStore(p *profile.Postgres) pending.Store {
 		return nil
 	}
 	return &pending.Postgres{Pool: p.Pool}
+}
+
+// salesStore keeps sales, or nil without a database.
+func salesStore(p *profile.Postgres) *sales.Postgres {
+	if p == nil {
+		return nil
+	}
+	return &sales.Postgres{Pool: p.Pool}
+}
+
+// startSales watches conversation updates for the "paid" label and staff
+// #paid notes; nil without a database. The reader (optional) credits each
+// sale to the bot or staff; notes (the bot token) confirms a #paid note.
+func startSales(st *sales.Postgres, reader *chatwoot.Reader, notes sales.Notes, logger *slog.Logger) *sales.Recorder {
+	if st == nil {
+		return nil
+	}
+	rec := &sales.Recorder{Store: st, Notes: notes, Logger: logger.With("component", "sales")}
+	if reader != nil {
+		rec.Messages = reader
+	}
+	rec.Start(context.Background())
+	return rec
+}
+
+// botSales and adminSales keep a nil store a nil interface.
+func botSales(st *sales.Postgres) bot.SlipRecorder {
+	if st == nil {
+		return nil
+	}
+	return st
+}
+
+func adminSales(st *sales.Postgres) sales.Store {
+	if st == nil {
+		return nil
+	}
+	return st
 }
 
 // staffCorrections turns staff "#fix" notes into FAQs on /admin → Approvals.

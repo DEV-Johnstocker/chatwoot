@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Sales · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "sales"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Sales"}}</h1>
+      <p class="lead">{{T "Chats that paid, how much they brought in, and how many the bot closed without help from staff."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/sales" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "Sales are off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  <div class="period" role="group" aria-label="{{T "Period"}}">
+    <a href="/admin/sales?account={{.AccountID}}" aria-current="{{if eq .Period "month"}}true{{else}}false{{end}}">{{T "This month"}}</a>
+    <a href="/admin/sales?account={{.AccountID}}&amp;period=last-month" aria-current="{{if eq .Period "last-month"}}true{{else}}false{{end}}">{{T "Last month"}}</a>
+    <a href="/admin/sales?account={{.AccountID}}&amp;period=30d" aria-current="{{if eq .Period "30d"}}true{{else}}false{{end}}">{{T "Last 30 days"}}</a>
+  </div>
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+
+  <ul class="kpis" aria-label="{{.PeriodName}}">
+    <li><span class="stat-label">{{T "Revenue"}}</span><span class="stat-num">{{.Revenue}}</span>
+      <p class="hint">{{T "%d paid chats" .Totals.Paid}}{{if .Totals.NoAmount}} · {{T "%d without an amount" .Totals.NoAmount}}{{end}}</p></li>
+    <li><span class="stat-label">{{T "Closed by the bot"}}</span><span class="stat-num">{{.Totals.Bot}}</span>
+      <p class="hint">{{.BotRevenue}}{{if or .Totals.Bot .Totals.Staff}} · {{T "%d%% of sales" .BotShare}}{{end}}</p>
+      {{if or .Totals.Bot .Totals.Staff}}<div class="share" role="img" aria-label="{{T "%d%% of sales" .BotShare}}"><span style="width: {{.BotShare}}%"></span></div>{{end}}</li>
+    <li><span class="stat-label">{{T "Closed with staff"}}</span><span class="stat-num">{{.Totals.Staff}}</span>
+      <p class="hint">{{.StaffRev}}{{if .Totals.Unknown}} · {{T "%d not known" .Totals.Unknown}}{{end}}</p></li>
+    <li><span class="stat-label">{{T "Slips to check"}}</span><span class="stat-num">{{len .Slips}}</span>
+      <p class="hint">{{T "label paid-unconfirmed"}}</p></li>
+  </ul>
+
+  <section class="card" aria-labelledby="slips-title">
+    <h2 id="slips-title">{{T "Slips to check"}}</h2>
+    <p class="hint">{{T "The bot saw a payment slip in these chats. Check the money, then confirm it in the chat with a private note: #paid and the amount, for example #paid 3,900. The amount below is what the bot read from the image, not checked."}}</p>
+    {{if .Slips}}
+    <ul class="sales-list">
+      {{range .Slips}}
+      <li><span class="amt">{{if .SlipAmount}}{{.SlipAmount}}?{{else}}–{{end}}</span>
+        <span class="grow">{{if .ChatURL}}<a href="{{.ChatURL}}" target="_blank" rel="noopener">{{T "Open chat #%d" .ConversationID}}</a>{{else}}{{T "Chat #%d" .ConversationID}}{{end}}{{if .InboxID}}{{range inboxes $.AccountID .InboxID}}{{if .Selected}} · {{.Label}}{{end}}{{end}}{{end}}</span>
+        <span class="hint">{{.When}}</span></li>
+      {{end}}
+    </ul>
+    {{else}}<p class="empty">{{T "No slips waiting."}}</p>{{end}}
+  </section>
+
+  <section class="card" aria-labelledby="paid-title">
+    <h2 id="paid-title">{{T "Paid chats"}} · {{.PeriodName}}</h2>
+    {{if .Sales}}
+    <ul class="sales-list">
+      {{range .Sales}}
+      <li><span class="amt">{{if .Amount}}{{.Amount}}{{else}}<span class="hint">{{T "no amount"}}</span>{{end}}</span>
+        {{if eq .Credit "bot"}}<span class="credit bot">🤖 {{T "Bot"}}</span>{{else if eq .Credit "staff"}}<span class="credit">🙋 {{T "Staff"}}</span>{{else}}<span class="credit">{{T "Not known"}}</span>{{end}}
+        <span class="grow">{{if .ChatURL}}<a href="{{.ChatURL}}" target="_blank" rel="noopener">{{T "Open chat #%d" .ConversationID}}</a>{{else}}{{T "Chat #%d" .ConversationID}}{{end}}{{if .InboxID}}{{range inboxes $.AccountID .InboxID}}{{if .Selected}} · {{.Label}}{{end}}{{end}}{{end}}</span>
+        <span class="hint">{{.When}}</span></li>
+      {{end}}
+    </ul>
+    {{if .Full}}<p class="hint">{{T "Showing the newest %d." 100}}</p>{{end}}
+    {{else}}<p class="empty">{{T "No paid chats in this period yet."}}</p>{{end}}
+  </section>
+
+  <details class="card">
+    <summary>{{T "How sales are counted"}}</summary>
+    <ul>
+      <li>{{T "A chat counts as paid when staff write a private note #paid with the amount (for example #paid 3,900; #unpaid takes it back). The bot confirms with a note."}}</li>
+      <li>{{T "On Facebook, Instagram and LINE chats, the label paid with the conversation attribute Paid amount (paid_amount, in baht) works too. Website-chat visitors can set labels and attributes themselves, so there only the #paid note counts."}}</li>
+      <li>{{T "Closed by the bot: before the payment, the bot handed nothing to staff and no staff member replied to the customer. Otherwise it counts as closed with staff."}}</li>
+      <li>{{T "Removing the label paid, or a #unpaid note, takes the chat out of the totals. A chat confirmed with a #paid note stays paid until a #unpaid note."}}</li>
+      <li>{{T "To correct an amount, write a new #paid note with the right amount; changing Paid amount later does not replace it."}}</li>
+    </ul>
+  </details>
+  {{end}}
+</main>
+</div>
+</body>
+</html>
