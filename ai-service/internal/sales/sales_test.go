@@ -546,3 +546,33 @@ func TestRecorder_LabelChangeDoesNotUndoAPaidNote(t *testing.T) {
 		t.Fatalf("a label change undid the #paid note: %+v", s)
 	}
 }
+
+func TestNoteAmount(t *testing.T) {
+	cases := map[string]struct {
+		satang int64
+		ok     bool
+	}{
+		"3,900":    {390000, true},
+		"3900 บาท": {390000, true},
+		"฿3,900.50 โอนแล้วค่ะ":   {390050, true},
+		"1,234 (STAGING test)":   {123400, true},
+		"3,900บาท SCB":           {390000, true},
+		"THB 500":                {50000, true},
+		"โอนแล้ว":                {0, false},
+		"3,900x":                 {0, false},
+		"12abc":                  {0, false},
+		"-5":                     {0, false},
+		"999999999999999999 บาท": {0, false},
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			// Act
+			got, err := noteAmount(in)
+
+			// Assert
+			if (err == nil) != want.ok || (want.ok && got != want.satang) {
+				t.Fatalf("noteAmount(%q) = %d, %v; want %d ok=%v", in, got, err, want.satang, want.ok)
+			}
+		})
+	}
+}

@@ -2,9 +2,9 @@ package sales
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -164,8 +164,7 @@ func (r *Recorder) fromNote(ev webhook.Event) (change, bool) {
 	c := change{accountID: ev.Account.ID, conversationID: ev.Conversation.ID, inboxID: max(ev.Inbox.ID, 0),
 		paid: paid, byStaff: true, reply: true, at: r.now()}
 	if paid && rest != "" {
-		raw, _ := json.Marshal(rest)
-		n, err := ParseBaht(raw)
+		n, err := noteAmount(rest)
 		if err != nil {
 			r.Logger.Warn("#paid note amount not read", "account_id", c.accountID, "conversation_id", c.conversationID)
 			c.badAmount = true
@@ -197,6 +196,19 @@ func parseNote(content string) (paid bool, rest string, ok bool) {
 		}
 	}
 	return false, "", false
+}
+
+// leadingAmount is the amount at the start of a #paid note, with an optional
+// currency sign or word; anything after it (a bank name, a comment) is ignored.
+var leadingAmount = regexp.MustCompile(`(?i)^(?:฿|thb)?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:บาท|thb|฿)?(?:\s|\(|$)`)
+
+// noteAmount reads the amount at the start of the rest of a #paid note.
+func noteAmount(rest string) (int64, error) {
+	m := leadingAmount.FindStringSubmatch(strings.TrimSpace(rest) + " ")
+	if m == nil {
+		return 0, ErrAmount
+	}
+	return parseBahtText(m[1])
 }
 
 func firstRune(s string) rune {
