@@ -86,7 +86,7 @@ func TestLang_EnglishByDefaultAndUnknownCookieIgnored(t *testing.T) {
 	body := e.do(page).Body.String()
 
 	// Assert
-	if !strings.Contains(body, `<html lang="en"`) || !strings.Contains(body, ">Comment leads</a>") || strings.Contains(body, "หน้าแรก") {
+	if !strings.Contains(body, `<html lang="en"`) || !strings.Contains(body, ">Comment leads</span></a>") || strings.Contains(body, "หน้าแรก") {
 		t.Fatal("page is not in English")
 	}
 }

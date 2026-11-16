@@ -100,7 +100,8 @@ func TestGaps_ListShowsQuestionReplyAndChatLink(t *testing.T) {
 
 	// Assert
 	body := rec.Body.String()
-	if rec.Code != http.StatusOK || len(fg.accts) != 1 || fg.accts[0] != 3 {
+	// The page reads the list once, and the menu badge may read it too.
+	if rec.Code != http.StatusOK || len(fg.accts) == 0 || fg.accts[0] != 3 || fg.accts[len(fg.accts)-1] != 3 {
 		t.Fatalf("code=%d accts=%v", rec.Code, fg.accts)
 	}
 	for _, want := range []string{"คอร์สมีใบประกาศไหม &lt;b&gt;", "อยากรู้เรื่องใบประกาศ",

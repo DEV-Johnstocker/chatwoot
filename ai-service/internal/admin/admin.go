@@ -66,6 +66,11 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 	"inboxes":  func(int64, string) []option { return nil },
 	// spendWarnings are the AI spend caps at 80% or more (spend.go); replaced per request.
 	"spendWarnings": func() []capView { return nil },
+	// navCounts, navOpen and navIcon draw the side menu (navmenu.go); the
+	// first two are replaced per request.
+	"navCounts": func() navCounts { return navCounts{} },
+	"navOpen":   func(group, page string) bool { return true },
+	"navIcon":   navIcon,
 	"dict": func(kv ...any) map[string]any {
 		m := make(map[string]any, len(kv)/2)
 		for i := 0; i+1 < len(kv); i += 2 {
@@ -177,6 +182,9 @@ type Handler struct {
 	loginFails, loginFailsAll ratelimit.Limiter
 	goodMu                    sync.Mutex
 	goodIPs                   map[string]time.Time
+
+	// nav caches the menu badge counts per account (navmenu.go).
+	nav navCache
 }
 
 // Wrong /admin passwords are slowed down twice over:
@@ -485,7 +493,10 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, status int,
 		pk := h.newPickers(r)
 		t.Funcs(template.FuncMap{"theme": func() string { return theme }, "accounts": pk.accountOptions, "inboxes": pk.inboxOptions,
 			"lang": func() string { return lang }, "T": func(s string, args ...any) string { return tr(lang, s, args...) },
-			"pageAccount": func() string { return pageAcct }, "spendWarnings": func() []capView { return h.spendWarnings(lang) }})
+			"pageAccount": func() string { return pageAcct }, "spendWarnings": func() []capView { return h.spendWarnings(lang) },
+			// The menu is drawn twice (sidebar and phone menu); count once.
+			"navCounts": sync.OnceValue(func() navCounts { return h.menuCounts(r.Context(), accountParam(pageAcct)) }),
+			"navOpen":   navOpenFunc(foldedGroups(r))})
 		var buf bytes.Buffer
 		if err = t.ExecuteTemplate(&buf, name, data); err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")

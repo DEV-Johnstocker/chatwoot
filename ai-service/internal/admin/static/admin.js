@@ -1,7 +1,7 @@
 // fallow-ignore-file unused-file -- loaded by layout.html, embedded with go:embed
 // Small enhancements for the ai-service admin pages. Every page works
 // without this file; it only adds Copy buttons, "are you sure?" checks, text previews,
-// Enter-to-send and a "bot is replying" state in the test chat.
+// Enter-to-send, a "bot is replying" state in the test chat and folding menu groups.
 // Rules: never build HTML from strings, no eval, no inline handlers (the CSP allows
 // only this file and enforces Trusted Types).
 'use strict';
@@ -176,4 +176,29 @@
       event.preventDefault();
     }
   });
+
+  // Menu groups fold when their heading is clicked. The folded ones are kept
+  // in the admin_nav cookie ("bot.settings") so the next page draws them
+  // folded; the sidebar and the phone menu stay in step.
+  const navGroups = document.querySelectorAll('details.nav-group[data-group]');
+  const foldedNow = () => {
+    const m = document.cookie.match(/(?:^|;\s*)admin_nav=([a-z.]*)/);
+    return new Set(m && m[1] ? m[1].split('.') : []);
+  };
+  for (const group of navGroups) {
+    // Only a click on the heading counts: the browser also fires "toggle"
+    // while drawing the page, and the open page's group is always drawn open.
+    group.querySelector('summary')?.addEventListener('click', () => { group.dataset.userToggle = '1'; });
+    group.addEventListener('toggle', () => {
+      if (!group.dataset.userToggle) return;
+      delete group.dataset.userToggle;
+      for (const twin of navGroups) {
+        if (twin !== group && twin.dataset.group === group.dataset.group) twin.open = group.open;
+      }
+      const folded = foldedNow();
+      if (group.open) folded.delete(group.dataset.group); else folded.add(group.dataset.group);
+      const secure = location.protocol === 'https:' ? '; secure' : '';
+      document.cookie = 'admin_nav=' + [...folded].join('.') + '; path=/admin; max-age=31536000; samesite=strict' + secure;
+    });
+  }
 })();
