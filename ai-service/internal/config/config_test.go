@@ -362,6 +362,7 @@ func TestLoad_BotNudge(t *testing.T) {
 	def, errDef := load(nil)
 	on, errOn := load(map[string]string{
 		"BOT_NUDGE_AFTER": "20h", "BOT_NUDGE_TEXT": ` สวัสดีค่ะ\nคุณลูกค้า `, "BOT_NUDGE_ACCOUNTS": "3, 1",
+		"BOT_NUDGE_WRITE": "true",
 	})
 	_, errNoText := load(map[string]string{"BOT_NUDGE_AFTER": "20h"})
 	_, errShort := load(map[string]string{"BOT_NUDGE_AFTER": "30m", "BOT_NUDGE_TEXT": "x"})
@@ -373,10 +374,10 @@ func TestLoad_BotNudge(t *testing.T) {
 	_, errBig := load(map[string]string{"BOT_NUDGE_AFTER": "20h", "BOT_NUDGE_TEXT": strings.Repeat("ก", 1001)})
 
 	// Assert
-	if errDef != nil || def.BotNudgeAfter != 0 || def.BotNudgeText != "" || len(def.BotNudgeAccounts) != 0 {
+	if errDef != nil || def.BotNudgeAfter != 0 || def.BotNudgeText != "" || len(def.BotNudgeAccounts) != 0 || def.BotNudgeWrite {
 		t.Errorf("default = %+v %v, want off", def.BotNudgeAfter, errDef)
 	}
-	if errOn != nil || on.BotNudgeAfter != 20*time.Hour || on.BotNudgeText != "สวัสดีค่ะ\nคุณลูกค้า" ||
+	if errOn != nil || on.BotNudgeAfter != 20*time.Hour || !on.BotNudgeWrite || on.BotNudgeText != "สวัสดีค่ะ\nคุณลูกค้า" ||
 		len(on.BotNudgeAccounts) != 2 || on.BotNudgeAccounts[0] != 3 || on.BotNudgeAccounts[1] != 1 {
 		t.Errorf("on = %v %q %v %v", on.BotNudgeAfter, on.BotNudgeText, on.BotNudgeAccounts, errOn)
 	}
