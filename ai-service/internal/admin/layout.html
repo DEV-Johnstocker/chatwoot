@@ -460,6 +460,7 @@
     <a href="/admin/test"{{if eq . "test"}} aria-current="page"{{end}}>{{T "Test bot"}}</a>
     <a href="/admin/business"{{if eq . "business"}} aria-current="page"{{end}}>{{T "Business profile"}}</a>
     <a href="/admin/knowledge"{{if eq . "knowledge"}} aria-current="page"{{end}}>{{T "Knowledge base"}}</a>
+    <a href="/admin/promotions"{{if eq . "promos"}} aria-current="page"{{end}}>{{T "Promotions"}}</a>
     <a href="/admin/images"{{if eq . "images"}} aria-current="page"{{end}}>{{T "Bot images"}}</a>
     <a href="/admin/sales"{{if eq . "sales"}} aria-current="page"{{end}}>{{T "Sales"}}</a>
     <a href="/admin/replies"{{if eq . "replies"}} aria-current="page"{{end}}>{{T "Rate replies"}}</a>
@@ -467,6 +468,7 @@
     <a href="/admin/approvals"{{if eq . "approvals"}} aria-current="page"{{end}}>{{T "AI approvals"}}</a>
     <a href="/admin/history"{{if eq . "history"}} aria-current="page"{{end}}>{{T "History"}}</a>
     <a href="/admin/comments"{{if eq . "comments"}} aria-current="page"{{end}}>{{T "Comment leads"}}</a>
+    <a href="/admin/leads"{{if eq . "leads"}} aria-current="page"{{end}}>{{T "Leads"}}</a>
     <a href="/admin/connections"{{if eq . "connections"}} aria-current="page"{{end}}>{{T "Connect AI tools"}}</a>
     <a href="/admin/spend"{{if eq . "spend"}} aria-current="page"{{end}}>{{T "AI spend"}}{{with spendWarnings}}&nbsp;<span class="badge nav-alert">{{(index . 0).Level}}%+<span class="visually-hidden"> {{T "of a cap used"}}</span></span>{{end}}</a>
     <a class="nav-settings" href="/admin/providers"{{if eq . "providers"}} aria-current="page"{{end}}>{{T "AI providers"}}</a>

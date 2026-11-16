@@ -45,6 +45,7 @@ var RequiredTables = []string{
 	"ai_usage",
 	"ai_spend_caps",
 	"ai_spend_alerts",
+	"leads",
 	"bot_images",
 	"bot_images_removed",
 	"team_members",

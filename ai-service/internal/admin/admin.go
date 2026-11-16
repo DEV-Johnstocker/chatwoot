@@ -149,6 +149,9 @@ type Handler struct {
 	Alerts AlertBoard
 	// Spend is the AI spend page and its caps; nil turns it off (no database).
 	Spend SpendBoard
+	// Leads lists customers who showed buying interest; nil turns the
+	// Leads page off (no database).
+	Leads LeadList
 	// ChatwootURL is Chatwoot's public address for "Open chat" links; empty hides them.
 	ChatwootURL string
 	// Tester runs the reply pipeline for the test page; nil turns that page off.
@@ -220,6 +223,9 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.Handle("POST /admin/comments", wrap(h.submitComments))
 	mux.Handle("GET /admin/history", wrap(h.showHistory))
 	mux.Handle("POST /admin/history", wrap(h.submitHistory))
+	mux.Handle("GET /admin/leads", wrap(h.showLeads))
+	mux.Handle("GET /admin/leads.csv", wrap(h.exportLeads))
+	mux.Handle("GET /admin/promotions", wrap(h.showPromos))
 }
 
 type providerView struct {

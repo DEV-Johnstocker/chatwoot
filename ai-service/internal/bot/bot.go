@@ -119,7 +119,10 @@ type Options struct {
 	Sales SlipRecorder
 	// Corrections turns a staff "#fix" note into an FAQ waiting for the
 	// owner's approval; nil answers such a note with "not turned on".
-	Corrections    Corrector
+	Corrections Corrector
+	// Leads keeps the owner's lead list (who asked about price, who got a
+	// price or link); nil keeps none.
+	Leads          LeadRecorder
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -393,6 +396,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.recall(ctx, log, acct, conv, ev.ID)
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "user", Content: in.text})
 		b.saveEmail(ctx, log, acct, conv, in.text)
+		b.noteCustomer(ctx, log, ev, in.text)
 		if b.opts.Handoff.Wants(in.text) {
 			tr.Outcome, tr.Output = "handoff:"+ReasonCustomerAsked, b.opts.HandoffMessage
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)
@@ -515,6 +519,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	}
 	tr.Outcome = "replied"
 	b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
+	b.noteReply(ctx, log, acct, conv, history, hits, text)
 	// Content is not logged (personal data); lengths and usage are enough for cost tracking.
 	log.Info("ai replied",
 		"model", res.Model,
