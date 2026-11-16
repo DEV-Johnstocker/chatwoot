@@ -1326,3 +1326,55 @@ func TestMigrateV22Spend(t *testing.T) {
 			okUsage, okCap, okAlert, negTokens, noPurpose, zeroCap, badLevel, dupAlert)
 	}
 }
+
+func TestMigrate_V23AddsLeadsClosedToAPIRoles(t *testing.T) {
+	// Arrange: a version-22 database where Supabase's API roles get every new table
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+		END $$;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+		DROP TABLE leads;
+		UPDATE kb_schema_version SET version = 22;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;
+			ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;`)
+	})
+
+	// Act
+	err := db.Migrate(ctx)
+	insert := func(conv int, stage, name string) error {
+		_, err := db.Pool.Exec(ctx, `INSERT INTO leads (account_id, conversation_id, contact_name, stage)
+			VALUES (1, $1, $2, $3)`, conv, name, stage)
+		return err
+	}
+	okErr := insert(10, "asked_price", "สมชาย")
+	unknown, dup, longName, zero := insert(11, "won", ""), insert(10, "quoted", ""), insert(12, "quoted", strings.Repeat("ก", 257)), insert(0, "quoted", "")
+
+	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version int
+	var rls, tableOpen, seqOpen, contactIndex bool
+	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
+		(SELECT relrowsecurity FROM pg_class WHERE relname = 'leads'),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_table_privilege(r.rolname, 'leads', 'SELECT,INSERT,UPDATE,DELETE')),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_sequence_privilege(r.rolname, 'leads_id_seq', 'USAGE,SELECT,UPDATE')),
+		to_regclass('leads_account_contact') IS NOT NULL`).Scan(&version, &rls, &tableOpen, &seqOpen, &contactIndex); err != nil {
+		t.Fatal(err)
+	}
+	if version != SchemaVersion || !rls || tableOpen || seqOpen || !contactIndex {
+		t.Fatalf("version=%d rls=%v table open=%v sequence open=%v contact index=%v", version, rls, tableOpen, seqOpen, contactIndex)
+	}
+	if okErr != nil || unknown == nil || dup == nil || longName == nil || zero == nil {
+		t.Fatalf("insert ok=%v unknown stage=%v duplicate=%v long name=%v zero conversation=%v", okErr, unknown, dup, longName, zero)
+	}
+}

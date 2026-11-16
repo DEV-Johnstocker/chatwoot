@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Promotions · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "promos"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Promotions"}}</h1>
+      <p class="lead">{{T "Knowledge with a start or last day, or an end date in its text, by what the bot can quote today (%s). Edit a row on the Knowledge page." .Today}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/promotions" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "The promotions calendar is off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+  {{if .Problems}}<div class="alert warn" role="status">{{T "%d promotions need a look: an end date with no price for after it, or an expired row still stored." .Problems}}</div>{{end}}
+
+  {{if and (eq .Total 0) (not .Error)}}
+  <p class="empty">{{T "No promotions. Give a knowledge row a start or last day and it shows up here."}}</p>
+  {{else}}
+  <ul class="stats" aria-label="{{T "Promotions by status"}}">
+    {{range .Groups}}<li><a href="#promo-{{.Status}}" aria-current="false"><span class="stat-num">{{len .Items}}</span> <span class="stat-label">{{.Title}}</span></a></li>{{end}}
+  </ul>
+  {{range .Groups}}{{if .Items}}
+  <section class="card" id="promo-{{.Status}}" aria-labelledby="promo-h-{{.Status}}">
+    <h2 id="promo-h-{{.Status}}">{{.Title}} <span class="badge">{{len .Items}}</span></h2>
+    <p class="hint">{{.Hint}}</p>
+    <table>
+      <thead><tr><th scope="col">{{T "Promotion"}}</th><th scope="col">{{T "Dates"}}</th><th scope="col">{{T "Status"}}</th><th scope="col"><span class="visually-hidden">{{T "Actions"}}</span></th></tr></thead>
+      <tbody>
+      {{range .Items}}
+        <tr>
+          <td><strong>{{.Title}}</strong>
+            {{if .NoAfterPrice}}<p class="warn">{{if .DatedInText}}{{T "Ends, but the text does not say the price after it. Add a line such as “ตั้งแต่ 1 ธ.ค. ราคา …”."}}{{else}}{{T "No row starts when this one ends, so after the last day the bot has no price to quote. Add the regular price as a row from the day after."}}{{end}}</p>{{end}}
+            {{if .Expired}}<p class="warn">{{T "Expired but still stored."}}</p>{{end}}
+          </td>
+          <td class="num" data-label="{{T "Dates"}}">{{.Window}}</td>
+          <td data-label="{{T "Status"}}"><span class="badge{{if eq .Status "live"}} active{{else if eq .Status "ending"}} scheduled{{else if eq .Status "expired"}} expired{{end}}">{{.StatusLabel}}</span>{{with .Note}} <span class="hint">{{.}}</span>{{end}}</td>
+          <td class="row-actions"><a class="btn small" href="{{.EditURL}}">{{T "Edit"}}<span class="visually-hidden">: {{.Title}}</span></a></td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </section>
+  {{end}}{{end}}
+  {{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>

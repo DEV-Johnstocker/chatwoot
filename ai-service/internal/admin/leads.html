@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="{{lang}}"{{with theme}} data-theme="{{.}}"{{end}}>
+<head>
+{{template "head"}}
+<title>{{T "Leads · Pronto"}}</title>
+</head>
+<body>
+<div class="shell">
+{{template "nav" "leads"}}
+<main>
+  <div class="page-head">
+    <div>
+      <h1>{{T "Leads"}}</h1>
+      <p class="lead">{{T "Customers who asked about price, buying or a promotion in a chat with the bot, and Facebook comments marked as leads. The stage shows how far each one got."}}</p>
+    </div>
+    {{template "account-picker" (dict "Action" "/admin/leads" "Current" .AccountID)}}
+  </div>
+
+  {{if not .Enabled}}
+  <div class="alert err" role="alert"><strong>{{T "The lead list is off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
+  {{else}}
+  {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
+
+  <ul class="stats" aria-label="{{T "Filter by stage"}}">
+    <li><a href="/admin/leads?account={{.AccountID}}" aria-current="{{if eq .Stage ""}}true{{else}}false{{end}}"><span class="stat-num">{{.Total}}</span> <span class="stat-label">{{T "All leads"}}</span></a></li>
+    {{range .Stages}}
+    <li><a href="/admin/leads?account={{$.AccountID}}&amp;stage={{.Stage}}" aria-current="{{if .Current}}true{{else}}false{{end}}"><span class="stat-num">{{.Count}}</span> <span class="stat-label">{{.Label}}</span></a></li>
+    {{end}}
+  </ul>
+
+  <div class="actions lead-actions">
+    <a class="btn" href="/admin/leads.csv?account={{.AccountID}}{{with .Stage}}&amp;stage={{.}}{{end}}" download>{{T "Download CSV"}}</a>
+    <p class="hint">{{T "Opens in Excel or Google Sheets (File → Import). Names are personal data: keep the file private and delete it when you are done."}}</p>
+  </div>
+
+  {{if and (not .Leads) (not .Error)}}
+  <p class="empty">{{if .Stage}}{{T "No leads at this stage."}}{{else}}{{T "No leads yet. A chat appears here when a customer asks the bot about price, buying or a promotion."}}{{end}}</p>
+  {{else if .Leads}}
+  <table>
+    <thead><tr><th scope="col">{{T "Name"}}</th><th scope="col">{{T "Channel"}}</th><th scope="col">{{T "Interest"}}</th><th scope="col">{{T "Stage"}}</th><th scope="col">{{T "Last contact"}}</th><th scope="col"><span class="visually-hidden">{{T "Chat"}}</span></th></tr></thead>
+    <tbody>
+    {{range .Leads}}
+      <tr>
+        <td><strong>{{.Name}}</strong></td>
+        <td data-label="{{T "Channel"}}">{{.Channel}}</td>
+        <td data-label="{{T "Interest"}}">{{if .Interest}}{{.Interest}}{{else}}<span class="hint">{{T "Not known yet"}}</span>{{end}}</td>
+        <td data-label="{{T "Stage"}}"><span class="badge{{if eq .Stage "paid"}} active{{else if or (eq .Stage "quoted") (eq .Stage "slip")}} scheduled{{end}}">{{.StageLabel}}</span></td>
+        <td class="num" data-label="{{T "Last contact"}}">{{.When}}</td>
+        <td>{{if .Link}}<a href="{{.Link}}"{{if .External}} target="_blank" rel="noopener"{{end}}>{{.LinkText}}</a>{{else}}{{.LinkText}}{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{if .Full}}<p class="hint">{{T "Showing the newest %d. Download the CSV for the full list." 200}}</p>{{end}}
+  {{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>

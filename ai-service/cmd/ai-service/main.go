@@ -31,6 +31,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/handoff"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/knowledge"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/leads"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/llm"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/mcp"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/media"
@@ -162,6 +163,7 @@ func run() error {
 	// reaches its Chatwoot chat; the bot then adds the comment-lead note.
 	commentEchoes := &commentecho.Echoes{}
 	monitor := startAlerts(cfg, logger)
+	leadStore := leadsStore(profiles) // who asked about price, for /admin → Leads
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
 		LLM:               metered(completer, rec, spend.PurposeReply, 0),
@@ -180,6 +182,7 @@ func run() error {
 		Images:            imageStore,
 		Corrections:       staffCorrections(cfg, mcpStore, profiles, reader),
 		Sales:             botSales(saleStore),
+		Leads:             botLeads(leadStore),
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),
@@ -276,6 +279,7 @@ func run() error {
 			Sales:  adminSales(saleStore),
 			Alerts: monitor,
 			Spend:  adminSpend(profiles, spendMonitor),
+			Leads:  adminLeads(leadStore),
 		}).Routes(mux)
 	} else {
 		logger.Info("admin page disabled: set ADMIN_PASSWORD to enable /admin")
@@ -704,4 +708,28 @@ func startAlerts(cfg config.Config, logger *slog.Logger) *alerts.Monitor {
 	logger.Info("bot alerts on", "slack", n != nil, "reply_limit", cfg.Alerts.ReplyLimit, "reply_limit_window", cfg.Alerts.ReplyLimitWindow.String())
 	go m.Run(context.Background(), time.Minute)
 	return m
+}
+
+// leadsStore keeps the lead list in the database; nil without one.
+func leadsStore(profiles *profile.Postgres) *leads.Postgres {
+	if profiles == nil {
+		return nil
+	}
+	return &leads.Postgres{Pool: profiles.Pool}
+}
+
+// botLeads and adminLeads keep a nil store a nil interface, which turns
+// lead recording and the Leads page off.
+func botLeads(s *leads.Postgres) bot.LeadRecorder {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+func adminLeads(s *leads.Postgres) admin.LeadList {
+	if s == nil {
+		return nil
+	}
+	return s
 }

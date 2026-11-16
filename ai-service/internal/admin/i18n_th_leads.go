@@ -1,0 +1,61 @@
+package admin
+
+// Thai lines for the Leads and Promotions pages (see i18n_th.go).
+// Issue: DEV-Johnstocker/chatwoot#1
+func init() {
+	addThai(map[string]string{
+		// Leads
+		"Leads":          "ลีดลูกค้า",
+		"Leads · Pronto": "ลีดลูกค้า · Pronto",
+		"Customers who asked about price, buying or a promotion in a chat with the bot, and Facebook comments marked as leads. The stage shows how far each one got.": "ลูกค้าที่ถามราคา การซื้อ หรือโปรโมชันในแชทกับบอต และคอมเมนต์ Facebook ที่ถูกจัดเป็นลีด ขั้นตอนบอกว่าลูกค้าแต่ละคนไปถึงไหนแล้ว",
+		"The lead list is off.": "รายการลีดยังใช้งานไม่ได้",
+		"Filter by stage":       "กรองตามขั้นตอน",
+		"All leads":             "ลีดทั้งหมด",
+		"Commented":             "คอมเมนต์",
+		"Asked price":           "ถามราคา",
+		"Got price or link":     "ได้ราคาหรือลิงก์แล้ว",
+		"Sent slip":             "ส่งสลิปแล้ว",
+		"Paid":                  "ชำระแล้ว",
+		"Download CSV":          "ดาวน์โหลด CSV",
+		"Opens in Excel or Google Sheets (File → Import). Names are personal data: keep the file private and delete it when you are done.": "เปิดได้ใน Excel หรือ Google Sheets (ไฟล์ → นำเข้า) ชื่อลูกค้าเป็นข้อมูลส่วนบุคคล เก็บไฟล์ไว้เป็นส่วนตัวและลบเมื่อใช้เสร็จ",
+		"No leads at this stage.": "ไม่มีลีดในขั้นตอนนี้",
+		"No leads yet. A chat appears here when a customer asks the bot about price, buying or a promotion.": "ยังไม่มีลีด แชทจะขึ้นที่นี่เมื่อลูกค้าถามบอตเรื่องราคา การซื้อ หรือโปรโมชัน",
+		"Channel":          "ช่องทาง",
+		"Interest":         "สนใจ",
+		"Stage":            "ขั้นตอน",
+		"Last contact":     "ติดต่อล่าสุด",
+		"Chat":             "แชท",
+		"Not known yet":    "ยังไม่ระบุ",
+		"(no name)":        "(ไม่มีชื่อ)",
+		"Facebook comment": "คอมเมนต์ Facebook",
+		"Showing the newest %d. Download the CSV for the full list.": "แสดง %d รายการล่าสุด ดาวน์โหลด CSV เพื่อดูทั้งหมด",
+		"Could not read the lead list. Try again in a moment.":       "อ่านรายการลีดไม่ได้ ลองใหม่อีกครั้ง",
+
+		// Promotions
+		"Promotions":          "โปรโมชัน",
+		"Promotions · Pronto": "โปรโมชัน · Pronto",
+		"Knowledge with a start or last day, or an end date in its text, by what the bot can quote today (%s). Edit a row on the Knowledge page.": "ข้อมูลในฐานความรู้ที่มีวันเริ่ม วันสุดท้าย หรือเขียนวันหมดเขตไว้ในข้อความ แยกตามสิ่งที่บอตเสนอได้วันนี้ (%s) แก้ไขได้ที่หน้าฐานความรู้",
+		"The promotions calendar is off.": "ปฏิทินโปรโมชันยังใช้งานไม่ได้",
+		"%d promotions need a look: an end date with no price for after it, or an expired row still stored.": "มี %d โปรโมชันที่ควรตรวจ: มีวันหมดเขตแต่ไม่มีราคาหลังหมดโปร หรือหมดอายุแล้วแต่ยังเก็บไว้",
+		"No promotions. Give a knowledge row a start or last day and it shows up here.":                      "ยังไม่มีโปรโมชัน ใส่วันเริ่มหรือวันสุดท้ายให้ข้อมูลในฐานความรู้ แล้วจะขึ้นที่นี่",
+		"Promotions by status":        "โปรโมชันตามสถานะ",
+		"Promotion":                   "โปรโมชัน",
+		"Ending within 7 days":        "หมดเขตภายใน 7 วัน",
+		"Live now":                    "ใช้อยู่ตอนนี้",
+		"Starting later":              "เริ่มภายหลัง",
+		"Expired, still stored":       "หมดอายุแล้ว ยังเก็บไว้",
+		"The bot quotes these today.": "วันนี้บอตเสนอโปรเหล่านี้",
+		"The bot quotes these today. Check the price for after they end is ready.":                    "วันนี้บอตเสนอโปรเหล่านี้ ตรวจว่ามีราคาหลังหมดโปรเตรียมไว้แล้ว",
+		"The bot does not see these until their first day.":                                           "บอตยังไม่เห็นจนถึงวันเริ่ม",
+		"The bot no longer sees these. Delete them, or give them new dates, so the list stays clean.": "บอตไม่เห็นแล้ว ลบทิ้งหรือตั้งวันใหม่ เพื่อให้รายการไม่รก",
+		"End date written in the text only":                                                           "เขียนวันหมดเขตไว้ในข้อความเท่านั้น",
+		"Last day today":                                                                              "วันนี้วันสุดท้าย",
+		"Ends in %d days":                                                                             "หมดเขตอีก %d วัน",
+		"Starts in %d days":                                                                           "เริ่มอีก %d วัน",
+		"Ended %d days ago":                                                                           "หมดเขตไปแล้ว %d วัน",
+		"Ends, but the text does not say the price after it. Add a line such as “ตั้งแต่ 1 ธ.ค. ราคา …”.":                                           "มีวันหมดเขต แต่ข้อความไม่บอกราคาหลังหมดโปร เพิ่มบรรทัดเช่น “ตั้งแต่ 1 ธ.ค. ราคา …”",
+		"No row starts when this one ends, so after the last day the bot has no price to quote. Add the regular price as a row from the day after.": "ไม่มีข้อมูลที่เริ่มเมื่อโปรนี้จบ หลังวันสุดท้ายบอตจะไม่มีราคาให้ลูกค้า เพิ่มราคาปกติเป็นอีกแถวที่เริ่มวันถัดไป",
+		"Expired but still stored.":                                 "หมดอายุแล้วแต่ยังเก็บไว้",
+		"Could not read the knowledge base. Try again in a moment.": "อ่านฐานความรู้ไม่ได้ ลองใหม่อีกครั้ง",
+	})
+}
