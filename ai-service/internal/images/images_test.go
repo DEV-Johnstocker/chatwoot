@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -368,4 +369,89 @@ func TestStore_RemovedExpires(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Expired copies are erased for every account on a timer, not only when the
+// same account removes another picture: "deleted for good after 30 days"
+// must hold even for an account that never removes a picture again.
+func TestStore_PurgeExpiredErasesEveryAccount(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		other := acct + 1
+		for _, a := range []int64{acct, other} {
+			id, _ := s.Add(ctx, Image{Meta: Meta{AccountID: a, Name: "old"}, Data: pngBytes(t, 2, 2)})
+			_ = s.Delete(ctx, a, id)
+		}
+		switch st := s.(type) {
+		case *Memory:
+			for i := range st.removed {
+				st.removed[i].RemovedAt = time.Now().AddDate(0, 0, -RemovedKeepDays-1)
+			}
+		case *Postgres:
+			if _, err := st.Pool.Exec(ctx, `UPDATE bot_images_removed SET removed_at = now() - make_interval(days => $3 + 1) WHERE account_id IN ($1, $2)`, acct, other, RemovedKeepDays); err != nil {
+				t.Fatal(err)
+			}
+		}
+		id, _ := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "fresh"}, Data: pngBytes(t, 2, 2)})
+		_ = s.Delete(ctx, acct, id) // the account's own prune also runs here
+		p := s.(Purger)
+
+		// Act
+		n, err := p.PurgeExpired(ctx)
+
+		// Assert
+		if err != nil || n < 1 {
+			t.Fatalf("PurgeExpired = %d, %v; want the other account's expired copy erased", n, err)
+		}
+		kept := 0
+		switch st := s.(type) {
+		case *Memory:
+			for _, r := range st.removed {
+				if r.AccountID == acct || r.AccountID == other {
+					kept++
+				}
+			}
+		case *Postgres:
+			_ = st.Pool.QueryRow(ctx, `SELECT count(*) FROM bot_images_removed WHERE account_id IN ($1, $2)`, acct, other).Scan(&kept)
+			_, _ = st.Pool.Exec(ctx, `DELETE FROM bot_images_removed WHERE account_id IN ($1, $2)`, acct, other)
+		}
+		if kept != 1 {
+			t.Fatalf("%d removed copies left, want only the fresh one", kept)
+		}
+	})
+}
+
+func TestRunPurge_PurgesAtStartAndStops(t *testing.T) {
+	// Arrange
+	m := &Memory{}
+	ctx, cancel := context.WithCancel(context.Background())
+	id, _ := m.Add(ctx, Image{Meta: Meta{AccountID: 1, Name: "old"}, Data: pngBytes(t, 2, 2)})
+	_ = m.Delete(ctx, 1, id)
+	m.removed[0].RemovedAt = time.Now().AddDate(0, 0, -RemovedKeepDays-1)
+	done := make(chan struct{})
+
+	// Act
+	go func() { RunPurge(ctx, m, time.Hour, slog.New(slog.DiscardHandler)); close(done) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		m.mu.Lock()
+		left := len(m.removed)
+		m.mu.Unlock()
+		if left == 0 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+
+	// Assert
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunPurge did not stop when its context ended")
+	}
+	if len(m.removed) != 0 {
+		t.Fatalf("expired copy not purged at start: %d left", len(m.removed))
+	}
 }
