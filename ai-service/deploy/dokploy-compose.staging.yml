@@ -186,6 +186,16 @@ services:
       # Short line posted under a comment, as the Page, after its private reply
       # was sent and the owner ticked it (needs pages_manage_engagement). Empty: off.
       COMMENT_PUBLIC_REPLY: ${COMMENT_PUBLIC_REPLY:-}
+      # The bot's own alerts (replies Chatwoot refused, model errors, a full
+      # queue, hand-off spikes, reply limits) to Slack #chatwoot-ai-service.
+      # Empty: they show on /admin Home and in the log only.
+      SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
+      ALERT_ENVIRONMENT: STAGING
+      ALERT_HANDOFF_SHARE: ${ALERT_HANDOFF_SHARE:-0.5}
+      # Bot replies per customer per window; past it the chat goes to staff
+      # quietly (0 = off).
+      REPLY_LIMIT: ${REPLY_LIMIT:-30}
+      REPLY_LIMIT_WINDOW: ${REPLY_LIMIT_WINDOW:-1h}
 
   stg-cloudflared:
     image: cloudflare/cloudflared:2026.10.7

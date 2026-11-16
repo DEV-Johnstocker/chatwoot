@@ -39,6 +39,7 @@ type Config struct {
 	LLMTimeout         time.Duration // per provider call
 	ReplyDelay         time.Duration // wait after a customer's last message, so quick messages get one reply
 	BotResolveAfter    time.Duration // quiet time before the bot resolves a chat it finished; 0 = off
+	Alerts             Alerts        // the bot's own alerts and the per-customer reply limit (alerts.go)
 	SystemPrompt       string
 
 	AdminPassword string // enables /admin when set (secret)
@@ -285,6 +286,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	errs = loadMeta(&cfg, get, errs)
+	errs = loadAlerts(&cfg, get, errs)
 
 	required := []struct{ key, val string }{
 		{"CHATWOOT_BASE_URL", cfg.ChatwootBaseURL},
