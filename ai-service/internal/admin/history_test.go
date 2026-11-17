@@ -155,7 +155,7 @@ func TestHistory_ShowsProfileChangeBeforeAndAfter(t *testing.T) {
 
 	// Assert
 	for _, want := range []string{"business profile saved", `class="chg">ไม่ให้ส่วนลด`, `class="chg">ให้ส่วนลด 10%`,
-		"Restore the version before this change", "Download profile and answers", `href="/admin/history"`} {
+		"Restore the version before this change", "Download profile and answers", `href="/admin/history?account=`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page lacks %q", want)
 		}

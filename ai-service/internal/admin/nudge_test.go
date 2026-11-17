@@ -61,7 +61,7 @@ func TestNudge_DefaultPageIsOffWithSuggestedText(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status %d", res.Code)
 	}
-	for _, want := range []string{`href="/admin/nudge" aria-current="page"`, `id="on" name="on" type="checkbox">`,
+	for _, want := range []string{`href="/admin/nudge?account=3" aria-current="page"`, `id="on" name="on" type="checkbox">`,
 		`<option value="20" selected>`, `value="fixed" checked`, "ขอบคุณที่สนใจ", "This account uses the server default (off) until you save.",
 		"The bot already told this customer a price in the chat."} {
 		if !strings.Contains(body, want) {

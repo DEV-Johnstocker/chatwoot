@@ -102,7 +102,7 @@ func TestHours_DefaultPageShowsBotOn(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status %d", res.Code)
 	}
-	for _, want := range []string{`value="on" checked`, "Right now the bot is answering.", `name="day1_from" value="09:00"`, `href="/admin/hours" aria-current="page"`} {
+	for _, want := range []string{`value="on" checked`, "Right now the bot is answering.", `name="day1_from" value="09:00"`, `href="/admin/hours?account=3" aria-current="page"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
