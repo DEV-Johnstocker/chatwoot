@@ -20,10 +20,10 @@
   <div class="alert err" role="alert"><strong>{{T "Page comments are off."}}</strong> {{T "They need %s for ai-service." "META_APP_SECRET, META_VERIFY_TOKEN, META_PAGE_ID, DATABASE_URL"}}</div>
   {{else}}
   {{if not .CanSend}}<div class="alert warn" role="status"><strong>{{T "Sending is off."}}</strong> {{T "Comments are collected, but replies can be sent only after a Page access token (META_PAGE_TOKEN) is set."}}</div>{{end}}
-  {{if eq .Done "sent"}}<div class="alert ok" role="status">{{T "Sent. When they reply, the chat appears in Chatwoot like any Messenger chat."}}</div>{{end}}
-  {{if eq .Done "sent-public"}}<div class="alert ok" role="status">{{T "Sent privately, and replied under the comment on Facebook."}}</div>{{end}}
-  {{if eq .Done "sent-public-failed"}}<div class="alert warn" role="status">{{T "Sent privately. The reply under the comment did not go through; reply there by hand if you want one."}}</div>{{end}}
-  {{if eq .Done "dismissed"}}<div class="alert ok" role="status">{{T "Dismissed. Nothing was sent."}}</div>{{end}}
+  {{if eq .Done "sent"}}<div class="alert ok" role="status" data-flash>{{T "Sent. When they reply, the chat appears in Chatwoot like any Messenger chat."}}</div>{{end}}
+  {{if eq .Done "sent-public"}}<div class="alert ok" role="status" data-flash>{{T "Sent privately, and replied under the comment on Facebook."}}</div>{{end}}
+  {{if eq .Done "sent-public-failed"}}<div class="alert warn" role="status" data-flash>{{T "Sent privately. The reply under the comment did not go through; reply there by hand if you want one."}}</div>{{end}}
+  {{if eq .Done "dismissed"}}<div class="alert ok" role="status" data-flash>{{T "Dismissed. Nothing was sent."}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 
   {{if .AutoSend}}<div class="alert ok" role="status"><strong>{{T "Auto-send is on."}}</strong> {{T "Jev sends the reply itself for likely buyers and questions that pass every check, unless the person may already be chatting with you or already got a private reply. Everything else waits here for you."}}{{if .Stats.AutoSent}} {{T "Sent automatically so far: %d." .Stats.AutoSent}}{{end}}</div>{{end}}

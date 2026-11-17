@@ -14,6 +14,7 @@
     'You (as customer)': 'คุณ (ในฐานะลูกค้า)',
     'Attached:': 'แนบ:',
     'Bot is replying': 'บอตกำลังตอบ',
+    'Unsaved changes': 'ยังไม่ได้บันทึก',
   };
   const t = (text) => (document.documentElement.lang === 'th' && thai[text]) || text;
   const status = document.createElement('p');
@@ -208,4 +209,83 @@
     box.form?.classList.add('auto');
     box.addEventListener('change', () => box.form?.requestSubmit());
   }
+
+  // Unsaved changes. A form that saves (method=post, with fields a person
+  // fills in) is compared with how the page drew it: while it differs, an
+  // "Unsaved changes" note shows by its button and leaving the page asks
+  // first (the browser's own "Leave site?" box). A form the server sent back
+  // with "Not saved." (data-unsaved) counts as changed from the start.
+  // <form data-no-warn> opts out (the test chat).
+  const fieldText = (value) => (typeof value === 'string' ? value : value.name + ':' + value.size);
+  const fieldsOf = (form) => [...new FormData(form)].map(([name, value]) => name + '=' + fieldText(value)).join('&');
+  const fillable = 'input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select';
+  const savingForms = [...document.querySelectorAll('form[method=post]:not([data-no-warn])')]
+    .filter((form) => form.querySelector(fillable));
+  const drawn = new Map(savingForms.map((form) => [form, fieldsOf(form)]));
+  const formAfter = (alert) => {
+    const area = alert.closest('section, .card') || alert.parentElement;
+    return savingForms.find((form) => area.contains(form) && (alert.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING));
+  };
+  const markRejected = (alert) => {
+    const form = formAfter(alert);
+    if (form) drawn.set(form, null);
+  };
+  document.querySelectorAll('[data-unsaved]').forEach(markRejected);
+  const changed = (form) => drawn.get(form) === null || fieldsOf(form) !== drawn.get(form);
+  const notes = new Map();
+  const noteFor = (form) => {
+    if (notes.has(form)) return notes.get(form);
+    const buttons = form.querySelectorAll('button[type=submit], button:not([type])');
+    const last = buttons[buttons.length - 1];
+    const note = last ? el('span', 'unsaved-note', t('Unsaved changes')) : null;
+    if (note) last.after(note);
+    notes.set(form, note);
+    return note;
+  };
+  const showNote = (form) => {
+    const note = noteFor(form);
+    if (note) note.hidden = !changed(form);
+  };
+  savingForms.filter((form) => drawn.get(form) === null).forEach(showNote);
+  const onEdit = (event) => {
+    const form = event.target.form;
+    if (drawn.has(form)) showNote(form);
+  };
+  document.addEventListener('input', onEdit);
+  document.addEventListener('change', onEdit);
+  let sending = null;
+  document.addEventListener('submit', (event) => {
+    if (!event.defaultPrevented) sending = event.target;
+  });
+  window.addEventListener('beforeunload', (event) => {
+    const unsaved = savingForms.some((form) => form !== sending && changed(form));
+    sending = null;
+    if (!unsaved) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
+  // Save messages (data-flash) show once: done=/saved= leave the address so a
+  // reload or a bookmark does not repeat them. When the page opens scrolled
+  // to an item (a knowledge edit jumps to its row), the message is out of
+  // sight, so it floats at the bottom for six seconds.
+  const flash = document.querySelector('[data-flash]');
+  const dropDoneFromAddress = () => {
+    const address = new URL(location.href);
+    if (!address.searchParams.has('done') && !address.searchParams.has('saved')) return;
+    for (const key of ['done', 'saved', 'chunks', 'count', 'outcome']) address.searchParams.delete(key);
+    history.replaceState(history.state, '', address);
+  };
+  const floatIfOutOfSight = () => {
+    const box = flash.getBoundingClientRect();
+    if (box.bottom > 0 && box.top < window.innerHeight) return;
+    flash.classList.add('toast');
+    setTimeout(() => flash.classList.remove('toast'), 6000);
+  };
+  const showSavedOnce = () => {
+    if (!flash) return;
+    dropDoneFromAddress();
+    window.addEventListener('load', floatIfOutOfSight);
+  };
+  showSavedOnce();
 })();

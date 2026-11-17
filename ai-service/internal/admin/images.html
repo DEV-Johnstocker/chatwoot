@@ -20,9 +20,9 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>{{T "Bot images are off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
   {{else}}
-  {{if eq .Done "added"}}<div class="alert ok" role="status">{{T "Image added. The bot can send it from the next message."}}</div>{{end}}
-  {{if eq .Done "saved"}}<div class="alert ok" role="status">{{T "Image saved."}}</div>{{end}}
-  {{if eq .Done "removed"}}<div class="alert ok" role="status">{{T "Image removed. The bot no longer sends it."}}</div>{{end}}
+  {{if eq .Done "added"}}<div class="alert ok" role="status" data-flash>{{T "Image added. The bot can send it from the next message."}}</div>{{end}}
+  {{if eq .Done "saved"}}<div class="alert ok" role="status" data-flash>{{T "Image saved."}}</div>{{end}}
+  {{if eq .Done "removed"}}<div class="alert ok" role="status" data-flash>{{T "Image removed. The bot no longer sends it."}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
   <p class="hint">{{T "%d of %d images" (len .Items) .Limits.Count}}</p>
 

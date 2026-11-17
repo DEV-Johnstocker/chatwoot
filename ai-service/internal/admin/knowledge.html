@@ -20,7 +20,7 @@
   <div class="alert err" role="alert"><strong>{{T "Knowledge base is off."}}</strong> {{T "Set"}} <code>DATABASE_URL</code> {{T "for ai-service (Postgres with pgvector) and restart it."}}</div>
   {{else}}
   {{if not .Embedding}}<div class="alert err" role="alert"><strong>{{T "No embeddings provider."}}</strong> {{T "Set one on the"}} <a href="/admin/providers">{{T "AI providers"}}</a> {{T "page before adding knowledge."}}</div>{{end}}
-  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Notice}}<div class="alert ok" role="status" data-flash>{{.Notice}}</div>{{end}}
   {{if and .Error (eq .ErrorForm "list")}}<div class="alert err" role="alert"><strong>{{T "Failed."}}</strong> {{.Error}}</div>{{end}}
 
   {{if .Dupes}}
@@ -54,7 +54,7 @@
     <h2 id="edit-title" class="card-title">{{if eq .Kind "faq"}}{{T "Edit FAQ"}}{{else}}{{T "Edit document"}}{{end}}</h2>
     <p class="hint">{{T "Saving re-indexes it. The bot uses the new version from the next message. Usage counts are kept."}}</p>
     {{if .Synced}}<div class="alert warn" role="note"><strong>{{T "This comes from a website page or data file."}}</strong> {{T "Your edit can be replaced at the next sync. To change it for good, edit the page or the file."}}</div>{{end}}
-    {{if and $.Error (eq $.ErrorForm "edit")}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{$.Error}}</span></div>{{end}}
+    {{if and $.Error (eq $.ErrorForm "edit")}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not saved."}}</strong><span class="pre">{{$.Error}}</span></div>{{end}}
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="update">
       <input type="hidden" name="account" value="{{$.AccountID}}">
@@ -86,7 +86,7 @@
   <section class="card" aria-labelledby="faq-title">
     <h2 id="faq-title" class="card-title">{{T "Add an FAQ"}}</h2>
     <p class="hint">{{T "One question and its answer. Best for short facts: hours, prices, delivery, returns."}}</p>
-    {{if and .Error (eq .ErrorForm "faq")}}<div class="alert err" role="alert"><strong>{{T "Not added."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+    {{if and .Error (eq .ErrorForm "faq")}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not added."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="add_faq">
       <input type="hidden" name="account" value="{{.AccountID}}">
@@ -111,7 +111,7 @@
   <section class="card" aria-labelledby="doc-title">
     <h2 id="doc-title" class="card-title">{{T "Add a document"}}</h2>
     <p class="hint">{{T "Longer text such as a price list, policy or product guide. Paste it, or upload a file: .txt or .md (max 2 MB), or a PDF with real text, not a scan (max 10 MB). From Word or Google Docs, save as PDF first."}}</p>
-    {{if and .Error (eq .ErrorForm "doc")}}<div class="alert err" role="alert"><strong>{{T "Not added."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+    {{if and .Error (eq .ErrorForm "doc")}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not added."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
     <form method="post" action="/admin/knowledge" enctype="multipart/form-data" autocomplete="off">
       <input type="hidden" name="action" value="add_doc">
       <input type="hidden" name="account" value="{{.AccountID}}">
@@ -143,7 +143,7 @@
       {{if .Pages}}<form method="post" action="/admin/knowledge"><input type="hidden" name="action" value="sync_all"><input type="hidden" name="account" value="{{.AccountID}}"><button type="submit" class="btn small">{{T "Sync all now"}}</button></form>{{end}}
     </div>
     <p class="hint">{{T "Add a public page (for example your price or policy page), or a data file where each row is one answer: a Google Sheet, or a CSV or JSON Lines file. Google Sheets and Docs links can be pasted straight from the address bar. The bot reads it now and checks it on a schedule: changes update automatically, and anything that disappears stops being used."}}</p>
-    {{if and .Error (eq .ErrorForm "page")}}<div class="alert err" role="alert"><strong>{{T "Not added."}}</strong> {{.Error}}</div>{{end}}
+    {{if and .Error (eq .ErrorForm "page")}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not added."}}</strong> {{.Error}}</div>{{end}}
     <form method="post" action="/admin/knowledge" autocomplete="off">
       <input type="hidden" name="action" value="add_page"><input type="hidden" name="account" value="{{.AccountID}}">
       <fieldset class="kind-choice">

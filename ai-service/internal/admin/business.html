@@ -19,8 +19,8 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>{{T "Business profiles are off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
   {{else}}
-  {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. The bot uses it from the next message."}}</div>{{end}}
-  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+  {{if .Saved}}<div class="alert ok" role="status" data-flash>{{T "Saved. The bot uses it from the next message."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
 
   <form class="biz" method="post" action="/admin/business" autocomplete="off">
     <input type="hidden" name="account" value="{{.Profile.AccountID}}">
