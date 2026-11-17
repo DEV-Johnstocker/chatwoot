@@ -19,8 +19,8 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>{{T "The bot switch is off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
   {{else}}
-  {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next customer message."}}</div>{{end}}
-  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+  {{if .Saved}}<div class="alert ok" role="status" data-flash>{{T "Saved. It applies from the next customer message."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
 
   {{if .StateUnknown}}
   <section class="card bot-state is-off" aria-live="polite">

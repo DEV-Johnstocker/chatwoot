@@ -19,7 +19,7 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>{{T "Connections are off."}}</strong> {{T "Set %s for ai-service and restart it." "DATABASE_URL"}}</div>
   {{else}}
-  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Notice}}<div class="alert ok" role="status" data-flash>{{.Notice}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 
   {{if .NewToken}}

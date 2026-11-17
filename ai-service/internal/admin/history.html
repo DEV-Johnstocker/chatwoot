@@ -16,7 +16,7 @@
     {{template "account-picker" (dict "Action" "/admin/history" "Current" .AccountID)}}
   </div>
 
-  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Notice}}<div class="alert ok" role="status" data-flash>{{.Notice}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 
   {{if .CanExport}}

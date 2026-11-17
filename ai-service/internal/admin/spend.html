@@ -57,7 +57,7 @@
   <div class="alert err" role="alert"><strong>{{T "AI spend is off."}}</strong> {{T "It needs %s; set it for ai-service and restart it." "DATABASE_URL"}}</div>
   {{else}}
   {{template "spend-banner"}}
-  {{if .Notice}}<div class="alert ok" role="status">{{.Notice}}</div>{{end}}
+  {{if .Notice}}<div class="alert ok" role="status" data-flash>{{.Notice}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
   {{if .Unpriced}}
   <div class="alert warn" role="status"><strong>{{T "Some models have no price yet, so their cost counts as $0:"}}</strong> {{range $i, $m := .Unpriced}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}. {{T "Ask your developer to add the price; past days are then priced too."}}</div>

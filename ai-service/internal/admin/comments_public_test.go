@@ -86,7 +86,7 @@ func TestComments_SendWithPublicReply(t *testing.T) {
 			if got.Status != comments.StatusSent || len(e.sender.sent) != 1 || len(pub.posted) != c.wantPosts {
 				t.Fatalf("status %s private %v public %v", got.Status, e.sender.sent, pub.posted)
 			}
-			if !strings.Contains(page, `role="status">Sent`) {
+			if !strings.Contains(page, `role="status" data-flash>Sent`) {
 				t.Fatalf("no sent notice for %s", c.wantDone)
 			}
 		})

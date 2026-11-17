@@ -20,8 +20,8 @@
   {{if not .Enabled}}
   <div class="alert err" role="alert"><strong>{{T "Approvals are off."}}</strong> {{T "They need"}} <code>DATABASE_URL</code> {{T "and"}} <code>MCP_ENABLED=true</code> {{T "for ai-service."}}</div>
   {{else}}
-  {{if eq .Done "approved"}}<div class="alert ok" role="status">{{T "Approved. The bot uses it from the next message."}}</div>{{end}}
-  {{if eq .Done "rejected"}}<div class="alert ok" role="status">{{T "Rejected. Nothing changed."}}</div>{{end}}
+  {{if eq .Done "approved"}}<div class="alert ok" role="status" data-flash>{{T "Approved. The bot uses it from the next message."}}</div>{{end}}
+  {{if eq .Done "rejected"}}<div class="alert ok" role="status" data-flash>{{T "Rejected. Nothing changed."}}</div>{{end}}
   {{if .Error}}<div class="alert err" role="alert">{{.Error}}</div>{{end}}
 
   {{if not .Items}}

@@ -20,8 +20,8 @@
   <div class="alert err" role="alert"><strong>{{T "Follow-up settings are off."}}</strong> {{T "Set %s for ai-service and restart it." "SETTINGS_PATH"}}</div>
   {{else}}
   {{if not .Ready}}<div class="alert err" role="alert"><strong>{{T "Follow-ups cannot be sent yet."}}</strong> {{T "Set %s for ai-service and restart it." "CHATWOOT_READER_TOKEN"}}</div>{{end}}
-  {{if .Saved}}<div class="alert ok" role="status">{{T "Saved. It applies from the next check (every 15 minutes)."}}</div>{{end}}
-  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+  {{if .Saved}}<div class="alert ok" role="status" data-flash>{{T "Saved. It applies from the next check (every 15 minutes)."}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
 
   <form class="nudge-settings" method="post" action="/admin/nudge" autocomplete="off">
     <input type="hidden" name="account" value="{{.AccountID}}">

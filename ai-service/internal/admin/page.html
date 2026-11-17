@@ -15,8 +15,8 @@
     </div>
   </div>
 
-  {{if .Saved}}<div class="alert ok" role="status">{{T "Settings saved and now in use."}}{{if .FallbackOff}} {{T "Fallback provider is off because it was incomplete."}}{{end}}{{if .EmbeddingOff}} {{T "Embeddings provider is off because it was incomplete."}}{{end}}{{if or .FallbackOff .EmbeddingOff}} {{T "To use one, fill in its base URL, API key and model. With the same base URL as the primary, the key can stay blank."}}{{end}}</div>{{end}}
-  {{if .Error}}<div class="alert err" role="alert"><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
+  {{if .Saved}}<div class="alert ok" role="status" data-flash>{{T "Settings saved and now in use."}}{{if .FallbackOff}} {{T "Fallback provider is off because it was incomplete."}}{{end}}{{if .EmbeddingOff}} {{T "Embeddings provider is off because it was incomplete."}}{{end}}{{if or .FallbackOff .EmbeddingOff}} {{T "To use one, fill in its base URL, API key and model. With the same base URL as the primary, the key can stay blank."}}{{end}}</div>{{end}}
+  {{if .Error}}<div class="alert err" role="alert" data-unsaved><strong>{{T "Not saved."}}</strong><span class="pre">{{.Error}}</span></div>{{end}}
 
   <form method="post" action="/admin/providers" autocomplete="off">
     <!-- Enter in any field saves; the per-card Test buttons come later in the form. -->

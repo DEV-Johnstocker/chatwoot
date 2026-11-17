@@ -117,6 +117,11 @@
   .alert.warn { background: var(--warn-bg); color: var(--warn-text); }
   .alert.warn::before { content: "!" / "Warning: "; background: var(--warn-text); color: var(--warn-bg); }
   .alert.info { background: var(--info-bg); color: var(--info-text); }
+  /* A save message that would be out of sight floats at the bottom for a moment (admin.js). */
+  .alert.toast { position: fixed; z-index: 50; left: 16px; right: 16px; bottom: 16px; max-width: 560px; margin: 0 auto; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+  /* Shown by a form's button while its fields differ from what was saved (admin.js). */
+  .unsaved-note { display: inline-flex; align-items: center; margin-left: 12px; color: var(--warn-text); font-size: .875rem; font-weight: 600; }
+  .unsaved-note[hidden] { display: none; }
   .alert.info::before { content: "i"; content: "i" / "Note: "; font-family: Georgia, serif; font-style: italic; background: var(--info-text); color: var(--info-bg); }
   .alert a, main .alert a:not(.btn) { color: inherit; font-weight: 600; }
   .alert button, .alert form { vertical-align: middle; }

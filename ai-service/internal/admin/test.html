@@ -32,7 +32,7 @@
       {{else}}
       <p class="empty">{{T "Ask something your customers ask, for example the price, how to pay, or what the course includes."}}</p>
       {{end}}
-      <form method="post" action="/admin/test" autocomplete="off" enctype="multipart/form-data" data-busy="{{T "Sending…"}}">
+      <form method="post" action="/admin/test" autocomplete="off" enctype="multipart/form-data" data-no-warn data-busy="{{T "Sending…"}}">
         <input type="hidden" name="account" value="{{.AccountID}}">
         {{range .Turns}}<input type="hidden" name="role" value="{{.Role}}"><input type="hidden" name="text" value="{{.Content}}">
         {{end}}
