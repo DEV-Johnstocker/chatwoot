@@ -79,13 +79,8 @@ func navHrefFunc(acct int64) func(key string) string {
 	}
 }
 
-// navSwitchHref is where the menu's account switch goes from page: the same
-// page with the other account, or Home from a shared page.
-func navSwitchHref(page, acct string) string {
-	return navSwitchAction(page) + "?account=" + acct
-}
-
-// navSwitchAction is the form action of the "account ID" box in the switch.
+// navSwitchAction is where the menu's account dropdown goes from page: the
+// same page with the other account, or Home from a shared page.
 func navSwitchAction(page string) string {
 	if p, ok := accountPagePath[page]; ok {
 		return p

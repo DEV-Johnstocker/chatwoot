@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/places"
 )
 
 // Moving between /admin pages keeps the account the owner is working on.
@@ -107,14 +109,35 @@ func TestAccount_SpendAndProvidersStayAccountFree(t *testing.T) {
 
 func TestAccount_SwitchFromASharedPageGoesHome(t *testing.T) {
 	// Arrange / Act / Assert
-	if got := navSwitchHref("spend", "4"); got != "/admin?account=4" {
+	if got := navSwitchAction("spend"); got != "/admin" {
 		t.Errorf("switch from spend = %q", got)
 	}
-	if got := navSwitchHref("leads", "4"); got != "/admin/leads?account=4" {
+	if got := navSwitchAction("leads"); got != "/admin/leads" {
 		t.Errorf("switch from leads = %q", got)
 	}
-	if got := navSwitchAction("providers"); got != "/admin" {
-		t.Errorf("switch form from providers = %q", got)
+}
+
+func TestAccount_MenuSwitchIsADropdownOfEveryAccount(t *testing.T) {
+	// Arrange
+	e := setup(t, nil)
+	e.h.Places = &fakePlaces{accounts: []places.Place{{ID: 1, Name: "Johnstocker AI Studio"}, {ID: 3, Name: "Acme"}}}
+	r := httptest.NewRequest(http.MethodGet, "/admin/leads?account=3", nil)
+	r.SetBasicAuth(Username, pw)
+
+	// Act
+	body := e.do(r).Body.String()
+
+	// Assert
+	for _, want := range []string{
+		`<form class="acct-switch" method="get" action="/admin/leads">`,
+		`<select id="acct-sel-side" name="account" data-autosubmit>`,
+		`id="acct-sel-menu"`,
+		`<option value="1">Johnstocker AI Studio (#1)</option>`,
+		`<option value="3" selected>Acme (#3)</option>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("page lacks %q", want)
+		}
 	}
 }
 

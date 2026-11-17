@@ -201,4 +201,11 @@
       document.cookie = 'admin_nav=' + [...folded].join('.') + '; path=/admin; max-age=31536000; samesite=strict' + secure;
     });
   }
+
+  // The account dropdown opens the picked account at once; its Open button
+  // stays only for browsers without scripts.
+  for (const box of document.querySelectorAll('select[data-autosubmit]')) {
+    box.form?.classList.add('auto');
+    box.addEventListener('change', () => box.form?.requestSubmit());
+  }
 })();

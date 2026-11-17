@@ -128,11 +128,11 @@ func TestTestPage_ShowsAccountAndInboxDropdowns(t *testing.T) {
 	for _, want := range []string{
 		// The page names its account; switching lives in the menu.
 		`<p class="acct-one"><span>Account</span> <strong>Acme &lt;b&gt; (#2)</strong></p>`,
-		`<a href="/admin/test?account=1">Johnstocker AI Studio (#1)</a>`,
-		`<form class="acct" method="get" action="/admin/test">`, `<button type="submit">Open</button>`,
+		`<option value="1">Johnstocker AI Studio (#1)</option>`,
+		`<form class="acct-switch" method="get" action="/admin/test">`, `<button type="submit" class="acct-go">Open</button>`,
 		`<select id="inbox" name="inbox" aria-describedby="inbox-hint">`,
 		`<option value="5" selected>LINE OA (#5)</option>`,
-		`id="acct-id-side"`, `id="acct-id-menu"`,
+		`id="acct-sel-side"`, `id="acct-sel-menu"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
@@ -155,7 +155,7 @@ func TestAccountPicker_OneAccountIsPlainText(t *testing.T) {
 	if !strings.Contains(body, `<strong>Johnstocker AI Studio (#1)</strong>`) || strings.Contains(body, `<select id="account"`) {
 		t.Errorf("want the name as text and no account dropdown")
 	}
-	if !strings.Contains(body, `id="acct-id-side"`) {
-		t.Errorf("account ID box missing from the menu switch")
+	if !strings.Contains(body, `id="acct-sel-side"`) {
+		t.Errorf("account dropdown missing from the menu")
 	}
 }

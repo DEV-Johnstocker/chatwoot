@@ -75,7 +75,6 @@ var pages = template.Must(template.New("pages").Funcs(template.FuncMap{
 	// (account.go); replaced per request.
 	"navAccount":      func() int64 { return 1 },
 	"navHref":         navHrefFunc(1),
-	"navSwitchHref":   navSwitchHref,
 	"navSwitchAction": navSwitchAction,
 	"dict": func(kv ...any) map[string]any {
 		m := make(map[string]any, len(kv)/2)

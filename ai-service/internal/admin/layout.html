@@ -172,17 +172,12 @@
   form.acct select { min-width: 0; }
   .acct-one { margin: 0; display: flex; gap: 8px; align-items: baseline; }
   .acct-one span { font-weight: 600; font-size: .875rem; }
-  /* Account switch at the top of the menu: the account every page shows, kept across pages. */
-  .acct-switch { margin: 0 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
-  details.acct-switch > summary { min-height: 48px; padding: 6px 12px; color: var(--text); font-weight: 400; }
-  .acct-now { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
-  .acct-now strong { font-size: .95rem; overflow-wrap: anywhere; }
-  .acct-cap { font-size: .75rem; font-weight: 600; color: var(--muted); }
-  .acct-menu { display: flex; flex-direction: column; gap: 2px; padding: 0 8px 10px; }
-  .acct-menu > a { display: flex; align-items: center; min-height: 40px; padding: 6px 8px; border-radius: 8px; color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
-  .acct-menu > a:hover { background: var(--card); }
-  .acct-menu form.acct { margin-top: 6px; grid-template-columns: minmax(0, 1fr) auto; }
-  .acct-menu form.acct label { grid-column: 1 / -1; font-size: .875rem; }
+  /* Account switch at the top of the menu: a dropdown of every account; picking one opens it. */
+  .acct-switch { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; margin: 0 0 12px; }
+  .acct-switch label { grid-column: 1 / -1; margin: 0; font-size: .75rem; font-weight: 600; color: var(--muted); }
+  .acct-switch select { min-width: 0; width: 100%; min-height: 44px; }
+  .acct-switch.auto { grid-template-columns: minmax(0, 1fr); }
+  .acct-switch.auto .acct-go { display: none; }
   .menu-panel .acct-switch { margin: 0 12px 12px; }
   @media (max-width: 640px) { .page-head { gap: 8px; } .page-head .lead { margin-bottom: 8px; } .acct-pick { justify-items: stretch; width: 100%; gap: 0; } form.acct { grid-template-columns: minmax(0, 1fr) auto; } form.acct label { grid-column: 1 / -1; } }
   form.acct label { margin: 0; }
@@ -480,19 +475,14 @@
 </div>
 {{end}}
 
-{{define "acct-switch"}}{{$list := accounts navAccount}}{{$page := .page}}
-<details class="acct-switch">
-  <summary><span class="acct-now"><span class="acct-cap">{{T "Account"}}</span><strong>{{range $list}}{{if .Selected}}{{.Label}}{{end}}{{end}}</strong></span></summary>
-  <div class="acct-menu">
-    {{range $list}}{{if not .Selected}}<a href="{{navSwitchHref $page .Value}}">{{.Label}}</a>{{end}}{{end}}
-    <form class="acct" method="get" action="{{navSwitchAction $page}}">
-      <label for="acct-id-{{.id}}">{{T "Account ID"}}</label>
-      <input id="acct-id-{{.id}}" name="account" type="number" min="1" inputmode="numeric" required aria-describedby="acct-hint-{{.id}}">
-      <button type="submit">{{T "Open"}}</button>
-      <p class="field-hint" id="acct-hint-{{.id}}">{{T "From the Chatwoot URL:"}} /app/accounts/<strong>1</strong>/…</p>
-    </form>
-  </div>
-</details>
+{{define "acct-switch"}}
+<form class="acct-switch" method="get" action="{{navSwitchAction .page}}">
+  <label for="acct-sel-{{.id}}">{{T "Account"}}</label>
+  <select id="acct-sel-{{.id}}" name="account" data-autosubmit>
+    {{range accounts navAccount}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+  <button type="submit" class="acct-go">{{T "Open"}}</button>
+</form>
 {{end}}
 
 {{define "inbox-select"}}{{$list := inboxes .Account .Current}}
