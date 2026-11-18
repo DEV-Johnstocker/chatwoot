@@ -296,3 +296,53 @@ func TestNewExporterRequiresHTTPS(t *testing.T) {
 		t.Error("plain http is fine for a local Langfuse")
 	}
 }
+
+func TestEncodeSendsReleaseAndPromptVersionOnEverySpan(t *testing.T) {
+	// Arrange
+	e := &Exporter{key: []byte("k"), Text: TextRedacted, Release: "build-1a2b3c4d"}
+	turn := sampleTurn()
+	turn.PromptVersion = "r0123abcd-p89ef4567"
+
+	// Act
+	raw, err := e.encode([]Turn{turn})
+	var doc otlpDoc
+	if err == nil {
+		err = json.Unmarshal(raw, &doc)
+	}
+
+	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"chat-turn", "query-rewrite", "knowledge-search", "answer"} {
+		a := attrs(t, doc, name)
+		if a["langfuse.release"] != "build-1a2b3c4d" || a["langfuse.version"] != "r0123abcd-p89ef4567" ||
+			a["langfuse.trace.metadata.prompt_version"] != "r0123abcd-p89ef4567" {
+			t.Errorf("%s: release/version missing: %v", name, a)
+		}
+	}
+}
+
+func TestEncodeLeavesOutEmptyReleaseAndVersion(t *testing.T) {
+	// Arrange
+	e := &Exporter{key: []byte("k"), Text: TextRedacted}
+
+	// Act
+	raw, err := e.encode([]Turn{sampleTurn()})
+	var doc otlpDoc
+	if err == nil {
+		err = json.Unmarshal(raw, &doc)
+	}
+
+	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := attrs(t, doc, "chat-turn")
+	if _, ok := a["langfuse.release"]; ok {
+		t.Error("an empty release was sent")
+	}
+	if _, ok := a["langfuse.version"]; ok {
+		t.Error("an empty prompt version was sent")
+	}
+}

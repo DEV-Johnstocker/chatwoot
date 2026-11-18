@@ -47,6 +47,8 @@ type Turn struct {
 	Media                                         string // voice, image, sticker (comma list) or ""
 	Transcribe, Rewrite, Search                   *Step
 	Generation                                    *Generation
+	// PromptVersion fingerprints the prompt that wrote the reply ("r<rules>-p<profile>").
+	PromptVersion string
 }
 
 // Config sets up an Exporter.
@@ -57,6 +59,7 @@ type Config struct {
 	PseudonymKey      []byte
 	Text              string // TextRedacted (default) or TextOff
 	Environment       string
+	Release           string        // this build, sent as the Langfuse release
 	Buffer, BatchSize int           // defaults 256 and 20
 	FlushEvery        time.Duration // default 5s
 }
@@ -67,6 +70,7 @@ type Config struct {
 type Exporter struct {
 	Text        string
 	Environment string
+	Release     string
 
 	key            []byte // pseudonym key; never the Langfuse secret key; unexported so dumps can't leak it
 	endpoint, host string
@@ -90,7 +94,7 @@ type Exporter struct {
 func NewExporter(c Config, logger *slog.Logger) *Exporter {
 	base := strings.TrimRight(c.BaseURL, "/")
 	e := &Exporter{
-		key: c.PseudonymKey, Text: c.Text, Environment: c.Environment,
+		key: c.PseudonymKey, Text: c.Text, Environment: c.Environment, Release: c.Release,
 		endpoint: base + "/api/public/otel/v1/traces",
 		auth:     "Basic " + basic(c.PublicKey, c.SecretKey),
 		client:   &http.Client{Timeout: 10 * time.Second},
@@ -263,6 +267,13 @@ func (e *Exporter) turnSpans(t Turn) []map[string]any {
 	}
 	if e.Environment != "" {
 		common["langfuse.environment"] = e.Environment
+	}
+	if e.Release != "" {
+		common["langfuse.release"] = e.Release
+	}
+	if t.PromptVersion != "" {
+		common["langfuse.version"] = t.PromptVersion
+		common["langfuse.trace.metadata.prompt_version"] = t.PromptVersion
 	}
 	root := merge(common, map[string]any{"langfuse.observation.type": "agent"})
 	e.text(root, "langfuse.observation.input", t.Input)
