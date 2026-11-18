@@ -28,8 +28,13 @@ type AttachmentSender interface {
 	SendAttachment(ctx context.Context, accountID, conversationID int64, content, filename, contentType string, data []byte) error
 }
 
-// maxImagesPerReply bounds how many pictures one reply may send.
-const maxImagesPerReply = 2
+// maxImagesPerReply bounds how many pictures one reply may send: the owner's
+// three review pictures go out together (owner, 2026-11-18).
+const maxImagesPerReply = 3
+
+// imageGap is the pause between two pictures in one reply, so they arrive
+// one by one and in order.
+const imageGap = 1500 * time.Millisecond
 
 // RecalledImage is the name a chat recalled from Chatwoot gives an image the
 // bot sent earlier: which one is unknown, so its caption decides.
@@ -137,7 +142,10 @@ func (b *Bot) sendImages(ctx context.Context, log *slog.Logger, acct, conv int64
 		return nil
 	}
 	var sent []string
-	for _, img := range imgs {
+	for i, img := range imgs {
+		if i > 0 {
+			b.wait(ctx, imageGap)
+		}
 		if err := sender.SendAttachment(ctx, acct, conv, img.Caption, img.Filename(), img.ContentType, img.Data); err != nil {
 			log.Error("send image failed", "image_id", img.ID, "error", err)
 			continue

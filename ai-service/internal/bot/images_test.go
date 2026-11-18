@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/images"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
@@ -205,5 +206,32 @@ func TestAnswer_HandoffShowsNoPicture(t *testing.T) {
 	// Assert
 	if err != nil || strings.Contains(a.Content, "ส่งรูป") || !strings.Contains(a.Content, "[[HANDOFF]]") {
 		t.Fatalf("got %q err %v", a.Content, err)
+	}
+}
+
+// The owner's three review pictures all go out, one message each, with a
+// short pause between them so they arrive in order. Issue: DEV-Johnstocker/chatwoot#1
+func TestImages_ThreeReviewsOneByOneAndAtMostThree(t *testing.T) {
+	// Arrange: four pictures, the reply names all four.
+	b, cw, _, _ := imageBot(t, "รีวิวจากผู้เรียนครับ\n[[IMAGE: รีวิว 1]]\n[[IMAGE: รีวิว 2]]\n[[IMAGE: รีวิว 3]]\n[[IMAGE: รีวิว 4]]", false)
+	store := &images.Memory{}
+	for _, n := range []string{"รีวิว 1", "รีวิว 2", "รีวิว 3", "รีวิว 4"} {
+		if _, err := store.Add(context.Background(), images.Image{Meta: images.Meta{AccountID: 1, Name: n, When: "ขอดูรีวิว"}, Data: smallPNG(t)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b.opts.Images = store
+	var pauses []time.Duration
+	b.wait = func(_ context.Context, d time.Duration) { pauses = append(pauses, d) }
+
+	// Act
+	b.Process(context.Background(), customerMsg("ขอดูรีวิวหน่อยครับ"))
+
+	// Assert
+	if n := strings.Count(cw.joined(), "image:"); n != 3 {
+		t.Fatalf("images %d, want 3: %s", n, cw.joined())
+	}
+	if len(pauses) != 2 || pauses[0] != imageGap {
+		t.Errorf("pauses %v, want %v between each of the 3 pictures", pauses, imageGap)
 	}
 }

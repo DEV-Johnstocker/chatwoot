@@ -168,9 +168,12 @@ Owner decisions (review page comments, 2026-11-18):
   ทีมงานที่ดูแลเรื่องนี้มาตอบในแชทนี้นะครับ"). Never "no details / not here /
   we don't have it"; the 11 Nov ban on ไม่ทราบ / ยังไม่มีข้อมูล stays.
 - An unclear message gets one short question first, not a hand-off.
-- Give LINE @johnstocker only after the customer bought (says so, sends a
-  slip, or sends the Gmail they bought with). Before that, keep the chat
-  here; for "is this real?" give the website and the office phone.
+- LINE @johnstocker: before purchase never offer it unasked, but give it
+  when the customer asks for LINE (owner corrected the first wording the same
+  day). After purchase, invite them as the buying steps say. For "is this
+  real?" give the website and the office phone.
+- Review pictures: up to 3 in one reply, each its own message, 1.5 s apart
+  (code: maxImagesPerReply, imageGap).
 
 Test (LOCAL copy of ai-studio, account 1, 56 chats, gpt-6-luna, same judge):
 
@@ -179,7 +182,8 @@ Test (LOCAL copy of ai-studio, account 1, 56 chats, gpt-6-luna, same judge):
 | passed | 39/56 | 41/56 |
 | facts not in the data | 0/4 | 3/4 |
 | unclear messages | judge prefers no product named | asks one question |
-| pre-purchase replies with the LINE ID (9-chat run, new Rules line) | 2 | 0 |
+| pre-purchase replies volunteering the LINE ID (new Rules line) | 2 | 0 |
+| customer asks for LINE: gets @johnstocker | — | 2/2 |
 
 Rules implied:
 - The "no details" rule lives in code (internal/bot/policy.go) and covers every

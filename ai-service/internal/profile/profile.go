@@ -139,7 +139,7 @@ func Prompt(base string, p Profile) string {
 	if len(p.Images) > 0 {
 		b.WriteString("\n\n# Images you can send\nThe business has these pictures. To send one, write " + ImageMarker("<name>") +
 			" on its own line with the exact name; the system sends the picture after your text. Send a picture only when its line below fits " +
-			"what the customer asks, at most two in a reply, and each at most once in a chat (if an earlier reply has its marker, do not repeat it). " +
+			"what the customer asks, at most three in a reply, and each at most once in a chat (if an earlier reply has its marker, do not repeat it). " +
 			"A picture adds to, never replaces, a link the profile gives. Never describe what a picture shows, quote or name reviewers yourself.\n")
 		for _, im := range p.Images {
 			b.WriteString("- " + fence(im.Name) + ": " + fence(oneLine(im.When)) + "\n")
