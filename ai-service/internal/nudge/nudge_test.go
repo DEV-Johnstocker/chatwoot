@@ -59,7 +59,7 @@ func TestDue_Rejects(t *testing.T) {
 			(*m)[1].Content = "สนใจคอร์สไหนคะ"
 		},
 		"customer spoke last": func(_ *Conversation, m *[]gaps.Message) {
-			*m = append(*m, gaps.Message{ID: 3, Incoming: true, Content: "ok", At: now.Add(-20*time.Hour - time.Minute)})
+			*m = append(*m, gaps.Message{ID: 3, Incoming: true, Content: "ผ่อนได้ไหมคะ", At: now.Add(-20*time.Hour - time.Minute)})
 		},
 		"staff replied in the chat": func(_ *Conversation, m *[]gaps.Message) {
 			staff := gaps.Message{ID: 3, Outgoing: true, Content: "สวัสดีค่ะ", At: (*m)[0].At.Add(time.Second)}
@@ -354,5 +354,36 @@ func TestSweep_LabelAlreadyThereSendsNothing(t *testing.T) {
 	// Assert
 	if n != 0 || len(chat.sent) != 0 {
 		t.Fatalf("n=%d sent=%v, want no second follow-up", n, chat.sent)
+	}
+}
+
+// The bot no longer answers a like or a second "thank you" (internal/ack),
+// so such a message can be the last one; the follow-up still goes out.
+// The quiet time counts from it, inside Messenger's 24-hour window.
+// Issue: DEV-Johnstocker/chatwoot#1
+func TestDue_LooksPastALikeOrThanks(t *testing.T) {
+	for _, content := range []string{"ขอบคุณครับ", "👍", ""} {
+		// Arrange: a like sticker arrives with no text.
+		c, msgs := pricedChat()
+		msgs = append(msgs, gaps.Message{ID: 3, Incoming: true, Content: content, At: now.Add(-20*time.Hour - time.Minute)})
+
+		// Act
+		got := Due(c, msgs, now, after)
+
+		// Assert
+		if !got {
+			t.Errorf("%q after the bot's priced reply: Due = false, want true", content)
+		}
+	}
+}
+
+func TestDue_LikeTooRecentWaits(t *testing.T) {
+	// Arrange: the like came an hour ago, so the quiet time starts there.
+	c, msgs := pricedChat()
+	msgs = append(msgs, gaps.Message{ID: 3, Incoming: true, Content: "👍", At: now.Add(-time.Hour)})
+
+	// Act / Assert
+	if Due(c, msgs, now, after) {
+		t.Error("nudged one hour after the customer's like")
 	}
 }

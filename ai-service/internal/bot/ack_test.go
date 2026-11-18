@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ack"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/memory"
 )
 
@@ -22,12 +23,12 @@ func turns(roleText ...string) []memory.Turn {
 
 func TestIsAck_ThanksLikesAndEmojiOnly(t *testing.T) {
 	for _, s := range []string{"ขอบคุณครับ", "ขอบคุณเช่นกันครับ", "ขอบคุณมากค่ะ 🙏", "โอเคครับ", "ok", "Thanks!", "thank you", "👍", "🙏🙏", "❤️", "[The customer sent a sticker or like]", "ครับ", "จ้า"} {
-		if !isAck(s) {
+		if !ack.IsAck(s) {
 			t.Errorf("%q should be an acknowledgement", s)
 		}
 	}
 	for _, s := range []string{"ขอบคุณครับ ราคาเท่าไหร่", "ได้ครับ ซื้อยังไง", "สนใจครับ", "ไม่เอาครับ", "หลายอย่างเลยครับ", "", "อันนี้ยังมีไหม"} {
-		if isAck(s) {
+		if ack.IsAck(s) {
 			t.Errorf("%q is not only an acknowledgement", s)
 		}
 	}
@@ -117,5 +118,43 @@ func TestProcess_FirstThanksStillGetsAReply(t *testing.T) {
 	// Assert
 	if !strings.Contains(cw.joined(), "อยากดูราคาโปรตอนนี้ไหมครับ") {
 		t.Errorf("first thanks got no reply: %q", cw.joined())
+	}
+}
+
+// Edge cases for "no reply needed". Issue: DEV-Johnstocker/chatwoot#1
+func TestStaySilent_EdgeCases(t *testing.T) {
+	statement := "ดูตัวอย่างได้ที่ https://example.com/examples"
+	question := "อยากดูราคาโปรตอนนี้ไหมครับ"
+	cases := []struct {
+		name string
+		h    []memory.Turn
+		want bool
+	}{
+		// Must reply.
+		{"?? alone means the customer is lost", turns("assistant", statement, "user", "??"), false},
+		{"a number alone answers something", turns("assistant", statement, "user", "2"), false},
+		{"a price with a question mark", turns("assistant", statement, "user", "3900?"), false},
+		{"thanks then a question in a burst", turns("assistant", statement, "user", "ขอบคุณครับ", "user", "แล้วผ่อนได้ไหม"), false},
+		{"question then thanks in a burst", turns("assistant", statement, "user", "ผ่อนได้ไหม", "user", "ขอบคุณครับ"), false},
+		{"a like as the very first message", turns("user", "👍"), false},
+		{"thanks as the very first message", turns("user", "ขอบคุณครับ"), false},
+		{"ok after the bot asked", turns("assistant", question, "user", "โอเคครับ"), false},
+		{"ครับ after the bot asked", turns("assistant", question, "user", "ครับ"), false},
+		{"sticker after the bot asked", turns("assistant", question, "user", stickerNote), false},
+		{"no thanks is a no, not a thanks", turns("assistant", statement, "user", "ไม่เป็นไรครับ"), false},
+		{"thanks with a follow-up in one message", turns("assistant", statement, "user", "ขอบคุณครับ เดี๋ยวโอนนะ"), false},
+		{"english thanks plus question", turns("assistant", statement, "user", "Thanks! how much?"), false},
+		{"first thanks after a statement", turns("assistant", statement, "user", "ขอบคุณครับ"), false},
+		{"a photo note is not an ack", turns("assistant", statement, "user", "[The customer sent 1 photo(s), attached to this message]"), false},
+		// May stay quiet.
+		{"two likes in a row after a statement", turns("assistant", statement, "user", "👍", "user", "👍"), true},
+		{"heart after a statement", turns("assistant", statement, "user", "❤️"), true},
+		{"laughing after a statement", turns("assistant", statement, "user", "555"), true},
+		{"ok thanks after the bot answered a thanks", turns("assistant", statement, "user", "ขอบคุณครับ", "assistant", "ยินดีครับ", "user", "ok thanks"), true},
+	}
+	for _, c := range cases {
+		if got := staySilent(c.h); got != c.want {
+			t.Errorf("%s: staySilent = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
