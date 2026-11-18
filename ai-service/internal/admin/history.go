@@ -383,6 +383,7 @@ func profileFields(lang string) []profileField {
 		{tr(lang, "Voice notes"), func(p profile.Profile) string { return onOff(p.Features.Voice) }},
 		{tr(lang, "Images"), func(p profile.Profile) string { return onOff(p.Features.Images) }},
 		{tr(lang, "Stickers and likes"), func(p profile.Profile) string { return onOff(p.Features.Stickers) }},
+		{tr(lang, "Human-like typing time"), func(p profile.Profile) string { return onOff(p.Features.Typing) }},
 	}
 }
 
@@ -454,7 +455,7 @@ func profileSnapshot(raw json.RawMessage) (profile.Profile, bool) {
 	if f, ok := m["Features"]; ok {
 		_ = json.Unmarshal(f, &p.Features)
 	} else {
-		p.Features = profile.Features{Voice: flag("voice_notes"), Images: flag("images"), Stickers: flag("stickers")}
+		p.Features = profile.Features{Voice: flag("voice_notes"), Images: flag("images"), Stickers: flag("stickers"), Typing: flag("typing")}
 	}
 	return p, found
 }
@@ -599,7 +600,11 @@ func (h *Handler) restoreProfile(r *http.Request, acct int64, source string, id 
 	next := cur
 	next.AccountID = acct
 	next.BusinessName, next.About, next.Tone, next.Contact, next.Rules = snap.BusinessName, snap.About, snap.Tone, snap.Contact, snap.Rules
+	// Reply timing is a delivery setting, not profile text: a restore keeps
+	// the current one (older copies do not record it).
+	typing := cur.Features.Typing
 	next.Features = snap.Features
+	next.Features.Typing = typing
 	next = next.Normalize()
 	if err := h.Profiles.Save(r.Context(), next); err != nil {
 		return err

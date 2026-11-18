@@ -61,6 +61,7 @@ type Features struct {
 	Voice    bool // transcribe voice notes and answer them
 	Images   bool // let the model look at photos and screenshots
 	Stickers bool // answer stickers and likes briefly instead of handing off
+	Typing   bool // keep "typing…" on for as long as a person would take to type the reply
 }
 
 // Empty reports whether no field is filled.
@@ -138,7 +139,7 @@ func Prompt(base string, p Profile) string {
 	if len(p.Images) > 0 {
 		b.WriteString("\n\n# Images you can send\nThe business has these pictures. To send one, write " + ImageMarker("<name>") +
 			" on its own line with the exact name; the system sends the picture after your text. Send a picture only when its line below fits " +
-			"what the customer asks, at most two in a reply, and each at most once in a chat (if an earlier reply has its marker, do not repeat it). " +
+			"what the customer asks, at most three in a reply, and each at most once in a chat (if an earlier reply has its marker, do not repeat it). " +
 			"A picture adds to, never replaces, a link the profile gives. Never describe what a picture shows, quote or name reviewers yourself.\n")
 		for _, im := range p.Images {
 			b.WriteString("- " + fence(im.Name) + ": " + fence(oneLine(im.When)) + "\n")

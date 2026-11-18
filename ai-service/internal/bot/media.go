@@ -93,20 +93,19 @@ func (b *Bot) readMessage(ctx context.Context, log *slog.Logger, ev webhook.Even
 			notes = append(notes, "[Voice message, transcribed] "+capText(spoken))
 			readable = true
 			kinds = append(kinds, "voice")
+		// A sticker or like is checked first: with Images on it would
+		// otherwise reach the model as a photo and get a reply it does not
+		// need (ack.go keeps the bot quiet on a sticker note).
+		case a.FileType == "image" && f.Stickers && fetch != nil && b.opts.StickerLLM != nil &&
+			strings.TrimSpace(ev.Content) == "" && len(ev.Attachments) == 1 && b.isSticker(ctx, log, fetch, a):
+			notes = append(notes, stickerNote)
+			readable = true
+			kinds = append(kinds, "sticker")
 		case a.FileType == "image" && f.Images && fetch != nil && tried < maxImages:
 			tried++
 			if img := b.image(ctx, log, fetch, a); img != "" {
 				images = append(images, img)
 				kinds = append(kinds, "image")
-				continue
-			}
-			unreadable = true
-		case a.FileType == "image" && f.Stickers && fetch != nil && b.opts.StickerLLM != nil &&
-			strings.TrimSpace(ev.Content) == "" && len(ev.Attachments) == 1:
-			if b.isSticker(ctx, log, fetch, a) {
-				notes = append(notes, "[The customer sent a sticker or like]")
-				readable = true
-				kinds = append(kinds, "sticker")
 				continue
 			}
 			unreadable = true

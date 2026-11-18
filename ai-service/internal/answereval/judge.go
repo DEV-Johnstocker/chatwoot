@@ -37,7 +37,7 @@ Fail the reply if any of these is true:
 - It states a business fact that is not in the profile or the excerpts (invented or guessed).
 - It contradicts the profile or the excerpts.
 - Expected "answer": it does not answer the customer's last question, or misses what the expectation note asks for.
-- Expected "unknown": it does not say it doesn't know or isn't sure, or it does not offer a staff member or a contact channel.
+- Expected "unknown": it does not hand the chat to the team (a staff member continues in this chat) or give a contact channel; it says or hints the business does not have or offer the thing asked about; it says there is no information or there are no details on it, or that the bot does not know or is not sure; or it promises what staff will tell or give the customer. Naming the topic and saying the team (or the team member who looks after it) will answer in this chat is the correct reply.
 - It is not in the language the customer used in the last message.
 - A listed criterion is not met. Judge criteria by meaning, not exact words.
 - It does something listed under "must not".

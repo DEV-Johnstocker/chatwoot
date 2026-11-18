@@ -176,6 +176,37 @@ func TestMedia_StickerGetsAShortReply(t *testing.T) {
 	}
 }
 
+// With Images on too, a like sticker must still be read as a sticker, not as
+// a photo (it used to reach the model as a picture). Issue: DEV-Johnstocker/chatwoot#1
+func TestMedia_StickerWithImagesOnIsStillASticker(t *testing.T) {
+	// Arrange
+	main := &fakeLLM{reply: "ขอบคุณค่ะ 😊"}
+	b, _, _, _ := mediaBot(profile.Features{Images: true, Stickers: true}, main)
+
+	// Act
+	b.Process(context.Background(), fileJob("", photo))
+
+	// Assert
+	if u := lastUser(main.got); len(u.Images) != 0 || !strings.Contains(u.Content, "sticker") {
+		t.Errorf("answer model saw %+v, want a sticker note and no image", u)
+	}
+}
+
+func TestMedia_PhotoWithImagesAndStickersOnStaysAPhoto(t *testing.T) {
+	// Arrange
+	main := &fakeLLM{reply: "เห็นหน้าจอแล้วครับ"}
+	b, _, _, sticker := mediaBot(profile.Features{Images: true, Stickers: true}, main)
+	sticker.reply = "OTHER"
+
+	// Act
+	b.Process(context.Background(), fileJob("", photo))
+
+	// Assert
+	if u := lastUser(main.got); len(u.Images) != 1 {
+		t.Errorf("answer model saw %+v, want the photo", u)
+	}
+}
+
 func TestMedia_StickerOnButItIsAPhotoHandsOff(t *testing.T) {
 	// Arrange
 	b, cw, _, sticker := mediaBot(profile.Features{Stickers: true}, &fakeLLM{reply: "x"})

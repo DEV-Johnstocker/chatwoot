@@ -138,6 +138,11 @@ type Options struct {
 	// ReplyDelay waits this long after a customer's last message before
 	// replying, so quick messages get one answer (batch.go). 0 replies at once.
 	ReplyDelay time.Duration
+	// TypingSpeed (characters a second) keeps "typing…" on for about as long
+	// as a person would take to type the reply, at most TypingMax
+	// (typing.go). 0 sends the reply as soon as it is written.
+	TypingSpeed int
+	TypingMax   time.Duration
 	// ReplyLimit caps bot replies per customer within ReplyLimitWindow
 	// (limit.go); 0 turns the limit off.
 	ReplyLimit       int
@@ -185,9 +190,10 @@ type Bot struct {
 	limitNoted  map[convKey]time.Time // chats given a reply-limit note lately
 	limitPruned time.Time
 
-	enqueueWait   time.Duration // how long Enqueue waits for room in a full queue
-	sendRetryWait time.Duration // pause before the one retry of a failed reply
-	rules         string        // rulesVersion of SystemPrompt and the policy, for traces
+	enqueueWait   time.Duration                        // how long Enqueue waits for room in a full queue
+	sendRetryWait time.Duration                        // pause before the one retry of a failed reply
+	wait          func(context.Context, time.Duration) // typing pause; tests replace it
+	rules         string                               // rulesVersion of SystemPrompt and the policy, for traces
 }
 
 // Defaults for the waits above. enqueueWait stays well under Chatwoot's 5 s
@@ -211,7 +217,7 @@ func New(opts Options, workers, queueSize int) *Bot {
 	}
 	per := max(queueSize/workers, 1)
 	b := &Bot{opts: opts, queues: make([]chan Job, workers), done: make(chan struct{}),
-		enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait, rules: rulesVersion(opts.SystemPrompt)}
+		enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait, wait: sleepCtx, rules: rulesVersion(opts.SystemPrompt)}
 	for i := range b.queues {
 		b.queues[i] = make(chan Job, per)
 	}
@@ -433,6 +439,12 @@ func (b *Bot) finishTurn(tr *trace.Turn) {
 }
 
 func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, tr *trace.Turn, images []string) {
+	if len(images) == 0 && staySilent(b.opts.History.Get(acct, conv)) {
+		// A like, a sticker or one more "thank you": no reply needed (ack.go).
+		tr.Outcome = "silent:ack"
+		log.Info("no reply needed: acknowledgement only")
+		return
+	}
 	if !b.takeReply(limitKeyFor(acct, inbox, conv, tr.ContactID)) {
 		b.handOffReplyLimit(ctx, log, acct, inbox, conv, tr)
 		return
@@ -495,6 +507,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		}
 		tr.Outcome, tr.Output = "handoff:"+ReasonAIRequest, stored
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "assistant", Content: stored})
+		b.typingPause(ctx, g.typing, started, text)
 		b.handoff(ctx, log, acct, inbox, conv, text, ReasonAIRequest, images)
 		return
 	}
@@ -502,6 +515,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		text = b.opts.HandoffMessage // only markers the bot cannot honour: never send nothing
 	}
 	if text != "" {
+		b.typingPause(ctx, g.typing, started, text)
 		if err := b.sendReply(ctx, log, acct, conv, text); err != nil {
 			log.Error("send reply failed, handing off", "error", err)
 			tr.Outcome = "handoff:" + ReasonSendFailed
@@ -627,7 +641,7 @@ func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, h
 	if err != nil {
 		gen.Err = "chat model failed"
 	}
-	res.Content = plainChat(res.Content)
+	res.Content = dropStrayScripts(plainChat(res.Content), lastCustomerText(history))
 	tr.Generation = gen
 	tr.PromptVersion = promptVersion(b.rules, p)
 	return res, hits, newGuard(p), err
@@ -903,4 +917,14 @@ func (b *Bot) timeout() time.Duration {
 		return b.opts.Timeout
 	}
 	return time.Minute
+}
+
+// lastCustomerText is the customer's latest message in history, or "".
+func lastCustomerText(history []memory.Turn) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == "user" {
+			return history[i].Content
+		}
+	}
+	return ""
 }

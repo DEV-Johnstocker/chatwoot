@@ -63,6 +63,7 @@ func (h *Handler) submitBusiness(w http.ResponseWriter, r *http.Request) {
 		// An unticked checkbox is simply absent from the form: absent = off.
 		Features: profile.Features{
 			Voice: f.Get("feature_voice") == "on", Images: f.Get("feature_images") == "on", Stickers: f.Get("feature_stickers") == "on",
+			Typing: f.Get("feature_typing") == "on",
 		},
 	}.Normalize()
 	old, oldErr := h.Profiles.Get(r.Context(), p.AccountID)

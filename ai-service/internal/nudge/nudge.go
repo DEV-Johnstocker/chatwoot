@@ -19,8 +19,10 @@ import (
 	"log/slog"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ack"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/gaps"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/spend"
@@ -78,12 +80,19 @@ func Due(c Conversation, msgs []gaps.Message, now time.Time, after time.Duration
 	return !staffReplied(msgs) && botGavePrice(msgs)
 }
 
-// lastPublic is the newest message the customer could see or wrote.
+// lastPublic is the newest message the customer could see or wrote, looking
+// past a customer's like, sticker (no text) or thanks: the bot does not
+// answer those (internal/ack), so the bot's reply before them counts.
 func lastPublic(msgs []gaps.Message) (gaps.Message, bool) {
 	for i := len(msgs) - 1; i >= 0; i-- {
-		if m := msgs[i]; !m.Private && (m.Incoming || m.Outgoing) {
-			return m, true
+		m := msgs[i]
+		if m.Private || !(m.Incoming || m.Outgoing) {
+			continue
 		}
+		if m.Incoming && (strings.TrimSpace(m.Content) == "" || ack.IsAck(m.Content)) {
+			continue
+		}
+		return m, true
 	}
 	return gaps.Message{}, false
 }

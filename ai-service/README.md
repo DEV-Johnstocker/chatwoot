@@ -54,6 +54,11 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   for `REPLY_DELAY` (default `4s`, `0s` turns it off), so a burst gets one
   answer that covers all of it. A staff reply, a resolved chat or a handoff
   cancels a waiting reply.
+- **Typing time**: while the reply is written, Chatwoot shows the bot typing;
+  the reply is sent once a person would have typed it, at `TYPING_SPEED`
+  characters a second (default `12`, `0` turns it off), at most `TYPING_MAX`
+  (default `8s`). The time the model took counts, so a slow answer goes out
+  at once.
 - **Finished chats are resolved**: every 15 minutes the bot resolves chats it
   still owns (Chatwoot status pending) when its reply was the last message, the
   customer is not waiting, and nothing happened for `BOT_RESOLVE_AFTER`

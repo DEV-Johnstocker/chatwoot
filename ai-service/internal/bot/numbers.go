@@ -41,10 +41,12 @@ type guard struct {
 	// plain are the profile's long numbers written outside links: phones and
 	// bank numbers. A link that holds one of them is not exempt.
 	plain map[string]bool
+	// typing is the owner's "human-like typing time" switch (Features.Typing).
+	typing bool
 }
 
 func newGuard(p profile.Profile) guard {
-	g := guard{bank: p.BankTransfer, numbers: map[string]bool{}, plain: map[string]bool{}}
+	g := guard{bank: p.BankTransfer, numbers: map[string]bool{}, plain: map[string]bool{}, typing: p.Features.Typing}
 	seen := map[string]bool{}
 	for _, field := range []string{p.BusinessName, p.About, p.Tone, p.Contact, p.Rules, p.BankTransfer} {
 		// Line by line and space by space too, so two numbers the owner wrote

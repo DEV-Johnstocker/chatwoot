@@ -9,9 +9,10 @@
 #
 #   free-gb     free disk on / in GB (the deploy gate)
 #   containers  name<TAB>status of every staging container
-#   smoke       seed the sample shop (idempotent) into test account 9001 and
-#               run the answer smoke check there, so whatever is being tried
-#               on the real staging accounts cannot change its result.
+#   smoke       run the answer smoke check on staging account 1, the
+#               ai-studio business (its own profile and knowledge base, kept
+#               like production's; try experiments on account 3, not 1).
+#               The owner chose real data over the sample shop (2026-11-18).
 #               Cases the AI provider could not finish (429 even after the
 #               fallback) are skipped; at least 5 of 15 must complete.
 set -eu
@@ -31,8 +32,7 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     prefix=$(staging_prefix)
     [ -n "$prefix" ] || { echo "staging ai-service is not running" >&2; exit 1; }
     exec timeout 900 docker exec "$prefix-stg-ai-service-1" /answer-eval \
-      -seed-kb /testdata/sample-kb/faq.json -seed-profile /testdata/sample-kb/profile.json \
-      -seed-account 9001 -account 9001 -cases /testdata/answers-smoke.json \
+      -account 1 -cases /testdata/answers-smoke-studio.json \
       -min-pass 0.8 -strict-faithful -skip-rate-limited -min-completed 5
     ;;
   *)

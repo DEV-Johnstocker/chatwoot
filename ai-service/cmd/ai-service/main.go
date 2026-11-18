@@ -195,6 +195,8 @@ func run() error {
 		AttachmentMessage: cfg.AttachmentMessage,
 		Location:          cfg.Location,
 		ReplyDelay:        cfg.ReplyDelay,
+		TypingSpeed:       cfg.TypingSpeed,
+		TypingMax:         cfg.TypingMax,
 		ReplyLimit:        cfg.Alerts.ReplyLimit,
 		ReplyLimitWindow:  cfg.Alerts.ReplyLimitWindow,
 		ReplyLimits:       alertSettings.ReplyLimitFor,

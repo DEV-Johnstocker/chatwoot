@@ -217,6 +217,26 @@ func TestBusiness_FeatureSwitchesSaveAndShow(t *testing.T) {
 	}
 }
 
+func TestBusiness_TypingTimeSwitchSavesAndShows(t *testing.T) {
+	// Arrange
+	mux, mp := businessEnv(t, true)
+	form := url.Values{"account": {"1"}, "business_name": {"Shop"}, "feature_typing": {"on"}}
+
+	// Act
+	saved := serve(mux, bpost(form))
+	get := httptest.NewRequest(http.MethodGet, "/admin/business?account=1", nil)
+	get.SetBasicAuth(Username, pw)
+	page := serve(mux, get).Body.String()
+
+	// Assert
+	if saved.Code != http.StatusSeeOther || !mp.saved[1].Features.Typing {
+		t.Fatalf("save = %d, typing = %v, want saved with typing on", saved.Code, mp.saved[1].Features.Typing)
+	}
+	if !strings.Contains(page, `name="feature_typing" type="checkbox" checked`) {
+		t.Error("the typing switch must show ticked")
+	}
+}
+
 func TestBusiness_UntickingTurnsFeaturesOff(t *testing.T) {
 	// Arrange: a profile with every feature on; the form posts no ticks.
 	mux, mp := businessEnv(t, true)
