@@ -318,6 +318,16 @@ each customer message becomes one Langfuse trace: a `chat-turn` span with
 `handoff:<reason>`). It is sent over OTLP/HTTP JSON in the background; a full
 buffer drops turns instead of delaying replies.
 
+Every span also carries the **release** (`build-` plus a fingerprint of the
+running program, logged at startup as `langfuse tracing on … release=`) and
+the **prompt version** `r<rules>-p<profile>` (Langfuse `version` and
+`metadata.prompt_version`). The `r` part changes when the built-in rules or
+the configured prompt change; the `p` part when the account's business
+profile text is saved with different text. Filter by it in Langfuse to
+compare replies before and after a prompt change. The prompt itself stays in
+code and in /admin, where it is reviewed and versioned; only the fingerprint
+is sent.
+
 Before anything leaves the server, emails, phone numbers, Thai national IDs,
 card and bank account numbers and labelled LINE IDs are masked, and contact
 and conversation ids become keyed hashes (`langfuse.user.id`,

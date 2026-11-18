@@ -187,6 +187,7 @@ type Bot struct {
 
 	enqueueWait   time.Duration // how long Enqueue waits for room in a full queue
 	sendRetryWait time.Duration // pause before the one retry of a failed reply
+	rules         string        // rulesVersion of SystemPrompt and the policy, for traces
 }
 
 // Defaults for the waits above. enqueueWait stays well under Chatwoot's 5 s
@@ -210,7 +211,7 @@ func New(opts Options, workers, queueSize int) *Bot {
 	}
 	per := max(queueSize/workers, 1)
 	b := &Bot{opts: opts, queues: make([]chan Job, workers), done: make(chan struct{}),
-		enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait}
+		enqueueWait: defaultEnqueueWait, sendRetryWait: defaultSendRetryWait, rules: rulesVersion(opts.SystemPrompt)}
 	for i := range b.queues {
 		b.queues[i] = make(chan Job, per)
 	}
@@ -628,6 +629,7 @@ func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, h
 	}
 	res.Content = plainChat(res.Content)
 	tr.Generation = gen
+	tr.PromptVersion = promptVersion(b.rules, p)
 	return res, hits, newGuard(p), err
 }
 

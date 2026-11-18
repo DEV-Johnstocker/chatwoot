@@ -133,13 +133,14 @@ func run() error {
 	var tracer bot.Tracer
 	var exporter *trace.Exporter
 	if cfg.TracingEnabled() {
+		release := buildRelease()
 		exporter = trace.NewExporter(trace.Config{
 			BaseURL: cfg.LangfuseBaseURL, PublicKey: cfg.LangfusePublicKey, SecretKey: cfg.LangfuseSecretKey,
 			PseudonymKey: trace.PseudonymKey(cfg.WebhookSecret),
-			Text:         cfg.TraceText, Environment: cfg.TraceEnvironment,
+			Text:         cfg.TraceText, Environment: cfg.TraceEnvironment, Release: release,
 		}, logger)
 		tracer = exporter
-		logger.Info("langfuse tracing on", "host", hostOf(cfg.LangfuseBaseURL), "text", cfg.TraceText)
+		logger.Info("langfuse tracing on", "host", hostOf(cfg.LangfuseBaseURL), "text", cfg.TraceText, "release", release)
 	}
 
 	// Website pages kept in sync with the knowledge base (checked every 10 min for due pages).
