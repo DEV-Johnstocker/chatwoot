@@ -61,6 +61,7 @@ type Features struct {
 	Voice    bool // transcribe voice notes and answer them
 	Images   bool // let the model look at photos and screenshots
 	Stickers bool // answer stickers and likes briefly instead of handing off
+	Typing   bool // keep "typing…" on for as long as a person would take to type the reply
 }
 
 // Empty reports whether no field is filled.

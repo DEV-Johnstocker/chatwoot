@@ -38,6 +38,8 @@ type Config struct {
 	LLMFallbackModel   string
 	LLMTimeout         time.Duration // per provider call
 	ReplyDelay         time.Duration // wait after a customer's last message, so quick messages get one reply
+	TypingSpeed        int           // characters a second the bot "types" its reply at; 0 sends at once
+	TypingMax          time.Duration // longest typing wait for one reply
 	BotResolveAfter    time.Duration // quiet time before the bot resolves a chat it finished; 0 = off
 	Alerts             Alerts        // the bot's own alerts and the per-customer reply limit (alerts.go)
 	BotNudgeAfter      time.Duration // follow-up after the customer's last message in a priced chat; 0 = off
@@ -221,6 +223,12 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	var err error
 	if cfg.ReplyDelay, err = time.ParseDuration(get("REPLY_DELAY", "4s")); err != nil || cfg.ReplyDelay < 0 || cfg.ReplyDelay > 30*time.Second {
 		errs = append(errs, fmt.Errorf("REPLY_DELAY must be a duration from 0s to 30s"))
+	}
+	if cfg.TypingSpeed, err = strconv.Atoi(get("TYPING_SPEED", "12")); err != nil || cfg.TypingSpeed < 0 || cfg.TypingSpeed > 100 {
+		errs = append(errs, fmt.Errorf("TYPING_SPEED must be 0 (off) or characters a second up to 100"))
+	}
+	if cfg.TypingMax, err = time.ParseDuration(get("TYPING_MAX", "8s")); err != nil || cfg.TypingMax < 0 || cfg.TypingMax > 20*time.Second {
+		errs = append(errs, fmt.Errorf("TYPING_MAX must be a duration from 0s to 20s"))
 	}
 	if cfg.BotResolveAfter, err = time.ParseDuration(get("BOT_RESOLVE_AFTER", "22h")); err != nil ||
 		(cfg.BotResolveAfter != 0 && (cfg.BotResolveAfter < time.Hour || cfg.BotResolveAfter > 7*24*time.Hour)) {

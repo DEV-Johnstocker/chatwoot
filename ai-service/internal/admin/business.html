@@ -73,6 +73,11 @@
         <label class="check"><input id="feature_stickers" name="feature_stickers" type="checkbox"{{if .Profile.Features.Stickers}} checked{{end}}>
           <span><strong>{{T "Stickers and likes"}}</strong><span class="field-hint">{{T "Reply briefly to a sticker or 👍 instead of passing the chat to staff."}}</span></span></label>
       </fieldset>
+      <fieldset>
+        <legend>{{T "Reply timing"}}</legend>
+        <label class="check"><input id="feature_typing" name="feature_typing" type="checkbox"{{if .Profile.Features.Typing}} checked{{end}}>
+          <span><strong>{{T "Human-like typing time"}}</strong><span class="field-hint">{{T "On: the bot shows typing for about as long as a person would take to type its reply (longer replies take longer, at most 8 seconds). Off: it replies 4 seconds after the customer's last message."}}</span></span></label>
+      </fieldset>
       <div class="card-foot"><button type="submit" class="primary">{{T "Save profile"}}</button></div>
     </aside>
   </form>

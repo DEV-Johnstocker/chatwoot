@@ -59,6 +59,7 @@
         <dt>{{T "Voice notes"}}</dt><dd>{{if .Features.Voice}}{{T "On"}}{{else}}{{T "Off"}}{{end}}</dd>
         <dt>{{T "Images"}}</dt><dd>{{if .Features.Images}}{{T "On"}}{{else}}{{T "Off"}}{{end}}</dd>
         <dt>{{T "Stickers"}}</dt><dd>{{if .Features.Stickers}}{{T "On"}}{{else}}{{T "Off"}}{{end}}</dd>
+        <dt>{{T "Human-like typing time"}}</dt><dd>{{if .Features.Typing}}{{T "On"}}{{else}}{{T "Off"}}{{end}}</dd>
         {{end}}
       </dl>
       {{if .Profiles}}<p class="field-hint spaced"><a href="/admin/business?account={{.AccountID}}">{{T "Change AI features"}}</a></p>{{end}}

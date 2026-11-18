@@ -57,7 +57,7 @@ a chat.
   `LLM_MODEL`, `LLM_FALLBACK_*`, `EMBED_BASE_URL`, `EMBED_API_KEY`,
   `EMBED_MODEL`. Settings saved on `/admin` override the `LLM_*`/`EMBED_*`
   values. Optional: `EMBED_FALLBACK_*` (backup route to the same embedding
-  model), `REPLY_DELAY` (default `4s`), `CHATWOOT_READER_TOKEN`,
+  model), `REPLY_DELAY` (default `4s`), `TYPING_SPEED` (default `12` characters a second, `0` = off), `TYPING_MAX` (default `8s`), `CHATWOOT_READER_TOKEN`,
   `BOT_RESOLVE_AFTER` (default `22h`, `0` = never resolve finished chats),
   `SLACK_ALERT_WEBHOOK_URL` (the bot's own alerts; an incoming webhook to
   `#chatwoot-ai-service`, may be the same one as `SLACK_BACKUP_WEBHOOK_URL`),

@@ -43,6 +43,7 @@ type exportProfile struct {
 	VoiceNotes   bool   `json:"voice_notes"`
 	Images       bool   `json:"images"`
 	Stickers     bool   `json:"stickers"`
+	Typing       bool   `json:"typing"`
 }
 
 // exportRow is one document with the importer's column names (internal/feed):
@@ -122,7 +123,7 @@ func (h *Handler) exportFailed(w http.ResponseWriter, r *http.Request, acct int6
 
 func profileExport(p profile.Profile) *exportProfile {
 	return &exportProfile{BusinessName: p.BusinessName, About: p.About, Tone: p.Tone, Contact: p.Contact, Rules: p.Rules,
-		BankTransfer: p.BankTransfer, VoiceNotes: p.Features.Voice, Images: p.Features.Images, Stickers: p.Features.Stickers}
+		BankTransfer: p.BankTransfer, VoiceNotes: p.Features.Voice, Images: p.Features.Images, Stickers: p.Features.Stickers, Typing: p.Features.Typing}
 }
 
 // exportRows turns documents into importer rows with unique ids.

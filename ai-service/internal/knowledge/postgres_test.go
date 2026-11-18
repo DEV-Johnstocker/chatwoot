@@ -169,6 +169,30 @@ func TestPostgres_BusinessProfileRoundTrip(t *testing.T) {
 	}
 }
 
+// Schema v24 adds the typing-time switch; it is stored and read like the others.
+func TestPostgres_TypingSwitchRoundTrip(t *testing.T) {
+	// Arrange
+	db := openTestDB(t)
+	ctx := context.Background()
+	store := &profile.Postgres{Pool: db.Pool}
+
+	// Act
+	errOn := store.Save(ctx, profile.Profile{AccountID: 9, BusinessName: "Shop", Features: profile.Features{Typing: true}})
+	on, errGetOn := store.Get(ctx, 9)
+	errOff := store.Save(ctx, profile.Profile{AccountID: 9, BusinessName: "Shop"})
+	off, errGetOff := store.Get(ctx, 9)
+
+	// Assert
+	for _, err := range []error{errOn, errGetOn, errOff, errGetOff} {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !on.Features.Typing || off.Features.Typing {
+		t.Errorf("typing after on = %v, after off = %v", on.Features.Typing, off.Features.Typing)
+	}
+}
+
 // Production databases are at schema v1; Migrate must add business_profiles
 // without touching existing knowledge.
 func TestPostgres_MigratesV1ToV2(t *testing.T) {

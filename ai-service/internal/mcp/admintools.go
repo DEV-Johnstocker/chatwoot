@@ -196,12 +196,13 @@ type profileView struct {
 	VoiceNotes   bool   `json:"voice_notes"`
 	Images       bool   `json:"images"`
 	Stickers     bool   `json:"stickers"`
+	Typing       bool   `json:"typing"`
 	Updated      string `json:"updated,omitempty"`
 }
 
 func (s *Server) profileView(p profile.Profile) profileView {
 	v := profileView{BusinessName: p.BusinessName, About: p.About, Tone: p.Tone, Contact: p.Contact, Rules: p.Rules,
-		VoiceNotes: p.Features.Voice, Images: p.Features.Images, Stickers: p.Features.Stickers}
+		VoiceNotes: p.Features.Voice, Images: p.Features.Images, Stickers: p.Features.Stickers, Typing: p.Features.Typing}
 	if !p.UpdatedAt.IsZero() {
 		v.Updated = p.UpdatedAt.In(s.loc()).Format(time.DateOnly)
 	}
