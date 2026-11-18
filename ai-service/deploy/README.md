@@ -184,10 +184,11 @@ and marks `staging` red. Manual run with *fail_verify* proves the red path.
 - VPS: the key in `STAGING_SSH_KEY` is bound in `/root/.ssh/authorized_keys`
   to the forced command `/usr/local/bin/staging-ci`
   (`deploy/staging/staging-ci.sh`), which accepts only `free-gb`,
-  `containers` and `smoke`. `smoke` seeds the sample café (FAQs and
-  business profile from `testdata/sample-kb/`) into its own test account
-  9001 and runs every case there, so whatever is tried on the real staging
-  accounts cannot change the release check. Cases the AI provider could not
+  `containers` and `smoke`. `smoke` runs the 15 cases in
+  `testdata/answers-smoke-studio.json` on staging account 1, the ai-studio
+  business with its own profile and knowledge base (owner's choice,
+  2026-11-18). Keep account 1 like production and try experiments on
+  account 3, or they change the release check. Cases the AI provider could not
   finish (429 on the primary and the fallback) are reported as skipped and
   left out of the pass rate; at least 5 must complete. After changing the script,
   copy it to `/usr/local/bin/staging-ci` on the VPS again. When appending to `authorized_keys`, make sure

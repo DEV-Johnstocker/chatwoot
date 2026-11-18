@@ -11,7 +11,8 @@ FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/ai-service /out/rag-eval /out/answer-eval /
 # Settings saved from /admin live here; mount a volume to keep them.
 COPY --from=build --chown=65532:65532 --chmod=700 /out/data /data
-# Public sample shop and smoke cases, so staging can seed and check itself:
+# Smoke cases: staging checks ai-studio (account 1) with answers-smoke-studio.json;
+# the nightly CI check seeds the public sample shop into an empty database:
 #   /answer-eval -seed-kb /testdata/sample-kb/faq.json -seed-profile /testdata/sample-kb/profile.json -seed-account 9001 -account 9001 -cases /testdata/answers-smoke.json
 COPY --from=build /src/testdata /testdata
 EXPOSE 8080
