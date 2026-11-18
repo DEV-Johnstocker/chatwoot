@@ -159,3 +159,33 @@ Rules implied:
   bot picked the right one in all 9 picture runs.
 - W01 (Workshop reviews) fails in both columns because the current profile
   hands Workshop questions to staff; that is round 16's profile change.
+
+## 2026-11-18: facts not in the data, unclear messages, LINE before purchase
+
+Owner decisions (review page comments, 2026-11-18):
+- A question the profile and knowledge base say nothing about gets one short
+  hand-off line that names the topic ("เรื่องส่วนลดนักศึกษา เดี๋ยวส่งต่อให้
+  ทีมงานที่ดูแลเรื่องนี้มาตอบในแชทนี้นะครับ"). Never "no details / not here /
+  we don't have it"; the 11 Nov ban on ไม่ทราบ / ยังไม่มีข้อมูล stays.
+- An unclear message gets one short question first, not a hand-off.
+- Give LINE @johnstocker only after the customer bought (says so, sends a
+  slip, or sends the Gmail they bought with). Before that, keep the chat
+  here; for "is this real?" give the website and the office phone.
+
+Test (LOCAL copy of ai-studio, account 1, 56 chats, gpt-6-luna, same judge):
+
+| | develop | branch |
+|---|---|---|
+| passed | 39/56 | 41/56 |
+| facts not in the data | 0/4 | 3/4 |
+| unclear messages | judge prefers no product named | asks one question |
+| pre-purchase replies with the LINE ID (9-chat run, new Rules line) | 2 | 0 |
+
+Rules implied:
+- The "no details" rule lives in code (internal/bot/policy.go) and covers every
+  business; the LINE timing is ai-studio's own and lives in its profile
+  Rules, not in code. Contact still lists LINE; one Rules line overrides it.
+- The hand-off line tempts the model: limit it to topics the data says
+  nothing about, or it hands off questions the excerpts answer ("what's
+  included", "how many computers").
+- Keep STAGING account 1 like production: the release check now runs there.
