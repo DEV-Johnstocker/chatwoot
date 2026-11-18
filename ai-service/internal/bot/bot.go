@@ -439,6 +439,12 @@ func (b *Bot) finishTurn(tr *trace.Turn) {
 }
 
 func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int64, tr *trace.Turn, images []string) {
+	if len(images) == 0 && staySilent(b.opts.History.Get(acct, conv)) {
+		// A like, a sticker or one more "thank you": no reply needed (ack.go).
+		tr.Outcome = "silent:ack"
+		log.Info("no reply needed: acknowledgement only")
+		return
+	}
 	if !b.takeReply(limitKeyFor(acct, inbox, conv, tr.ContactID)) {
 		b.handOffReplyLimit(ctx, log, acct, inbox, conv, tr)
 		return

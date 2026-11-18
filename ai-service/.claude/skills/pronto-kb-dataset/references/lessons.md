@@ -193,3 +193,13 @@ Rules implied:
   nothing about, or it hands off questions the excerpts answer ("what's
   included", "how many computers").
 - Keep STAGING account 1 like production: the release check now runs there.
+- Every reply ends with one easy next move (a short question or an offer:
+  price and promotion, how to buy, more examples); a thank-you gets thanks
+  plus one soft next step. The old "never two questions in a row" rule made
+  the owner's test chat end on a bare examples link.
+- No reply is needed for a like, sticker or emoji after a reply that asked
+  nothing, or for another thank-you after the bot answered one (code:
+  internal/bot/ack.go). A like after a bot question counts as "yes".
+- Review pictures (owner, 2026-11-18): two are John Auto Cut, one is the
+  Workshop. Give each a "when to send" line naming its product, or a course
+  question also gets the Workshop picture.
