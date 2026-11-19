@@ -72,7 +72,7 @@ func TestImages_MarkerSendsTheNamedPictureOnce(t *testing.T) {
 	if strings.Count(got, "image:รีวิวจากผู้เรียนจริงครับ|image.png|image/png") != 1 || strings.Contains(got, "Workshop") {
 		t.Fatalf("want the AutoCut picture exactly once: %s", got)
 	}
-	if strings.Contains(got, "[[") || !strings.Contains(got, "msg:มีผู้ใช้จริงหลายท่านครับ\nสนใจทำคลิปแนวไหนครับ | image:") {
+	if strings.Contains(got, "[[") || !strings.Contains(got, "msg:มีผู้ใช้จริงหลายท่านครับ | typing:on | msg:สนใจทำคลิปแนวไหนครับ | image:") {
 		t.Fatalf("text must go first, without the marker: %s", got)
 	}
 	if !strings.Contains(l.got[0].Content, "- รีวิว Workshop: ถามรีวิว Workshop") {
