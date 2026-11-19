@@ -515,8 +515,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 		text = b.opts.HandoffMessage // only markers the bot cannot honour: never send nothing
 	}
 	if text != "" {
-		b.typingPause(ctx, g.typing, started, text)
-		if err := b.sendReply(ctx, log, acct, conv, text); err != nil {
+		if err := b.sendParts(ctx, log, acct, conv, g.typing, started, text); err != nil {
 			log.Error("send reply failed, handing off", "error", err)
 			tr.Outcome = "handoff:" + ReasonSendFailed
 			hctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), handoffBudget)

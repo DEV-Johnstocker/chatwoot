@@ -203,3 +203,20 @@ Rules implied:
 - Review pictures (owner, 2026-11-18): two are John Auto Cut, one is the
   Workshop. Give each a "when to send" line naming its product, or a course
   question also gets the Workshop picture.
+
+## 2026-11-19 — answer and question as two messages
+
+Owner decision (2026-11-18): at most two messages per reply — the answer or
+proof first, then one question on its own. Code: internal/bot/split.go; the
+model's text is unchanged, only where it is cut.
+
+Test (LOCAL, real model, ai-studio data, the owner's screenshot chat replayed
+end to end): 7/7. Course and examples questions arrived as answer + question;
+a price question with an offer stayed one message; stickers, a second thanks
+and a like stayed silent.
+
+Rules implied:
+- Split only when the last line is a short question (under 80 characters, or
+  a short line with a question word). A long last paragraph stays whole.
+- A link stays with the answer, never alone in the question message.
+- With human-like typing on, the second message gets its own typing pause.

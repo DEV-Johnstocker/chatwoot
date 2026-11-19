@@ -1,0 +1,107 @@
+package bot
+
+import (
+	"context"
+	"log/slog"
+	"regexp"
+	"strings"
+	"time"
+	"unicode"
+)
+
+// A reply that ends with a question goes out as two messages: first the
+// answer or proof (with any link), then the one question on its own, the way
+// a person types in a chat. The question no longer hides under a link. Never
+// more than two: more would read as spam and ping the customer each time.
+// The split is done here, not by the model, so it is predictable.
+// Issue: DEV-Johnstocker/chatwoot#1
+
+// partGap is the shortest pause before the second message, so the two arrive
+// in order and read as typed one after the other.
+const partGap = 1200 * time.Millisecond
+
+var lastURL = regexp.MustCompile(`https?://\S+`)
+
+// splitReply returns reply as one or two messages.
+func splitReply(reply string) []string {
+	text := strings.TrimSpace(reply)
+	var lines []string
+	for _, l := range strings.Split(text, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) >= 2 {
+		last := lines[len(lines)-1]
+		// "ดูตัวอย่างได้ที่ <link> อยากดูราคาไหมครับ": the link stays with the answer.
+		if head, tail, ok := cutAfterLink(last); ok {
+			return []string{strings.Join(append(lines[:len(lines)-1], head), "\n"), tail}
+		}
+		if isQuestionLine(last) && hasWords(last) {
+			return []string{strings.Join(lines[:len(lines)-1], "\n"), last}
+		}
+		return []string{text}
+	}
+	// One line: a link followed by the question ("…/examples อยากดูราคาไหมครับ").
+	if head, tail, ok := cutAfterLink(text); ok {
+		return []string{head, tail}
+	}
+	return []string{text}
+}
+
+// cutAfterLink splits a line at its last link when a question follows it.
+func cutAfterLink(line string) (head, tail string, ok bool) {
+	locs := lastURL.FindAllStringIndex(line, -1)
+	if len(locs) == 0 {
+		return "", "", false
+	}
+	end := locs[len(locs)-1][1]
+	head, tail = strings.TrimSpace(line[:end]), strings.TrimSpace(line[end:])
+	if tail == "" || !isQuestionLine(tail) || !hasWords(tail) {
+		return "", "", false
+	}
+	return head, tail, true
+}
+
+// hasWords reports whether s holds letters, not only a link or emoji.
+func hasWords(s string) bool {
+	return strings.ContainsFunc(lastURL.ReplaceAllString(s, ""), unicode.IsLetter)
+}
+
+// sendParts sends the reply as one or two messages. The first waits for its
+// typing time like any reply; before the second, "typing…" shows again for
+// that message's own typing time (typing switch on) or partGap (off).
+func (b *Bot) sendParts(ctx context.Context, log *slog.Logger, acct, conv int64, typing bool, started time.Time, text string) error {
+	parts := splitReply(text)
+	for i, part := range parts {
+		if i == 0 {
+			b.typingPause(ctx, typing, started, part)
+		} else {
+			if err := b.opts.Chatwoot.SetTyping(ctx, acct, conv, true); err != nil {
+				log.Warn("typing on failed", "error", err)
+			}
+			pause := partGap
+			if typing {
+				pause = max(pause, typingTime(part, b.opts.TypingSpeed, b.opts.TypingMax))
+			}
+			b.wait(ctx, pause)
+		}
+		if err := b.sendReply(ctx, log, acct, conv, part); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// questionLineMax is the longest last line still read as "the question": a
+// short line with a question word anywhere ("ทำคลิปแนวไหนอยู่ครับ จะได้แนะนำ
+// ให้ตรงกับงานเลย"). Longer lines must end with the question.
+const questionLineMax = 80
+
+// isQuestionLine reports whether a reply's last line is its question.
+func isQuestionLine(line string) bool {
+	if asksSomething(line) {
+		return true
+	}
+	return len([]rune(line)) <= questionLineMax && (strings.ContainsAny(line, "?？") || thaiQuestion.MatchString(line))
+}
