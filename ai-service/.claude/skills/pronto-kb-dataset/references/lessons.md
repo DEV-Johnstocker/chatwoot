@@ -220,3 +220,18 @@ Rules implied:
   a short line with a question word). A long last paragraph stays whole.
 - A link stays with the answer, never alone in the question message.
 - With human-like typing on, the second message gets its own typing pause.
+
+## 2026-11-19 — answer and question on one line
+
+Saifahfund Messenger test on STAGING (account 3): the model sometimes writes
+the answer and its question on one line ("…ดูซ้ำได้ครับ ทำคลิปแนวไหนอยู่ครับ?"),
+which went out as one message. The split now also cuts a one-line reply at
+the start of its closing question, at a sentence end (ครับ/ค่ะ/. + space),
+when the answer part has at least 40 characters. Replaying the 6 real
+replies of that test: only that one changed. 6 of 7 checks had passed before
+(two messages, thanks + next step, silence on 👍 and a second thanks,
+hand-off for a student discount with no data).
+
+Review pictures on STAGING: Facebook refused them ("robots.txt"): the
+STAGING host's Cloudflare-managed robots.txt blocks meta-externalagent,
+which fetches Messenger attachments. Keep picture hosts open to that agent.

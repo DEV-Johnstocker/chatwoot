@@ -37,6 +37,12 @@ func splitReply(reply string) []string {
 		if head, tail, ok := cutAfterLink(last); ok {
 			return []string{strings.Join(append(lines[:len(lines)-1], head), "\n"), tail}
 		}
+		// A long last line that closes with its question: only the question moves.
+		if len([]rune(last)) > questionLineMax {
+			if head, tail, ok := cutLastQuestion(last, 1); ok {
+				return []string{strings.Join(append(lines[:len(lines)-1], head), "\n"), tail}
+			}
+		}
 		if isQuestionLine(last) && hasWords(last) {
 			return []string{strings.Join(lines[:len(lines)-1], "\n"), last}
 		}
@@ -46,7 +52,39 @@ func splitReply(reply string) []string {
 	if head, tail, ok := cutAfterLink(text); ok {
 		return []string{head, tail}
 	}
+	// One line: answer sentences, then the question ("…ดูซ้ำได้ครับ ทำคลิปแนวไหนอยู่ครับ?").
+	if head, tail, ok := cutLastQuestion(text, oneLineHeadMin); ok {
+		return []string{head, tail}
+	}
 	return []string{text}
+}
+
+// oneLineHeadMin is the shortest answer worth its own message when answer and
+// question share one line: "ได้ครับ ใช้คอมรุ่นไหนครับ" stays one message.
+const oneLineHeadMin = 40
+
+// sentenceEnd is where a sentence ends inside a line: a Thai polite ending or
+// a full stop, then a space.
+var sentenceEnd = regexp.MustCompile(`(ครับ|ค่ะ|คะ|นะ|[.!。])\s+`)
+
+// cutLastQuestion splits a line that ends with a question at the start of
+// that question's sentence. The answer before it must have at least headMin
+// characters and the question at most questionLineMax.
+func cutLastQuestion(line string, headMin int) (head, tail string, ok bool) {
+	if !asksSomething(line) {
+		return "", "", false
+	}
+	ends := sentenceEnd.FindAllStringIndex(line, -1)
+	for i := len(ends) - 1; i >= 0; i-- {
+		head, tail = strings.TrimSpace(line[:ends[i][1]]), strings.TrimSpace(line[ends[i][1]:])
+		if len([]rune(tail)) > questionLineMax {
+			return "", "", false
+		}
+		if asksSomething(tail) && hasWords(tail) && hasWords(head) && len([]rune(head)) >= headMin && !asksSomething(head) {
+			return head, tail, true
+		}
+	}
+	return "", "", false
 }
 
 // cutAfterLink splits a line at its last link when a question follows it.
