@@ -514,8 +514,12 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	if text == "" && len(pics) == 0 {
 		text = b.opts.HandoffMessage // only markers the bot cannot honour: never send nothing
 	}
-	if text != "" {
-		if err := b.sendParts(ctx, log, acct, conv, g.typing, started, text); err != nil {
+	// With pictures, a closing question waits until after them: answer →
+	// pictures → question, so the question is the last thing the customer
+	// sees (owner, 2026-11-20). Issue: DEV-Johnstocker/chatwoot#1
+	parts, question := picturesBeforeQuestion(text, len(pics) > 0)
+	if len(parts) > 0 {
+		if err := b.sendList(ctx, log, acct, conv, g.typing, started, parts, true); err != nil {
 			log.Error("send reply failed, handing off", "error", err)
 			tr.Outcome = "handoff:" + ReasonSendFailed
 			hctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), handoffBudget)
@@ -526,6 +530,11 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 	}
 	if len(pics) > 0 {
 		sent := b.sendImages(ctx, log, acct, conv, pics)
+		if question != "" {
+			if err := b.sendList(ctx, log, acct, conv, g.typing, started, []string{question}, false); err != nil {
+				log.Error("send question after pictures failed", "error", err)
+			}
+		}
 		if text == "" && len(sent) == 0 { // the reply was only pictures and none went out
 			text = b.opts.HandoffMessage
 			if err := cw.SendMessage(ctx, acct, conv, text); err != nil {

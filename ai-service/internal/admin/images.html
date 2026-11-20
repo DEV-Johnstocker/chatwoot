@@ -44,7 +44,7 @@
           <input type="hidden" name="id" value="{{.ID}}">
           <div><label for="img-name-{{.ID}}">{{T "Name (what the bot uses)"}}</label>
             <input id="img-name-{{.ID}}" name="name" type="text" required maxlength="{{$lim.Name}}" value="{{.Name}}"></div>
-          <div><label for="img-cap-{{.ID}}">{{T "Caption sent with the image"}}</label>
+          <div><label for="img-cap-{{.ID}}">{{T "Caption (sent only when this is the one picture in a reply)"}}</label>
             <input id="img-cap-{{.ID}}" name="caption" type="text" maxlength="{{$lim.Caption}}" value="{{.Caption}}"></div>
           <div class="full"><label for="img-when-{{.ID}}">{{T "When to send it"}}</label>
             <textarea id="img-when-{{.ID}}" name="when" rows="2" maxlength="{{$lim.When}}">{{.When}}</textarea></div>
@@ -81,7 +81,7 @@
           <input id="img-new-name" name="name" type="text" required maxlength="{{$lim.Name}}" placeholder="รีวิว AutoCut">
           <label for="img-new-when">{{T "When to send it"}}</label>
           <textarea id="img-new-when" name="when" rows="3" maxlength="{{$lim.When}}" placeholder="ลูกค้าขอดูรีวิว หรือถามว่ามีคนใช้คอร์ส AutoCut จริงไหม"></textarea>
-          <label for="img-new-cap">{{T "Caption sent with the image"}}</label>
+          <label for="img-new-cap">{{T "Caption (sent only when this is the one picture in a reply)"}}</label>
           <input id="img-new-cap" name="caption" type="text" maxlength="{{$lim.Caption}}" placeholder="รีวิวจากผู้เรียนจริงครับ">
           <div class="card-foot"><button type="submit" name="action" value="add" class="primary small">{{T "Add image"}}</button></div>
         </form>

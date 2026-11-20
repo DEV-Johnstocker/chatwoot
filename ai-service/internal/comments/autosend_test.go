@@ -233,3 +233,58 @@ func TestTryAutoSend_BotOnStillSends(t *testing.T) {
 		t.Fatalf("sent %v why %q err %v", sent, why, err)
 	}
 }
+
+// Auto-send also posts the public line under the comment, like the owner's
+// Send with the box ticked; a failed public line keeps the private reply.
+// Issue: DEV-Johnstocker/chatwoot#1
+func TestTryAutoSend_AlsoRepliesUnderTheComment(t *testing.T) {
+	cases := map[string]struct {
+		text     string
+		pubErr   error
+		wantCall int
+		wantWhy  string
+	}{
+		"public line set":  {"ส่งรายละเอียดทางข้อความแล้วครับ", nil, 1, ""},
+		"public line off":  {"", nil, 0, ""},
+		"public line fail": {"ส่งรายละเอียดทางข้อความแล้วครับ", errors.New("graph down"), 1, PublicReplyFailed},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			ctx := context.Background()
+			store, sender, pub := &Memory{}, &fakeSender{}, &fakePublic{err: tc.pubErr}
+			q := autoQueue(store, sender)
+			q.Public, q.PublicText = pub, tc.text
+			c := reviewedComment(t, store, true)
+
+			// Act
+			sent, why, err := q.TryAutoSend(ctx, 2, c.ID)
+
+			// Assert
+			got, _ := store.Get(ctx, 2, c.ID)
+			if err != nil || !sent || why != tc.wantWhy || got.Status != StatusSent || len(sender.calls) != 1 {
+				t.Fatalf("sent %v why %q err %v status %s private %v", sent, why, err, got.Status, sender.calls)
+			}
+			if len(pub.calls) != tc.wantCall || (tc.wantCall == 1 && pub.calls[0] != c.CommentID+"|"+tc.text) {
+				t.Fatalf("public calls %v", pub.calls)
+			}
+		})
+	}
+}
+
+func TestTryAutoSend_HeldCommentGetsNoPublicLine(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	store, pub := &Memory{}, &fakePublic{}
+	q := autoQueue(store, &fakeSender{})
+	q.Public, q.PublicText = pub, "ส่งรายละเอียดทางข้อความแล้วครับ"
+	c := reviewedComment(t, store, false)
+
+	// Act
+	sent, _, err := q.TryAutoSend(ctx, 2, c.ID)
+
+	// Assert
+	if err != nil || sent || len(pub.calls) != 0 {
+		t.Fatalf("sent %v err %v public %v", sent, err, pub.calls)
+	}
+}

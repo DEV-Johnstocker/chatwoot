@@ -130,8 +130,15 @@ func (q *Queue) countAutoSend(accountID int64, at time.Time) {
 	q.autoSent[accountID] = append(q.autoSent[accountID], at)
 }
 
+// PublicReplyFailed is TryAutoSend's note when the private reply went out but
+// the public line under the comment did not.
+const PublicReplyFailed = "the reply under the comment failed"
+
 // TryAutoSend sends the stored draft of a just-reviewed comment when every
-// auto-send rule allows it. It returns whether it sent, and why not.
+// auto-send rule allows it, then posts the public line under the comment
+// when one is set, as the owner's Send does with its box ticked (owner,
+// 2026-11-20). It returns whether it sent, and why not; after a send, the
+// note says when the public line failed (the private reply still counts).
 func (q *Queue) TryAutoSend(ctx context.Context, accountID, id int64) (bool, string, error) {
 	c, err := q.Store.Get(ctx, accountID, id)
 	if err != nil {
@@ -143,6 +150,11 @@ func (q *Queue) TryAutoSend(ctx context.Context, accountID, id int64) (bool, str
 	q.countAutoSend(accountID, q.now()) // counted before the send, so a failed one still uses a slot
 	if err := q.Send(ctx, accountID, id, c.Version, c.Draft, AutoSentBy); err != nil {
 		return false, "", err
+	}
+	if q.PublicReply() != "" {
+		if err := q.ReplyPublicly(ctx, accountID, id); err != nil {
+			return true, PublicReplyFailed, nil
+		}
 	}
 	return true, "", nil
 }
