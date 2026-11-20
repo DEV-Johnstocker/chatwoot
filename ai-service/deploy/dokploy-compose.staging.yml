@@ -39,7 +39,17 @@ x-chatwoot: &chatwoot
     DATABASE_URL: postgres://postgres:${STAGING_DB_PASSWORD:?set in Dokploy}@stg-postgres:5432/chatwoot
     REDIS_URL: redis://stg-redis:6379
     REDIS_PASSWORD: ${REDIS_PASSWORD:?set in Dokploy}
-    ACTIVE_STORAGE_SERVICE: local
+    # Uploads go to a private R2 bucket when ACTIVE_STORAGE_SERVICE=s3_compatible
+    # is set in Dokploy. Facebook then fetches bot pictures from short-lived
+    # signed R2 links instead of this host, which sits behind Cloudflare Access
+    # and the zone's managed robots.txt. Unset, it stays on the local volume.
+    ACTIVE_STORAGE_SERVICE: ${ACTIVE_STORAGE_SERVICE:-local}
+    STORAGE_BUCKET_NAME: ${STORAGE_BUCKET_NAME:-}
+    STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-}
+    STORAGE_REGION: ${STORAGE_REGION:-auto}
+    STORAGE_FORCE_PATH_STYLE: 'true'
+    STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
+    STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
     RAILS_MAX_THREADS: '3'
     SIDEKIQ_CONCURRENCY: '3'
     # SAFE_FETCH_ALLOW_PRIVATE_NETWORK stays unset (see the production file).

@@ -120,6 +120,15 @@ production's), `LLM_API_KEY`/`EMBED_API_KEY` (the spend-limited CI key),
 (both required: random placeholders from `openssl rand -hex 32` until the
 Agent Bot exists), `COMPOSE_PROFILES` (empty until the bot exists, then
 `ai`), `COMPOSE_BAKE=false`. SMTP is optional.
+**Uploads (R2):** STAGING keeps Chatwoot uploads in the private R2 bucket
+`pronto-staging-uploads`. Facebook fetches pictures from short-lived signed R2
+links, because it cannot pass Cloudflare Access or the zone's managed
+robots.txt on `pronto-staging`. Set `ACTIVE_STORAGE_SERVICE=s3_compatible`,
+`STORAGE_BUCKET_NAME=pronto-staging-uploads`,
+`STORAGE_ENDPOINT=https://<account id>.r2.cloudflarestorage.com`, and an R2
+API key limited to that bucket as `STORAGE_ACCESS_KEY_ID`/`STORAGE_SECRET_ACCESS_KEY`.
+Without these, uploads stay on the `storage_data` volume. Files uploaded
+before the switch stay there and are not copied.
 Never reuse a production secret. The staging compose ID goes in the
 workspace `.env.supabase` as `DOKPLOY_STAGING_COMPOSE_ID`.
 
