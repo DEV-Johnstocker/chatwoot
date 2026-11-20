@@ -50,6 +50,10 @@ x-chatwoot: &chatwoot
     STORAGE_FORCE_PATH_STYLE: 'true'
     STORAGE_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:-}
     STORAGE_SECRET_ACCESS_KEY: ${STORAGE_SECRET_ACCESS_KEY:-}
+    # R2 rejects the extra checksums newer aws-sdk versions send by default
+    # ("You can only specify one non-default checksum at a time").
+    AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+    AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
     RAILS_MAX_THREADS: '3'
     SIDEKIQ_CONCURRENCY: '3'
     # SAFE_FETCH_ALLOW_PRIVATE_NETWORK stays unset (see the production file).
