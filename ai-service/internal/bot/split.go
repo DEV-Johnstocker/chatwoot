@@ -110,9 +110,15 @@ func hasWords(s string) bool {
 // typing time like any reply; before the second, "typing…" shows again for
 // that message's own typing time (typing switch on) or partGap (off).
 func (b *Bot) sendParts(ctx context.Context, log *slog.Logger, acct, conv int64, typing bool, started time.Time, text string) error {
-	parts := splitReply(text)
+	return b.sendList(ctx, log, acct, conv, typing, started, splitReply(text), true)
+}
+
+// sendList sends already split messages in order. first says whether the
+// first one opens the reply (it waits out the reply's typing time) or follows
+// something already sent (typing shows again, then a pause).
+func (b *Bot) sendList(ctx context.Context, log *slog.Logger, acct, conv int64, typing bool, started time.Time, parts []string, first bool) error {
 	for i, part := range parts {
-		if i == 0 {
+		if i == 0 && first {
 			b.typingPause(ctx, typing, started, part)
 		} else {
 			if err := b.opts.Chatwoot.SetTyping(ctx, acct, conv, true); err != nil {

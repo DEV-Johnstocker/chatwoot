@@ -135,6 +135,32 @@ func (b *Bot) imagesToSend(ctx context.Context, log *slog.Logger, acct, conv int
 	return out
 }
 
+// captionFor is the text sent with a picture. Facebook delivers a caption (a
+// separate text message) faster than its picture, so with two or more
+// pictures all captions arrived first, apart from their pictures (STAGING,
+// 2026-11-20). Only a lone picture keeps its caption; the reply's text
+// already introduces several. Issue: DEV-Johnstocker/chatwoot#1
+func captionFor(img images.Image, count int) string {
+	if count > 1 {
+		return ""
+	}
+	return img.Caption
+}
+
+// picturesBeforeQuestion returns the messages to send before the pictures
+// and, when the reply ends with a separate question and pictures follow, that
+// question to send after them. Without pictures every message goes first.
+func picturesBeforeQuestion(text string, pictures bool) ([]string, string) {
+	if text == "" {
+		return nil, ""
+	}
+	parts := splitReply(text)
+	if !pictures || len(parts) < 2 {
+		return parts, ""
+	}
+	return parts[:len(parts)-1], parts[len(parts)-1]
+}
+
 // sendImages sends the pictures and returns the markers of those that went out.
 func (b *Bot) sendImages(ctx context.Context, log *slog.Logger, acct, conv int64, imgs []images.Image) []string {
 	sender, ok := b.opts.Chatwoot.(AttachmentSender)
@@ -146,7 +172,7 @@ func (b *Bot) sendImages(ctx context.Context, log *slog.Logger, acct, conv int64
 		if i > 0 {
 			b.wait(ctx, imageGap)
 		}
-		if err := sender.SendAttachment(ctx, acct, conv, img.Caption, img.Filename(), img.ContentType, img.Data); err != nil {
+		if err := sender.SendAttachment(ctx, acct, conv, captionFor(img, len(imgs)), img.Filename(), img.ContentType, img.Data); err != nil {
 			log.Error("send image failed", "image_id", img.ID, "error", err)
 			continue
 		}

@@ -408,6 +408,8 @@ func (w *Worker) autoSend(ctx context.Context, c Comment) {
 	switch {
 	case err != nil:
 		w.Logger.Warn("auto-send page comment", "account_id", c.AccountID, "comment_id", c.CommentID, "error", err)
+	case sent && why != "":
+		w.Logger.Warn("page comment auto-sent", "account_id", c.AccountID, "comment_id", c.CommentID, "note", why)
 	case sent:
 		w.Logger.Info("page comment auto-sent", "account_id", c.AccountID, "comment_id", c.CommentID)
 	default:

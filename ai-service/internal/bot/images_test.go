@@ -72,8 +72,8 @@ func TestImages_MarkerSendsTheNamedPictureOnce(t *testing.T) {
 	if strings.Count(got, "image:รีวิวจากผู้เรียนจริงครับ|image.png|image/png") != 1 || strings.Contains(got, "Workshop") {
 		t.Fatalf("want the AutoCut picture exactly once: %s", got)
 	}
-	if strings.Contains(got, "[[") || !strings.Contains(got, "msg:มีผู้ใช้จริงหลายท่านครับ | typing:on | msg:สนใจทำคลิปแนวไหนครับ | image:") {
-		t.Fatalf("text must go first, without the marker: %s", got)
+	if strings.Contains(got, "[[") || !strings.Contains(got, "msg:มีผู้ใช้จริงหลายท่านครับ | image:รีวิวจากผู้เรียนจริงครับ|image.png|image/png | typing:on | msg:สนใจทำคลิปแนวไหนครับ") {
+		t.Fatalf("answer, then the picture with its caption, then the question, without the marker: %s", got)
 	}
 	if !strings.Contains(l.got[0].Content, "- รีวิว Workshop: ถามรีวิว Workshop") {
 		t.Error("the prompt must list the pictures with when to send them")
@@ -233,5 +233,47 @@ func TestImages_ThreeReviewsOneByOneAndAtMostThree(t *testing.T) {
 	}
 	if len(pauses) != 2 || pauses[0] != imageGap {
 		t.Errorf("pauses %v, want %v between each of the 3 pictures", pauses, imageGap)
+	}
+}
+
+// Several pictures go without captions: Facebook delivered every caption
+// before any picture. Issue: DEV-Johnstocker/chatwoot#1
+func TestImages_SeveralPicturesGoWithoutCaptionsBeforeTheQuestion(t *testing.T) {
+	// Arrange
+	b, cw, _, _ := imageBot(t, "ได้ครับ ส่งรีวิวมาให้ดูครับ\n[[IMAGE: รีวิว AutoCut]]\n[[IMAGE: รีวิว Workshop]]\nอยากดูราคาโปรตอนนี้ไหมครับ", true)
+
+	// Act
+	b.Process(context.Background(), customerMsg("ขอดูรีวิวหน่อยครับ"))
+
+	// Assert
+	got := cw.joined()
+	want := "msg:ได้ครับ ส่งรีวิวมาให้ดูครับ | image:|image.png|image/png | image:|image.png|image/png | typing:on | msg:อยากดูราคาโปรตอนนี้ไหมครับ"
+	if !strings.Contains(got, want) || strings.Contains(got, "รีวิวจากผู้เรียนจริงครับ") {
+		t.Fatalf("want answer, two pictures without captions, then the question:\n%s", got)
+	}
+}
+
+func TestPicturesBeforeQuestion(t *testing.T) {
+	cases := map[string]struct {
+		text      string
+		pictures  bool
+		wantParts []string
+		wantQ     string
+	}{
+		"no pictures keeps both":   {"มีครับ\nสนใจแนวไหนครับ", false, []string{"มีครับ", "สนใจแนวไหนครับ"}, ""},
+		"pictures move question":   {"มีครับ\nสนใจแนวไหนครับ", true, []string{"มีครับ"}, "สนใจแนวไหนครับ"},
+		"one message stays first":  {"มีรีวิวครับ", true, []string{"มีรีวิวครับ"}, ""},
+		"empty text sends nothing": {"", true, nil, ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Act
+			parts, q := picturesBeforeQuestion(c.text, c.pictures)
+
+			// Assert
+			if strings.Join(parts, "|") != strings.Join(c.wantParts, "|") || q != c.wantQ {
+				t.Fatalf("parts %q question %q", parts, q)
+			}
+		})
 	}
 }
