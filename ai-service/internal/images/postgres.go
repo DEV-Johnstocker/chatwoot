@@ -14,10 +14,10 @@ type Postgres struct {
 	Pool *pgxpool.Pool
 }
 
-const metaCols = `id, account_id, name, when_to_send, caption, content_type, octet_length(data), updated_at`
+const metaCols = `id, account_id, name, when_to_send, caption, use_in_followup, content_type, octet_length(data), updated_at`
 
 func scanMeta(row pgx.Row, m *Meta) error {
-	return row.Scan(&m.ID, &m.AccountID, &m.Name, &m.When, &m.Caption, &m.ContentType, &m.Size, &m.UpdatedAt)
+	return row.Scan(&m.ID, &m.AccountID, &m.Name, &m.When, &m.Caption, &m.FollowUp, &m.ContentType, &m.Size, &m.UpdatedAt)
 }
 
 // List implements Store.
@@ -41,7 +41,7 @@ func (s *Postgres) List(ctx context.Context, accountID int64) ([]Meta, error) {
 func (s *Postgres) one(ctx context.Context, where string, args ...any) (Image, error) {
 	var img Image
 	err := s.Pool.QueryRow(ctx, `SELECT `+metaCols+`, data FROM bot_images WHERE `+where, args...).
-		Scan(&img.ID, &img.AccountID, &img.Name, &img.When, &img.Caption, &img.ContentType, &img.Size, &img.UpdatedAt, &img.Data)
+		Scan(&img.ID, &img.AccountID, &img.Name, &img.When, &img.Caption, &img.FollowUp, &img.ContentType, &img.Size, &img.UpdatedAt, &img.Data)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Image{}, ErrNotFound
 	}
@@ -98,8 +98,8 @@ func insertTx(ctx context.Context, tx pgx.Tx, m Meta, ct string, data []byte) (i
 		return 0, ErrFull
 	}
 	var id int64
-	err := tx.QueryRow(ctx, `INSERT INTO bot_images (account_id, name, name_key, when_to_send, caption, content_type, data)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, m.AccountID, m.Name, Key(m.Name), m.When, m.Caption, ct, data).Scan(&id)
+	err := tx.QueryRow(ctx, `INSERT INTO bot_images (account_id, name, name_key, when_to_send, caption, use_in_followup, content_type, data)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, m.AccountID, m.Name, Key(m.Name), m.When, m.Caption, m.FollowUp, ct, data).Scan(&id)
 	if err != nil {
 		return 0, nameTaken(err)
 	}
@@ -114,16 +114,16 @@ func (s *Postgres) Update(ctx context.Context, m Meta, data []byte) error {
 	}
 	var tag pgconn.CommandTag
 	if data == nil {
-		tag, err = s.Pool.Exec(ctx, `UPDATE bot_images SET name = $3, name_key = $4, when_to_send = $5, caption = $6, updated_at = now()
-			WHERE account_id = $1 AND id = $2`, m.AccountID, m.ID, m.Name, Key(m.Name), m.When, m.Caption)
+		tag, err = s.Pool.Exec(ctx, `UPDATE bot_images SET name = $3, name_key = $4, when_to_send = $5, caption = $6, use_in_followup = $7,
+			updated_at = now() WHERE account_id = $1 AND id = $2`, m.AccountID, m.ID, m.Name, Key(m.Name), m.When, m.Caption, m.FollowUp)
 	} else {
 		ct, clean, perr := Prepare(data)
 		if perr != nil {
 			return perr
 		}
 		tag, err = s.Pool.Exec(ctx, `UPDATE bot_images SET name = $3, name_key = $4, when_to_send = $5, caption = $6,
-			content_type = $7, data = $8, updated_at = now() WHERE account_id = $1 AND id = $2`,
-			m.AccountID, m.ID, m.Name, Key(m.Name), m.When, m.Caption, ct, clean)
+			use_in_followup = $7, content_type = $8, data = $9, updated_at = now() WHERE account_id = $1 AND id = $2`,
+			m.AccountID, m.ID, m.Name, Key(m.Name), m.When, m.Caption, m.FollowUp, ct, clean)
 	}
 	if err != nil {
 		return nameTaken(err)
@@ -145,9 +145,9 @@ func (s *Postgres) Delete(ctx context.Context, accountID, id int64) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 	tag, err := tx.Exec(ctx, `WITH gone AS (
 			DELETE FROM bot_images WHERE account_id = $1 AND id = $2
-			RETURNING account_id, id, name, when_to_send, caption, content_type, data)
-		INSERT INTO bot_images_removed (account_id, image_id, name, when_to_send, caption, content_type, data)
-		SELECT account_id, id, name, when_to_send, caption, content_type, data FROM gone`, accountID, id)
+			RETURNING account_id, id, name, when_to_send, caption, use_in_followup, content_type, data)
+		INSERT INTO bot_images_removed (account_id, image_id, name, when_to_send, caption, use_in_followup, content_type, data)
+		SELECT account_id, id, name, when_to_send, caption, use_in_followup, content_type, data FROM gone`, accountID, id)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func (s *Postgres) Delete(ctx context.Context, accountID, id int64) error {
 
 // Removed implements Store.
 func (s *Postgres) Removed(ctx context.Context, accountID int64) ([]RemovedImage, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, image_id, account_id, name, when_to_send, caption, octet_length(data), removed_at
+	rows, err := s.Pool.Query(ctx, `SELECT id, image_id, account_id, name, when_to_send, caption, use_in_followup, octet_length(data), removed_at
 		FROM bot_images_removed WHERE account_id = $1 AND removed_at >= now() - make_interval(days => $3)
 		ORDER BY removed_at DESC, id DESC LIMIT $2`, accountID, MaxRemovedKept, RemovedKeepDays)
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *Postgres) Removed(ctx context.Context, accountID int64) ([]RemovedImage
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (RemovedImage, error) {
 		var m RemovedImage
-		err := r.Scan(&m.ID, &m.ImageID, &m.AccountID, &m.Name, &m.When, &m.Caption, &m.Size, &m.RemovedAt)
+		err := r.Scan(&m.ID, &m.ImageID, &m.AccountID, &m.Name, &m.When, &m.Caption, &m.FollowUp, &m.Size, &m.RemovedAt)
 		return m, err
 	})
 }
@@ -189,7 +189,7 @@ func (s *Postgres) Restore(ctx context.Context, accountID, removedID int64) (int
 	img := Image{Meta: Meta{AccountID: accountID}}
 	err = tx.QueryRow(ctx, `DELETE FROM bot_images_removed WHERE account_id = $1 AND id = $2
 		AND removed_at >= now() - make_interval(days => $3)
-		RETURNING name, when_to_send, caption, data`, accountID, removedID, RemovedKeepDays).Scan(&img.Name, &img.When, &img.Caption, &img.Data)
+		RETURNING name, when_to_send, caption, use_in_followup, data`, accountID, removedID, RemovedKeepDays).Scan(&img.Name, &img.When, &img.Caption, &img.FollowUp, &img.Data)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrNotFound
 	}

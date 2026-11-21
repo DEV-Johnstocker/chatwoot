@@ -37,11 +37,14 @@ const (
 
 // Meta is an image without its bytes: what the prompt and the admin list need.
 type Meta struct {
-	ID          int64
-	AccountID   int64
-	Name        string // what the bot writes in the marker, e.g. "รีวิว AutoCut"
-	When        string // when to send it, e.g. "ลูกค้าขอดูรีวิวคอร์ส AutoCut"
-	Caption     string // sent with the image
+	ID        int64
+	AccountID int64
+	Name      string // what the bot writes in the marker, e.g. "รีวิว AutoCut"
+	When      string // when to send it, e.g. "ลูกค้าขอดูรีวิวคอร์ส AutoCut"
+	Caption   string // sent with the image
+	// FollowUp: the owner ticked "use in follow-ups"; a follow-up may send
+	// this picture after its text (schema v25).
+	FollowUp    bool
 	ContentType string // image/jpeg or image/png
 	Size        int
 	UpdatedAt   time.Time
@@ -178,6 +181,7 @@ type RemovedImage struct {
 	Name      string
 	When      string
 	Caption   string
+	FollowUp  bool
 	Size      int
 	RemovedAt time.Time
 }
