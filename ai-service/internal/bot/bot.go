@@ -403,7 +403,11 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			return
 		}
 		tr.Input = in.text
-		b.recall(ctx, log, acct, ev.Inbox.ID, ev.Sender.ID, conv, ev.ID)
+		contact := ev.Sender.ID
+		if !customerVerified(ev.Conversation) {
+			contact = 0 // no earlier chat where the channel cannot prove who this is
+		}
+		b.recall(ctx, log, acct, ev.Inbox.ID, contact, conv, ev.ID)
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "user", Content: in.text})
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		b.noteCustomer(ctx, log, ev, in.text)
@@ -637,7 +641,7 @@ func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, e
 		messages = append(messages, llm.Message{Role: "system", Content: knowledgePrompt(hits, err)})
 	}
 	if len(earlier.Turns) > 0 {
-		messages = append(messages, llm.Message{Role: "system", Content: earlierPrompt(earlier, b.opts.Location)})
+		messages = append(messages, earlierMessages(earlier, b.opts.Location)...)
 	}
 	for _, t := range history {
 		messages = append(messages, llm.Message{Role: t.Role, Content: t.Content})

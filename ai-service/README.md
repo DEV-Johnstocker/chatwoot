@@ -47,7 +47,10 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   the last 6 messages (300 characters each) of the customer's previous chat
   in the same inbox, shown to the model as an earlier chat, so a returning
   customer is not asked again and does not get the same pictures twice
-  (recalled pictures are matched by their file size).
+  (recalled pictures are matched by their file size). Only channels that
+  prove who the customer is load it (Messenger, Instagram, LINE, WhatsApp,
+  Telegram, and the website widget with identity validation on); the earlier
+  messages keep their customer and shop roles, never a system message.
 - **Backup AI**: `LLM_FALLBACK_*` answers when the main model fails, the
   question rewrite falls back to it too, and `EMBED_FALLBACK_*` reaches the
   same embedding model another way (for example OpenRouter with

@@ -163,10 +163,15 @@ type Sender struct {
 type Conversation struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"` // open | resolved | pending | snoozed
+	// Channel is the inbox's channel type, e.g. "Channel::FacebookPage".
+	Channel string `json:"channel"`
 	// ContactInbox.SourceID is the customer's id in the channel: for
 	// Messenger, the page-scoped id Facebook also gives the comment's author.
+	// HmacVerified is true when a website widget visitor's identity was
+	// signed by the site (Chatwoot's identity validation).
 	ContactInbox struct {
-		SourceID string `json:"source_id"`
+		SourceID     string `json:"source_id"`
+		HmacVerified bool   `json:"hmac_verified"`
 	} `json:"contact_inbox"`
 }
 
