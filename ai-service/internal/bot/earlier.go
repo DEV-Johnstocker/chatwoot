@@ -26,6 +26,10 @@ const (
 	// earlierTimeout bounds the lookup (two Chatwoot calls): a slow Chatwoot
 	// costs the reply at most this long, then the bot goes on without it.
 	earlierTimeout = 5 * time.Second
+	// earlierMaxAge is how old a previous chat may be (owner, 2026-11-21):
+	// older prices and promotions must not come back, and the bot keeps less
+	// personal history. A chat with no known date is not used.
+	earlierMaxAge = 90 * 24 * time.Hour
 )
 
 // PreviousChatReader finds the contact's conversation before this one in the
@@ -71,6 +75,10 @@ func (b *Bot) loadEarlier(ctx context.Context, log *slog.Logger, acct, inbox, co
 		return
 	}
 	if len(e.Turns) == 0 {
+		return
+	}
+	if e.When.IsZero() || b.now().Sub(e.When) > earlierMaxAge {
+		log.Debug("previous chat too old, not used")
 		return
 	}
 	for i := range e.Turns {
