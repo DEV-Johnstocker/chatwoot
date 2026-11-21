@@ -164,3 +164,34 @@ func TestImages_NeedLoginAndSameOrigin(t *testing.T) {
 		t.Fatalf("no auth %d cross-site %d wrong pw %d cross-site remove %d images %+v", a.Code, c.Code, p.Code, rmCode, list)
 	}
 }
+
+func TestImages_FollowUpTickSavedAndShown(t *testing.T) {
+	// Arrange: one picture added ticked, one added without the tick.
+	ctx := context.Background()
+	mux, im, _ := imageEnv(t)
+	serve(mux, imagePost(t, map[string]string{"account": "1", "action": "add", "name": "รีวิว Workshop", "followup": "on"}, testPNG(t)))
+	serve(mux, imagePost(t, map[string]string{"account": "1", "action": "add", "name": "รีวิว AutoCut"}, testPNG(t)))
+	ws, _, _ := im.Find(ctx, 1, "รีวิว Workshop")
+	ac, _, _ := im.Find(ctx, 1, "รีวิว AutoCut")
+
+	// Act: untick the first, tick the second, then load the page.
+	serve(mux, imagePost(t, map[string]string{"account": "1", "action": "save", "id": strconv.FormatInt(ws.ID, 10), "name": "รีวิว Workshop"}, nil))
+	serve(mux, imagePost(t, map[string]string{"account": "1", "action": "save", "id": strconv.FormatInt(ac.ID, 10), "name": "รีวิว AutoCut", "followup": "on"}, nil))
+	wsAfter, _ := im.Get(ctx, 1, ws.ID)
+	acAfter, _ := im.Get(ctx, 1, ac.ID)
+	req := getPath("/admin/images?account=1")
+	req.Header.Set("Accept-Language", "th")
+	page := serve(mux, req).Body.String()
+
+	// Assert
+	if !ws.FollowUp || ac.FollowUp {
+		t.Fatalf("on add: workshop %v autocut %v, want true false", ws.FollowUp, ac.FollowUp)
+	}
+	if wsAfter.FollowUp || !acAfter.FollowUp {
+		t.Fatalf("after save: workshop %v autocut %v, want false true", wsAfter.FollowUp, acAfter.FollowUp)
+	}
+	if !strings.Contains(page, "ใช้ในการติดตามลูกค้า") || strings.Count(page, `name="followup"`) != 3 || strings.Count(page, "checked") != 1 {
+		t.Errorf("page: label %v, tick boxes %d (want 3: two pictures and the add form), checked %d (want 1)",
+			strings.Contains(page, "ใช้ในการติดตามลูกค้า"), strings.Count(page, `name="followup"`), strings.Count(page, "checked"))
+	}
+}
