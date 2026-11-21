@@ -340,3 +340,24 @@ func TestEarlier_OnlyChatsFromTheLast90Days(t *testing.T) {
 		}
 	}
 }
+
+func TestEarlierMessages_VagueNewMessageIsAFreshStart(t *testing.T) {
+	// Arrange: STAGING 2026-11-21, "สนใจครับ" after an earlier chat that ended
+	// on an unanswered question made the bot hand that old question off again.
+	e := memory.Earlier{When: time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC),
+		Turns: []memory.Turn{{Role: "user", Content: "ต้องเตรียมอะไรไปบ้างครับ"}}}
+
+	// Act
+	head := earlierMessages(e, nil)[0].Content
+
+	// Assert: the framing tells the model to start fresh and not reopen old questions.
+	for _, want := range []string{
+		"a short or vague new message",
+		"ask what they want now",
+		"Do not hand off or answer an earlier question unless the customer asks it again in this chat",
+	} {
+		if !strings.Contains(head, want) {
+			t.Errorf("earlier-chat note lacks %q:\n%s", want, head)
+		}
+	}
+}
