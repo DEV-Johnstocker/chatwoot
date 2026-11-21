@@ -25,10 +25,14 @@ type earlierReader struct {
 	calls   int
 	args    [5]int64
 	limit   int
+	// deadline is the lookup's own time limit, as the reader saw it.
+	deadline    time.Time
+	hasDeadline bool
 }
 
-func (f *earlierReader) PreviousChat(_ context.Context, acct, inbox, contact, conv int64, limit int) (memory.Earlier, error) {
+func (f *earlierReader) PreviousChat(ctx context.Context, acct, inbox, contact, conv int64, limit int) (memory.Earlier, error) {
 	f.calls++
+	f.deadline, f.hasDeadline = ctx.Deadline()
 	f.args, f.limit = [5]int64{acct, inbox, contact, conv}, limit
 	return f.earlier, f.err
 }
@@ -286,5 +290,21 @@ func TestEarlier_OnlyChannelsThatVerifyTheCustomer(t *testing.T) {
 		if r.calls != c.want {
 			t.Errorf("%s hmac=%v: previous chat calls = %d, want %d", c.channel, c.hmac, r.calls, c.want)
 		}
+	}
+}
+
+func TestEarlier_LookupHasItsOwnShortDeadline(t *testing.T) {
+	// Arrange: a slow Chatwoot must not hold the reply for long.
+	b, _ := newBot(&fakeChatwoot{}, &fakeLLM{reply: "ok"})
+	r := &earlierReader{}
+	b.opts.HistoryReader = r
+	start := time.Now()
+
+	// Act
+	b.Process(context.Background(), returningMsg("ราคา"))
+
+	// Assert
+	if !r.hasDeadline || r.deadline.Sub(start) > earlierTimeout+time.Second {
+		t.Errorf("previous chat lookup deadline=%v (set=%v), want within %v", r.deadline.Sub(start), r.hasDeadline, earlierTimeout)
 	}
 }

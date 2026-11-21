@@ -23,6 +23,9 @@ const (
 	earlierTurns = 6
 	// earlierTurnRunes cuts each of them, so the prompt grows only a little.
 	earlierTurnRunes = 300
+	// earlierTimeout bounds the lookup (two Chatwoot calls): a slow Chatwoot
+	// costs the reply at most this long, then the bot goes on without it.
+	earlierTimeout = 5 * time.Second
 )
 
 // PreviousChatReader finds the contact's conversation before this one in the
@@ -60,6 +63,8 @@ func (b *Bot) loadEarlier(ctx context.Context, log *slog.Logger, acct, inbox, co
 	if !ok || contact <= 0 {
 		return
 	}
+	ctx, cancel := context.WithTimeout(ctx, earlierTimeout)
+	defer cancel()
 	e, err := pr.PreviousChat(ctx, acct, inbox, contact, conv, earlierTurns)
 	if err != nil {
 		log.Warn("previous chat lookup failed", "error", err)
