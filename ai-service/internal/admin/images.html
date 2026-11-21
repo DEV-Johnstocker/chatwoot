@@ -46,6 +46,8 @@
             <input id="img-name-{{.ID}}" name="name" type="text" required maxlength="{{$lim.Name}}" value="{{.Name}}"></div>
           <div><label for="img-cap-{{.ID}}">{{T "Caption (sent only when this is the one picture in a reply)"}}</label>
             <input id="img-cap-{{.ID}}" name="caption" type="text" maxlength="{{$lim.Caption}}" value="{{.Caption}}"></div>
+          <div class="full"><label class="check"><input id="img-fu-{{.ID}}" name="followup" type="checkbox" value="on"{{if .FollowUp}} checked{{end}}> {{T "Use in follow-ups"}}</label>
+            <p class="field-hint">{{T "A follow-up sends at most one ticked picture after its text, one the customer has not had yet."}}</p></div>
           <div class="full"><label for="img-when-{{.ID}}">{{T "When to send it"}}</label>
             <textarea id="img-when-{{.ID}}" name="when" rows="2" maxlength="{{$lim.When}}">{{.When}}</textarea></div>
           <div class="full"><label for="img-file-{{.ID}}">{{T "Replace the picture (optional)"}}</label>
@@ -83,6 +85,7 @@
           <textarea id="img-new-when" name="when" rows="3" maxlength="{{$lim.When}}" placeholder="ลูกค้าขอดูรีวิว หรือถามว่ามีคนใช้คอร์ส AutoCut จริงไหม"></textarea>
           <label for="img-new-cap">{{T "Caption (sent only when this is the one picture in a reply)"}}</label>
           <input id="img-new-cap" name="caption" type="text" maxlength="{{$lim.Caption}}" placeholder="รีวิวจากผู้เรียนจริงครับ">
+          <label class="check"><input id="img-new-fu" name="followup" type="checkbox" value="on"> {{T "Use in follow-ups"}}</label>
           <div class="card-foot"><button type="submit" name="action" value="add" class="primary small">{{T "Add image"}}</button></div>
         </form>
       </details>

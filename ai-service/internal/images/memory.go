@@ -127,7 +127,7 @@ func (m *Memory) Update(_ context.Context, meta Meta, data []byte) error {
 	if m.taken(meta.AccountID, meta.ID, meta.Name) {
 		return ErrName
 	}
-	old.Name, old.When, old.Caption, old.UpdatedAt = meta.Name, meta.When, meta.Caption, time.Now()
+	old.Name, old.When, old.Caption, old.FollowUp, old.UpdatedAt = meta.Name, meta.When, meta.Caption, meta.FollowUp, time.Now()
 	if data != nil {
 		old.ContentType, old.Data, old.Size = ct, data, len(data)
 	}
@@ -146,7 +146,7 @@ func (m *Memory) Delete(_ context.Context, accountID, id int64) error {
 	delete(m.rows, id)
 	m.lastRm++
 	m.removed = append(m.removed, removedCopy{img: img, RemovedImage: RemovedImage{ID: m.lastRm, ImageID: id, AccountID: accountID,
-		Name: img.Name, When: img.When, Caption: img.Caption, Size: len(img.Data), RemovedAt: time.Now()}})
+		Name: img.Name, When: img.When, Caption: img.Caption, FollowUp: img.FollowUp, Size: len(img.Data), RemovedAt: time.Now()}})
 	// Keep the newest MaxRemovedKept of this account, none past RemovedKeepDays.
 	n, cutoff := 0, removedCutoff()
 	for i := len(m.removed) - 1; i >= 0; i-- {

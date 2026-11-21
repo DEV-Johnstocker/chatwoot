@@ -46,9 +46,15 @@ type listedConversation struct {
 	LastActivityAt int64    `json:"last_activity_at"`
 	WaitingSince   int64    `json:"waiting_since"`
 	Labels         []string `json:"labels"`
+	InboxID        int64    `json:"inbox_id"`
 	Meta           struct {
 		Assignee     *struct{} `json:"assignee"`
 		AssigneeType string    `json:"assignee_type"`
+		Sender       struct {
+			ID int64 `json:"id"`
+		} `json:"sender"`
+		Channel      string `json:"channel"`
+		HmacVerified bool   `json:"hmac_verified"`
 	} `json:"meta"`
 	LastNonActivity *struct {
 		MessageType int  `json:"message_type"`

@@ -25,8 +25,10 @@ type imageItem struct {
 	Name    string
 	When    string
 	Caption string
-	Preview template.URL // small JPEG data: URI (the admin CSP allows only data: images)
-	Size    string
+	// FollowUp: ticked "use in follow-ups".
+	FollowUp bool
+	Preview  template.URL // small JPEG data: URI (the admin CSP allows only data: images)
+	Size     string
 }
 
 // imageBox is what the page shows about the account's images.
@@ -70,7 +72,7 @@ func (h *Handler) loadImageBox(r *http.Request, acct int64) imageBox {
 		return box
 	}
 	for _, m := range list {
-		box.Items = append(box.Items, imageItem{ID: m.ID, Name: m.Name, When: m.When, Caption: m.Caption,
+		box.Items = append(box.Items, imageItem{ID: m.ID, Name: m.Name, When: m.When, Caption: m.Caption, FollowUp: m.FollowUp,
 			Preview: h.imagePreview(r, m), Size: strconv.Itoa((m.Size+1023)/1024) + " KB"})
 	}
 	box.CanAdd = len(list) < images.MaxPerAccount
@@ -95,7 +97,8 @@ func (h *Handler) submitImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
-	meta := images.Meta{ID: id, AccountID: acct, Name: r.FormValue("name"), When: r.FormValue("when"), Caption: r.FormValue("caption")}
+	meta := images.Meta{ID: id, AccountID: acct, Name: r.FormValue("name"), When: r.FormValue("when"), Caption: r.FormValue("caption"),
+		FollowUp: r.FormValue("followup") == "on"}
 	data, ferr := readImageFile(r)
 	done, action := "", r.FormValue("action")
 	var before any
@@ -210,5 +213,5 @@ func (h *Handler) imagePreview(r *http.Request, m images.Meta) template.URL {
 // removedCopy is what the history keeps of a removed picture: its texts, not
 // the image itself.
 func removedCopy(m images.Meta) map[string]any {
-	return map[string]any{"id": m.ID, "name": m.Name, "when": m.When, "caption": m.Caption}
+	return map[string]any{"id": m.ID, "name": m.Name, "when": m.When, "caption": m.Caption, "use_in_followup": m.FollowUp}
 }

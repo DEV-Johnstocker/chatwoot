@@ -54,31 +54,24 @@ var verifiedChannels = map[string]bool{
 // customerVerified reports whether this chat's customer is proven by the
 // channel, so their earlier chat may be shown to the model.
 func customerVerified(c webhook.Conversation) bool {
-	if c.Channel == "Channel::WebWidget" {
-		return c.ContactInbox.HmacVerified
+	return ChannelVerified(c.Channel, c.ContactInbox.HmacVerified)
+}
+
+// ChannelVerified reports whether a chat on this channel proves who the
+// customer is: a verified channel, or the website widget with its identity
+// signed by the site (hmacVerified).
+func ChannelVerified(channel string, hmacVerified bool) bool {
+	if channel == "Channel::WebWidget" {
+		return hmacVerified
 	}
-	return verifiedChannels[c.Channel]
+	return verifiedChannels[channel]
 }
 
 // loadEarlier keeps the customer's previous chat beside this one. A failure
 // is only logged: the reply goes on without it.
 func (b *Bot) loadEarlier(ctx context.Context, log *slog.Logger, acct, inbox, contact, conv int64) {
-	pr, ok := b.opts.HistoryReader.(PreviousChatReader)
-	if !ok || contact <= 0 {
-		return
-	}
-	ctx, cancel := context.WithTimeout(ctx, earlierTimeout)
-	defer cancel()
-	e, err := pr.PreviousChat(ctx, acct, inbox, contact, conv, earlierTurns)
-	if err != nil {
-		log.Warn("previous chat lookup failed", "error", err)
-		return
-	}
-	if len(e.Turns) == 0 {
-		return
-	}
-	if e.When.IsZero() || b.now().Sub(e.When) > earlierMaxAge {
-		log.Debug("previous chat too old, not used")
+	e, ok := b.previousChat(ctx, log, acct, inbox, contact, conv, earlierTurns)
+	if !ok {
 		return
 	}
 	for i := range e.Turns {
@@ -86,6 +79,31 @@ func (b *Bot) loadEarlier(ctx context.Context, log *slog.Logger, acct, inbox, co
 	}
 	b.opts.History.SetEarlier(acct, conv, e)
 	log.Info("previous chat loaded", "turns", len(e.Turns))
+}
+
+// previousChat looks up the end of the contact's previous chat (at most limit
+// turns) with its own time limit; ok is false when there is none, it is older
+// than earlierMaxAge, or the lookup failed (logged).
+func (b *Bot) previousChat(ctx context.Context, log *slog.Logger, acct, inbox, contact, conv int64, limit int) (memory.Earlier, bool) {
+	pr, ok := b.opts.HistoryReader.(PreviousChatReader)
+	if !ok || contact <= 0 {
+		return memory.Earlier{}, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, earlierTimeout)
+	defer cancel()
+	e, err := pr.PreviousChat(ctx, acct, inbox, contact, conv, limit)
+	if err != nil {
+		log.Warn("previous chat lookup failed", "error", err)
+		return memory.Earlier{}, false
+	}
+	if len(e.Turns) == 0 {
+		return memory.Earlier{}, false
+	}
+	if e.When.IsZero() || b.now().Sub(e.When) > earlierMaxAge {
+		log.Debug("previous chat too old, not used")
+		return memory.Earlier{}, false
+	}
+	return e, true
 }
 
 // earlierMessages shows the previous chat to the model as context. Only the

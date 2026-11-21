@@ -47,6 +47,12 @@ type Conversation struct {
 	Assigned     bool // a staff member (not the bot) is the assignee
 	Labels       []string
 	LastActivity time.Time
+	// For a follow-up picture: where the chat came in and who the customer
+	// is, so their previous chat can be checked for pictures they already got.
+	InboxID      int64
+	ContactID    int64
+	Channel      string // e.g. "Channel::FacebookPage"
+	HmacVerified bool   // website widget: the site signed the visitor's identity
 }
 
 // price matches a baht amount: "9,900 บาท", "4900บาท", "฿1,290", "1,500 THB",
@@ -147,6 +153,13 @@ type Chat interface {
 	SendMessage(ctx context.Context, accountID, conversationID int64, content string) error
 }
 
+// Pictures sends one review picture after a follow-up's text (bot.Bot): the
+// first one ticked "use in follow-ups" that the customer has not had. It
+// reports whether one went out.
+type Pictures interface {
+	FollowUpPicture(ctx context.Context, acct int64, c Conversation) (bool, error)
+}
+
 // Hours is the bot's on/off switch per account; nil means always on.
 type Hours interface {
 	Get(ctx context.Context, accountID int64) (schedule.Schedule, error)
@@ -159,8 +172,10 @@ type Sweeper struct {
 	Hours  Hours
 	Rules  Rules  // each account's setting, read on every sweep
 	Writer Writer // drafts a follow-up when the rule asks; nil = always the fixed text
-	Now    func() time.Time
-	Logger *slog.Logger
+	// Pictures adds a ticked review picture after the text; nil = text only.
+	Pictures Pictures
+	Now      func() time.Time
+	Logger   *slog.Logger
 }
 
 // Rules gives an account's follow-up rule (SettingsStore).
@@ -251,8 +266,22 @@ func (s *Sweeper) nudge(ctx context.Context, acct int64, c Conversation, rule Ru
 		log.Warn("nudge: send", "error", err)
 		return false
 	}
-	log.Info("nudge: sent", "written", written)
+	log.Info("nudge: sent", "written", written, "picture", s.picture(ctx, acct, c, log))
 	return true
+}
+
+// picture sends the follow-up's picture, if any. A failure is only logged:
+// the text already went out and counts, and a picture is not retried.
+func (s *Sweeper) picture(ctx context.Context, acct int64, c Conversation, log *slog.Logger) bool {
+	if s.Pictures == nil {
+		return false
+	}
+	sent, err := s.Pictures.FollowUpPicture(ctx, acct, c)
+	if err != nil {
+		log.Warn("nudge: follow-up picture failed", "error", err)
+		return false
+	}
+	return sent
 }
 
 // stillBots re-reads the chat just before sending: staff may have taken or

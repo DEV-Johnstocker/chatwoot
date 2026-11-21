@@ -208,7 +208,7 @@ func run() error {
 	b.Start(context.Background())
 	startAutoResolve(cfg, reader, logger)
 	nudgeSettings := openNudgeSettings(cfg, logger)
-	startNudge(cfg, nudgeSettings, reader, botHours, metered(rewriteLLM, rec, spend.PurposeNudge, 0), logger)
+	startNudge(cfg, nudgeSettings, reader, botHours, metered(rewriteLLM, rec, spend.PurposeNudge, 0), followUpPictures{b}, logger)
 	if webSyncer != nil {
 		go webSyncer.Run(context.Background(), 10*time.Minute)
 	}
@@ -667,14 +667,14 @@ func openNudgeSettings(cfg config.Config, logger *slog.Logger) *nudge.SettingsSt
 // to each account whose rule is on. Like auto-resolve it needs the reader
 // token to list conversations. The writer uses the small (rewrite) model;
 // an account's fixed text is its fallback.
-func startNudge(cfg config.Config, rules *nudge.SettingsStore, reader *chatwoot.Reader, hours bot.Hours, small llm.Completer, logger *slog.Logger) {
+func startNudge(cfg config.Config, rules *nudge.SettingsStore, reader *chatwoot.Reader, hours bot.Hours, small llm.Completer, pics nudge.Pictures, logger *slog.Logger) {
 	if reader == nil {
 		logger.Info("follow-up nudge off: needs CHATWOOT_READER_TOKEN")
 		return
 	}
 	s := &nudge.Sweeper{
 		List: reader, Chat: nudgeChat{Reader: reader, Client: chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil)},
-		Rules: rules, Writer: &nudge.LLMWriter{LLM: small},
+		Rules: rules, Writer: &nudge.LLMWriter{LLM: small}, Pictures: pics,
 		Now: time.Now, Logger: logger.With("component", "nudge"),
 	}
 	if hours != nil {
@@ -684,6 +684,14 @@ func startNudge(cfg config.Config, rules *nudge.SettingsStore, reader *chatwoot.
 	logger.Info("follow-up nudge ready: each account's setting on /admin/nudge",
 		"default_after", d.After.String(), "default_accounts", d.Accounts, "default_written", d.Write)
 	go s.Run(context.Background(), 15*time.Minute)
+}
+
+// followUpPictures lets a follow-up end with one ticked review picture; the
+// bot sends it with its own token and its no-repeat rules.
+type followUpPictures struct{ b *bot.Bot }
+
+func (p followUpPictures) FollowUpPicture(ctx context.Context, acct int64, c nudge.Conversation) (bool, error) {
+	return p.b.FollowUpPicture(ctx, acct, c.InboxID, c.ContactID, c.ID, bot.ChannelVerified(c.Channel, c.HmacVerified))
 }
 
 // nudgeChat reads messages with the reader token and writes with the bot

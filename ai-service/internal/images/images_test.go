@@ -462,3 +462,52 @@ func TestRunPurge_PurgesAtStartAndStops(t *testing.T) {
 		t.Fatalf("expired copy not purged at start: %d left", len(m.removed))
 	}
 }
+
+// The "use in follow-ups" tick is saved, changed, listed, and kept when a
+// picture is removed and put back from History.
+func TestStore_FollowUpTickSurvivesUpdateAndRestore(t *testing.T) {
+	eachStore(t, func(t *testing.T, s Store, acct int64) {
+		// Arrange
+		ctx := context.Background()
+		id, err := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "รีวิว Workshop", FollowUp: true}, Data: jpegBytes(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		other, err := s.Add(ctx, Image{Meta: Meta{AccountID: acct, Name: "รีวิว AutoCut"}, Data: pngBytes(t, 2, 2)})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Act
+		added, _ := s.Get(ctx, acct, id)
+		untick := s.Update(ctx, Meta{ID: id, AccountID: acct, Name: "รีวิว Workshop", FollowUp: false}, nil)
+		afterUntick, _ := s.Get(ctx, acct, id)
+		tick := s.Update(ctx, Meta{ID: other, AccountID: acct, Name: "รีวิว AutoCut", FollowUp: true}, nil)
+		list, _ := s.List(ctx, acct)
+		_ = s.Delete(ctx, acct, other)
+		removed, _ := s.Removed(ctx, acct)
+		var newID int64
+		var restoreErr error
+		if len(removed) == 1 {
+			newID, restoreErr = s.Restore(ctx, acct, removed[0].ID)
+		}
+		back, _ := s.Get(ctx, acct, newID)
+
+		// Assert
+		if !added.FollowUp || untick != nil || afterUntick.FollowUp || tick != nil {
+			t.Fatalf("added %v untick %v after %v tick %v", added.FollowUp, untick, afterUntick.FollowUp, tick)
+		}
+		ticked := 0
+		for _, m := range list {
+			if m.FollowUp {
+				ticked++
+			}
+		}
+		if ticked != 1 || len(removed) != 1 || !removed[0].FollowUp {
+			t.Fatalf("ticked in list %d, removed %+v", ticked, removed)
+		}
+		if restoreErr != nil || !back.FollowUp {
+			t.Fatalf("restore %v, tick after restore %v", restoreErr, back.FollowUp)
+		}
+	})
+}
