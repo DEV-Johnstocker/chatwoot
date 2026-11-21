@@ -43,7 +43,17 @@ Customer ─► Chatwoot ── Agent Bot webhook (HMAC signed) ──► POST /
   with access to the bot's inboxes) the bot re-reads a chat from Chatwoot
   when it has no memory of it: after a restart or when a closed chat reopens.
   Staff and Messenger replies are included; private notes are not. Without
-  it, history is lost on restart.
+  it, history is lost on restart. The same token lets a new chat start with
+  the last 6 messages (300 characters each) of the customer's previous chat
+  in the same inbox, if it was active in the last 90 days, shown to the model as an earlier chat, so a returning
+  customer is not asked again and does not get the same pictures twice
+  (recalled pictures are matched by their file size). Only channels that
+  prove who the customer is load it (Messenger, Instagram, LINE, WhatsApp,
+  Telegram, and the website widget with identity validation on); the earlier
+  messages keep their customer and shop roles, never a system message. The
+  lookup gives up after 5 seconds. Known limit: it follows the Chatwoot
+  contact, so if staff merge two different people's contacts, one may see
+  the end of the other's chat.
 - **Backup AI**: `LLM_FALLBACK_*` answers when the main model fails, the
   question rewrite falls back to it too, and `EMBED_FALLBACK_*` reaches the
   same embedding model another way (for example OpenRouter with

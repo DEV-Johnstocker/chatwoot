@@ -102,3 +102,41 @@ func TestSeen_Release(t *testing.T) {
 		t.Error("released key should be accepted again")
 	}
 }
+
+func TestHistory_EarlierChatStaysBesideTheTurns(t *testing.T) {
+	// Arrange
+	h := NewHistory(2, time.Hour, nil)
+	when := time.Date(2026, 11, 18, 23, 10, 0, 0, time.UTC)
+	h.SetEarlier(1, 7, Earlier{When: when, Turns: []Turn{{Role: "user", Content: "ใช้ Windows 11"}}})
+
+	// Act: more turns than the limit
+	for _, s := range []string{"a", "b", "c"} {
+		h.Append(1, 7, Turn{Role: "user", Content: s})
+	}
+	got := h.Earlier(1, 7)
+
+	// Assert
+	if !got.When.Equal(when) || len(got.Turns) != 1 || got.Turns[0].Content != "ใช้ Windows 11" {
+		t.Errorf("earlier chat = %+v, want it kept apart from the trimmed turns", got)
+	}
+	if n := len(h.Get(1, 7)); n != 2 {
+		t.Errorf("turns = %d, want 2 (the earlier chat never counts against the limit)", n)
+	}
+	if len(h.Earlier(1, 8).Turns) != 0 {
+		t.Error("another conversation must have no earlier chat")
+	}
+}
+
+func TestHistory_ForgetDropsTheEarlierChat(t *testing.T) {
+	// Arrange
+	h := NewHistory(20, time.Hour, nil)
+	h.SetEarlier(1, 7, Earlier{Turns: []Turn{{Role: "user", Content: "x"}}})
+
+	// Act
+	h.Forget(1, 7)
+
+	// Assert
+	if len(h.Earlier(1, 7).Turns) != 0 {
+		t.Error("a resolved chat must forget its earlier chat too")
+	}
+}

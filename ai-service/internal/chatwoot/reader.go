@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,17 +39,25 @@ func NewReader(baseURL, token string, httpClient *http.Client) *Reader {
 }
 
 type listedMessage struct {
-	ID          int64             `json:"id"`
-	MessageType int               `json:"message_type"` // 0 incoming, 1 outgoing, 2 activity, 3 template
-	Private     bool              `json:"private"`
-	Content     string            `json:"content"`
-	Attachments []json.RawMessage `json:"attachments"`
+	ID          int64        `json:"id"`
+	MessageType int          `json:"message_type"` // 0 incoming, 1 outgoing, 2 activity, 3 template
+	Private     bool         `json:"private"`
+	Content     string       `json:"content"`
+	Attachments []listedFile `json:"attachments"`
 	Sender      *struct {
 		Type string `json:"type"`
 	} `json:"sender"`
 	ContentAttributes struct {
 		ExternalEcho bool `json:"external_echo"`
 	} `json:"content_attributes"`
+}
+
+// listedFile is an attachment in a message list. FileSize lets a recalled
+// picture be matched to the owner's image it was (the bot sends the stored
+// bytes unchanged).
+type listedFile struct {
+	FileType string `json:"file_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 // RecentTurns returns the conversation's latest messages (Chatwoot's newest
@@ -108,8 +117,12 @@ func toTurn(m listedMessage, skipID int64) (memory.Turn, bool) {
 	content := m.Content
 	if role == "assistant" && len(m.Attachments) > 0 && m.Sender != nil && m.Sender.Type == "agent_bot" {
 		// The bot only sends owner images as attachments: keep them marked, so a
-		// recalled chat still knows one went out ("?": its caption tells which).
-		return memory.Turn{Role: role, Content: strings.TrimSpace(content + "\n" + profile.ImageMarker("?"))}, true
+		// recalled chat still knows one went out. "?<bytes>" tells which by its
+		// size; a bare "?" (no size given) leaves it to the caption.
+		for _, f := range m.Attachments {
+			content = strings.TrimSpace(content + "\n" + profile.ImageMarker(recalledName(f)))
+		}
+		return memory.Turn{Role: role, Content: content}, true
 	}
 	if content == "" {
 		if role == "assistant" || len(m.Attachments) == 0 {
@@ -118,6 +131,54 @@ func toTurn(m listedMessage, skipID int64) (memory.Turn, bool) {
 		content = "[The customer sent a file]"
 	}
 	return memory.Turn{Role: role, Content: content}, true
+}
+
+// recalledName is the marker name for a picture the bot sent earlier.
+func recalledName(f listedFile) string {
+	if f.FileSize > 0 {
+		return "?" + strconv.FormatInt(f.FileSize, 10)
+	}
+	return "?"
+}
+
+// PreviousChat returns the end of the contact's conversation just before
+// this one (at most limit public turns, oldest first), when it came through
+// the same inbox. A first chat, another inbox or no contact gives an empty
+// Earlier. Chatwoot lists a conversation's neighbours for a contact; the
+// reader's agent token only sees the bot's inboxes.
+func (r *Reader) PreviousChat(ctx context.Context, accountID, inboxID, contactID, conversationID int64, limit int) (memory.Earlier, error) {
+	if contactID <= 0 || limit <= 0 {
+		return memory.Earlier{}, nil
+	}
+	var page struct {
+		Payload []struct {
+			ID           int64 `json:"id"`
+			InboxID      int64 `json:"inbox_id"`
+			LastActivity int64 `json:"last_activity_at"`
+		} `json:"payload"`
+	}
+	path := fmt.Sprintf("/api/v1/accounts/%d/contacts/%d/conversations?conversation_id=%d", accountID, contactID, conversationID)
+	if err := r.getJSON(ctx, path, nil, &page); err != nil {
+		return memory.Earlier{}, err
+	}
+	// The older neighbour is the one just before this chat.
+	var prev, prevInbox, prevActivity int64
+	for _, c := range page.Payload {
+		if c.ID < conversationID && c.ID > prev {
+			prev, prevInbox, prevActivity = c.ID, c.InboxID, c.LastActivity
+		}
+	}
+	if prev == 0 || prevInbox != inboxID {
+		return memory.Earlier{}, nil
+	}
+	turns, err := r.RecentTurns(ctx, accountID, prev, 0)
+	if err != nil {
+		return memory.Earlier{}, err
+	}
+	if len(turns) > limit {
+		turns = turns[len(turns)-limit:]
+	}
+	return memory.Earlier{When: time.Unix(prevActivity, 0), Turns: turns}, nil
 }
 
 // Staff is an inbox member as the assignment step sees them.

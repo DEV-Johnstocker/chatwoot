@@ -226,3 +226,16 @@ func TestConversationFields_OddShapesNeverFailTheEvent(t *testing.T) {
 		t.Fatal("absent labels must read as unknown, not empty")
 	}
 }
+
+func TestParse_ConversationChannelAndHmacVerified(t *testing.T) {
+	// Arrange: a message event as Chatwoot sends it (conversation.webhook_data).
+	body := []byte(`{"event":"message_created","conversation":{"id":12,"status":"pending","channel":"Channel::WebWidget","contact_inbox":{"source_id":"abc","hmac_verified":true}}}`)
+
+	// Act
+	ev, err := Parse(body)
+
+	// Assert
+	if err != nil || ev.Conversation.Channel != "Channel::WebWidget" || !ev.Conversation.ContactInbox.HmacVerified {
+		t.Fatalf("channel=%q hmac=%v err=%v", ev.Conversation.Channel, ev.Conversation.ContactInbox.HmacVerified, err)
+	}
+}
