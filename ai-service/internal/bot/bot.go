@@ -403,7 +403,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 			return
 		}
 		tr.Input = in.text
-		b.recall(ctx, log, acct, conv, ev.ID)
+		b.recall(ctx, log, acct, ev.Inbox.ID, ev.Sender.ID, conv, ev.ID)
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "user", Content: in.text})
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		b.noteCustomer(ctx, log, ev, in.text)
@@ -464,7 +464,7 @@ func (b *Bot) reply(ctx context.Context, log *slog.Logger, acct, inbox, conv int
 
 	history := b.opts.History.Get(acct, conv)
 	started := time.Now()
-	res, hits, g, err := b.answer(ctx, log, acct, inbox, history, tr, images)
+	res, hits, g, err := b.answer(ctx, log, acct, inbox, b.opts.History.Earlier(acct, conv), history, tr, images)
 	latency := time.Since(started)
 	log = log.With(sourceAttrs(hits)...)
 	if err == nil && len(hits) > 0 {
@@ -594,7 +594,7 @@ func retryable(err error) bool {
 // customer would get it.
 func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Turn) (llm.Result, []knowledge.Hit, error) {
 	ctx = spend.WithPurpose(spend.WithAccount(ctx, acct), spend.PurposeTest) // AI spend: a test, not customer traffic
-	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, memory.Earlier{}, history, &trace.Turn{}, nil)
 	if err == nil {
 		text, wantsHuman := SplitHandoff(res.Content)
 		text, names := takeImageMarkers(text)
@@ -619,7 +619,7 @@ func (b *Bot) Answer(ctx context.Context, acct, inbox int64, history []memory.Tu
 // answer fills tr's rewrite, search and generation steps as it goes.
 // images go with the latest customer message only; history stays text.
 // The guard it returns checks the reply against the account's business profile.
-func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, guard, error) {
+func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, earlier memory.Earlier, history []memory.Turn, tr *trace.Turn, images []string) (llm.Result, []knowledge.Hit, guard, error) {
 	system, p := b.systemPrompt(ctx, log, acct)
 	messages := []llm.Message{{Role: "system", Content: system}}
 	var hits []knowledge.Hit
@@ -635,6 +635,9 @@ func (b *Bot) answer(ctx context.Context, log *slog.Logger, acct, inbox int64, h
 		}
 		tr.Search = step
 		messages = append(messages, llm.Message{Role: "system", Content: knowledgePrompt(hits, err)})
+	}
+	if len(earlier.Turns) > 0 {
+		messages = append(messages, llm.Message{Role: "system", Content: earlierPrompt(earlier, b.opts.Location)})
 	}
 	for _, t := range history {
 		messages = append(messages, llm.Message{Role: t.Role, Content: t.Content})
@@ -740,10 +743,12 @@ func (b *Bot) handoff(ctx context.Context, log *slog.Logger, acct, inbox, conv i
 // recall fills an empty memory from Chatwoot, so a restart or a reopened chat
 // keeps its context (what staff said included). Its own memory is kept when
 // it has one: that also holds voice transcripts and photo notes.
-func (b *Bot) recall(ctx context.Context, log *slog.Logger, acct, conv, current int64) {
+// It also loads the customer's previous chat (earlier.go).
+func (b *Bot) recall(ctx context.Context, log *slog.Logger, acct, inbox, contact, conv, current int64) {
 	if b.opts.HistoryReader == nil || len(b.opts.History.Get(acct, conv)) > 0 {
 		return
 	}
+	b.loadEarlier(ctx, log, acct, inbox, contact, conv)
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	turns, err := b.opts.HistoryReader.RecentTurns(ctx, acct, conv, current)
@@ -895,7 +900,7 @@ func (b *Bot) Preview(parent context.Context, acct, inbox int64, history []memor
 	}
 	ctx, cancel := context.WithTimeout(parent, b.timeout())
 	defer cancel()
-	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, history, &trace.Turn{}, nil)
+	res, hits, g, err := b.answer(ctx, b.opts.Logger.With("account_id", acct), acct, inbox, memory.Earlier{}, history, &trace.Turn{}, nil)
 	return previewOf(b, res.Content, res.Model, hits, g, err)
 }
 

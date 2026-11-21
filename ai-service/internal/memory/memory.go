@@ -28,7 +28,17 @@ type convKey struct{ account, conversation int64 }
 
 type thread struct {
 	turns    []Turn
+	earlier  Earlier
 	lastSeen time.Time
+}
+
+// Earlier is the end of the customer's previous conversation, loaded when a
+// new one starts, so a returning customer is not asked again what they
+// already said and does not get the same pictures twice. It is kept apart
+// from the turns: it is context for the model, not part of this chat.
+type Earlier struct {
+	When  time.Time // the previous conversation's last activity
+	Turns []Turn
 }
 
 // History keeps the last `limit` turns per conversation and forgets
@@ -77,6 +87,33 @@ func (h *History) Get(account, conversation int64) []Turn {
 		return nil
 	}
 	return append([]Turn(nil), th.turns...)
+}
+
+// SetEarlier keeps the customer's previous chat for this conversation.
+func (h *History) SetEarlier(account, conversation int64, e Earlier) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.now()
+	h.evictIdle(now)
+	k := convKey{account, conversation}
+	th := h.threads[k]
+	if th == nil {
+		th = &thread{}
+		h.threads[k] = th
+	}
+	th.earlier = Earlier{When: e.When, Turns: append([]Turn(nil), e.Turns...)}
+	th.lastSeen = now
+}
+
+// Earlier returns the conversation's earlier chat; empty when there is none.
+func (h *History) Earlier(account, conversation int64) Earlier {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	th := h.threads[convKey{account, conversation}]
+	if th == nil {
+		return Earlier{}
+	}
+	return Earlier{When: th.earlier.When, Turns: append([]Turn(nil), th.earlier.Turns...)}
 }
 
 // Forget drops a conversation (e.g. when it is resolved).

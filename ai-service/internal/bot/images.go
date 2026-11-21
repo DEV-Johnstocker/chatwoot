@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,13 +77,26 @@ func imageSentBefore(history []memory.Turn, img images.Meta) bool {
 			continue
 		}
 		for _, m := range imageMarker.FindAllStringSubmatch(t.Content, -1) {
-			if images.Key(m[1]) == images.Key(img.Name) ||
-				(m[1] == RecalledImage && img.Caption != "" && strings.Contains(t.Content, img.Caption)) {
+			if images.Key(m[1]) == images.Key(img.Name) || recalledMatch(m[1], t.Content, img) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// recalledMatch reports whether a recalled picture marker is img: "?<bytes>"
+// by its size, a bare "?" by its caption in the same message.
+func recalledMatch(name, content string, img images.Meta) bool {
+	size, ok := strings.CutPrefix(name, RecalledImage)
+	if !ok {
+		return false
+	}
+	if size != "" {
+		n, err := strconv.Atoi(size)
+		return err == nil && n > 0 && n == img.Size
+	}
+	return img.Caption != "" && strings.Contains(content, img.Caption)
 }
 
 // canSendImages reports whether this bot can send attachments at all.
@@ -116,6 +130,9 @@ func (b *Bot) imageInfos(ctx context.Context, log *slog.Logger, acct int64) []pr
 func (b *Bot) imagesToSend(ctx context.Context, log *slog.Logger, acct, conv int64, history []memory.Turn, names []string) []images.Image {
 	if !b.canSendImages() {
 		return nil
+	}
+	if conv != 0 { // pictures sent in the customer's previous chat count too
+		history = append(b.opts.History.Earlier(acct, conv).Turns, history...)
 	}
 	var out []images.Image
 	for _, name := range names {
