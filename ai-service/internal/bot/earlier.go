@@ -54,10 +54,17 @@ var verifiedChannels = map[string]bool{
 // customerVerified reports whether this chat's customer is proven by the
 // channel, so their earlier chat may be shown to the model.
 func customerVerified(c webhook.Conversation) bool {
-	if c.Channel == "Channel::WebWidget" {
-		return c.ContactInbox.HmacVerified
+	return ChannelVerified(c.Channel, c.ContactInbox.HmacVerified)
+}
+
+// ChannelVerified reports whether a chat on this channel proves who the
+// customer is: a verified channel, or the website widget with its identity
+// signed by the site (hmacVerified).
+func ChannelVerified(channel string, hmacVerified bool) bool {
+	if channel == "Channel::WebWidget" {
+		return hmacVerified
 	}
-	return verifiedChannels[c.Channel]
+	return verifiedChannels[channel]
 }
 
 // loadEarlier keeps the customer's previous chat beside this one. A failure

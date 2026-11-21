@@ -88,3 +88,28 @@ func TestPendingBetween_ErrorIsReturned(t *testing.T) {
 		t.Fatal("err = nil, want the 401 reported")
 	}
 }
+
+func TestPendingBetween_CarriesInboxContactAndChannel(t *testing.T) {
+	// Arrange: the follow-up picture needs where the chat came in and who it is.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "1" {
+			fmt.Fprint(w, `{"data":{"payload":[]}}`)
+			return
+		}
+		fmt.Fprint(w, `{"data":{"payload":[
+			{"id":17,"status":"pending","last_activity_at":2000,"inbox_id":2,
+			 "meta":{"sender":{"id":55},"channel":"Channel::WebWidget","hmac_verified":true}}]}}`)
+	}))
+	defer srv.Close()
+
+	// Act
+	convs, err := NewReader(srv.URL, "reader", nil).PendingBetween(context.Background(), 3, time.Unix(1_000, 0), time.Unix(5_000, 0))
+
+	// Assert
+	if err != nil || len(convs) != 1 {
+		t.Fatalf("convs=%+v err=%v", convs, err)
+	}
+	if c := convs[0]; c.InboxID != 2 || c.ContactID != 55 || c.Channel != "Channel::WebWidget" || !c.HmacVerified {
+		t.Fatalf("got %+v, want inbox 2, contact 55, widget, verified", c)
+	}
+}

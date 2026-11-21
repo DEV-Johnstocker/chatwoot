@@ -387,3 +387,70 @@ func TestDue_LikeTooRecentWaits(t *testing.T) {
 		t.Error("nudged one hour after the customer's like")
 	}
 }
+
+// fakePictures records the follow-up picture call, as bot.Bot would send it.
+type fakePictures struct {
+	chat *fakeChat
+	got  []Conversation
+	sent bool
+	err  error
+}
+
+func (f *fakePictures) FollowUpPicture(_ context.Context, _ int64, c Conversation) (bool, error) {
+	f.chat.calls = append(f.chat.calls, "picture")
+	f.got = append(f.got, c)
+	return f.sent, f.err
+}
+
+func TestSweep_PictureGoesAfterTheText(t *testing.T) {
+	// Arrange
+	list, chat := dueSetup()
+	list.convs[3][0].InboxID, list.convs[3][0].ContactID, list.convs[3][0].Channel = 2, 55, "Channel::FacebookPage"
+	pics := &fakePictures{chat: chat, sent: true}
+	s := newSweeper(list, chat)
+	s.Pictures = pics
+
+	// Act
+	n := s.Sweep(context.Background())
+
+	// Assert
+	if n != 1 || len(chat.calls) != 3 || chat.calls[1] != "send" || chat.calls[2] != "picture" {
+		t.Fatalf("n=%d calls=%v, want label, text, then the picture", n, chat.calls)
+	}
+	if got := pics.got[0]; got.ID != 7 || got.InboxID != 2 || got.ContactID != 55 || got.Channel != "Channel::FacebookPage" {
+		t.Errorf("picture asked for %+v, want the listed chat with its inbox, contact and channel", got)
+	}
+}
+
+func TestSweep_PictureErrorStillCountsTheText(t *testing.T) {
+	// Arrange
+	list, chat := dueSetup()
+	s := newSweeper(list, chat)
+	s.Pictures = &fakePictures{chat: chat, err: errors.New("chatwoot down")}
+
+	// Act
+	n := s.Sweep(context.Background())
+
+	// Assert: the text went out once; the picture is not retried.
+	if n != 1 || chat.sent[7] == "" || len(chat.calls) != 3 {
+		t.Fatalf("n=%d sent=%v calls=%v, want the follow-up counted", n, chat.sent, chat.calls)
+	}
+}
+
+func TestSweep_NoPictureWhenTheTextFails(t *testing.T) {
+	// Arrange
+	list, chat := dueSetup()
+	chat.sendErr = errors.New("meta window closed")
+	s := newSweeper(list, chat)
+	s.Pictures = &fakePictures{chat: chat, sent: true}
+
+	// Act
+	s.Sweep(context.Background())
+
+	// Assert
+	for _, c := range chat.calls {
+		if c == "picture" {
+			t.Fatalf("calls=%v: a picture must not follow a text that failed", chat.calls)
+		}
+	}
+}

@@ -21,6 +21,7 @@ func (r *Reader) PendingBetween(ctx context.Context, accountID int64, from, to t
 			out = append(out, nudge.Conversation{
 				ID: l.ID, Status: l.Status, Muted: l.Muted, Assigned: l.assigned(),
 				Labels: l.Labels, LastActivity: at,
+				InboxID: l.InboxID, ContactID: l.Meta.Sender.ID, Channel: l.Meta.Channel, HmacVerified: l.Meta.HmacVerified,
 			})
 		}
 		return true
