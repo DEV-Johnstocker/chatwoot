@@ -45,6 +45,7 @@ import (
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/profile"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/ratings"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/recentchat"
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/referral"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/sales"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/schedule"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/server"
@@ -235,6 +236,7 @@ func run() error {
 	}
 	commentQueue := startComments(cfg, profiles, adminProfiles, metered(completer, rec, spend.PurposeComment, cfg.MetaAccountID), commentKnowledge,
 		commentReviewer(cfg, current, metered(completer, rec, spend.PurposeCommentReview, cfg.MetaAccountID), rec, logger), commentEchoes, chats, mux, logger)
+	startReferrals(cfg, profiles, mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -464,6 +466,37 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 	log.Info("page comments on", "path", comments.WebhookPath, "account_id", cfg.MetaAccountID, "sending", q.CanSend(),
 		"public_reply", q.PublicReply() != "", "auto_send", q.AutoSend)
 	return q
+}
+
+// startReferrals serves the Messenger pass-through in front of Chatwoot and
+// keeps where each chat came from (#155), when it is configured and there is
+// a database. Old referrals are deleted daily.
+func startReferrals(cfg config.Config, db *profile.Postgres, mux *http.ServeMux, logger *slog.Logger) {
+	if !cfg.MessengerProxyEnabled() {
+		logger.Info("messenger referrals off: set MESSENGER_APP_SECRET and CHATWOOT_MESSENGER_URL to keep which ad brought each chat")
+		return
+	}
+	if db == nil {
+		logger.Warn("messenger referrals off: they need DATABASE_URL")
+		return
+	}
+	log := logger.With("component", "referrals")
+	store := &referral.Postgres{Pool: db.Pool}
+	(&referral.Proxy{AppSecret: cfg.MessengerAppSecret, Upstream: cfg.ChatwootMessengerURL,
+		Timeout: 8 * time.Second, Store: store, Logger: log}).Routes(mux)
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			if n, err := store.Prune(ctx, time.Now()); err != nil {
+				log.Warn("prune messenger referrals failed", "error", err)
+			} else if n > 0 {
+				log.Info("old messenger referrals deleted", "count", n)
+			}
+			cancel()
+			time.Sleep(24 * time.Hour)
+		}
+	}()
+	log.Info("messenger referrals on", "path", referral.WebhookPath, "upstream_host", cfg.ChatwootMessengerURL.Host)
 }
 
 // commentReviewer is the shadow reviewer of drafted comment replies, or nil
