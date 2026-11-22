@@ -8,8 +8,8 @@ Issues: DEV-Johnstocker/chatwoot#1, epic #154 (children #155, #156, #157).
 
 | Part | Issue | State |
 |---|---|---|
-| Messenger pass-through in front of Chatwoot's `/bot`; save referrals (`chat_referrals`, schema v26) | #155 | this PR |
-| Leads **Ad** column; Sales per-ad table (first/last touch) | #156 | planned |
+| Messenger pass-through in front of Chatwoot's `/bot`; save referrals (`chat_referrals`, schema v26) | #155 | done (PR #158, #159) |
+| Leads **Ad** column; Sales per-ad table (first/last touch); `chat_customers` (v27) | #156 | done |
 | Bot gets the latest ad (≤ 7 days) as a product hint, never prices | #157 | planned |
 
 ## How it works (#155)
@@ -70,12 +70,21 @@ Facebook ──► ai-service POST /webhooks/messenger ──► Chatwoot /bot (
 
 ## Rules for readers (#156, #157)
 
-- The table has no account column: one Messenger app secret covers every Page on
-  the install, so rows are told apart by `page_id` only. A reader maps the
-  account to its own Facebook inbox's Page id and filters by that; it never
-  takes a `page_id` from a request.
-- Customers are linked through Chatwoot's contact inbox `source_id`, which is
-  the PSID for Facebook inboxes (verify on STAGING in #156).
+- chat_referrals has no account column. Readers start from the account's own
+  chats: `chat_customers` (schema v27) holds, per Messenger chat, the
+  customer's Page-scoped id that Chatwoot's webhook carries
+  (`contact_inbox.source_id`, written by the bot for `Channel::FacebookPage`
+  customer messages only). Referrals are joined on that psid, so an account
+  sees only referrals of customers who chatted in its own inboxes. A
+  Page-scoped id belongs to one Page, so accounts do not mix. Accepted edge:
+  if two accounts connect the same Page, both see that customer's referrals,
+  since both have the chat. Never take a `page_id` or psid from a request.
+- `chat_referrals_psid (psid, referred_at DESC, id DESC)` (v27) serves these
+  joins; v26's index leads with `page_id`.
+- #156 (Leads Ad column, Sales per-ad table): credit goes to the customer's
+  first or last tap made before the sale was paid; taps after payment get
+  none; paid chats without a tap share a "No ad" row; one customer counts once
+  per ad.
 
 ## Acceptance commands
 

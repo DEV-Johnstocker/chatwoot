@@ -20,6 +20,12 @@ CREATE TABLE IF NOT EXISTS chat_customers (
 CREATE INDEX IF NOT EXISTS chat_customers_psid ON chat_customers (account_id, psid);
 CREATE INDEX IF NOT EXISTS chat_customers_age ON chat_customers (updated_at);
 
+-- Reads match a chat's customer to their referrals by psid alone (the
+-- Page id is not in Chatwoot's webhook), newest or oldest first; v26's
+-- index leads with page_id and cannot serve that. The table is small (90-day
+-- prune), so a plain build under the lock_timeout above is fine.
+CREATE INDEX IF NOT EXISTS chat_referrals_psid ON chat_referrals (psid, referred_at DESC, id DESC);
+
 -- Supabase's API roles never read customer data (as schema_v23 does).
 ALTER TABLE chat_customers ENABLE ROW LEVEL SECURITY;
 DO $$
