@@ -23,3 +23,18 @@ CREATE TABLE IF NOT EXISTS chat_referrals (
 
 CREATE INDEX IF NOT EXISTS chat_referrals_customer ON chat_referrals (page_id, psid, referred_at DESC);
 CREATE INDEX IF NOT EXISTS chat_referrals_age ON chat_referrals (referred_at);
+
+-- Supabase's API roles never read customer data: the rows are only for
+-- ai-service and the owner's /admin, so shut them out (as schema_v23 does).
+ALTER TABLE chat_referrals ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON chat_referrals FROM anon;
+        REVOKE ALL ON SEQUENCE chat_referrals_id_seq FROM anon;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON chat_referrals FROM authenticated;
+        REVOKE ALL ON SEQUENCE chat_referrals_id_seq FROM authenticated;
+    END IF;
+END $$;
