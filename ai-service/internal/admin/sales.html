@@ -67,6 +67,31 @@
     {{else}}<p class="empty">{{T "No paid chats in this period yet."}}</p>{{end}}
   </section>
 
+  {{if .AdsOn}}
+  <section class="card" aria-labelledby="ads-title">
+    <h2 id="ads-title">{{T "Ads"}} · {{.PeriodName}}</h2>
+    <div class="period" role="group" aria-label="{{T "Who gets the sale"}}">
+      <a href="/admin/sales?account={{.AccountID}}{{if ne .Period "month"}}&amp;period={{.Period}}{{end}}" aria-current="{{if eq .AdCredit "last"}}true{{else}}false{{end}}">{{T "Last ad"}}</a>
+      <a href="/admin/sales?account={{.AccountID}}{{if ne .Period "month"}}&amp;period={{.Period}}{{end}}&amp;credit=first" aria-current="{{if eq .AdCredit "first"}}true{{else}}false{{end}}">{{T "First ad"}}</a>
+    </div>
+    <p class="hint">{{if eq .AdCredit "first"}}{{T "A sale counts for the first ad or link the customer tapped before paying."}}{{else}}{{T "A sale counts for the last ad or link the customer tapped before paying."}}{{end}}</p>
+    {{if .AdsError}}<p class="empty">{{.AdsError}}</p>
+    {{else if .AdRows}}
+    <table class="ads-table">
+      <thead><tr><th scope="col">{{T "Ad or link"}}</th><th scope="col" class="num">{{T "Chats"}}</th><th scope="col" class="num">{{T "Leads"}}</th><th scope="col" class="num">{{T "Paid"}}</th><th scope="col" class="num">{{T "Revenue"}}</th></tr></thead>
+      <tbody>
+      {{range .AdRows}}
+        <tr><td>{{if eq .Kind "none"}}<span class="hint">{{.Name}}</span>{{else}}{{.Name}}{{end}}</td>
+          <td class="num" data-label="{{T "Chats"}}">{{.Chats}}</td><td class="num" data-label="{{T "Leads"}}">{{.Leads}}</td>
+          <td class="num" data-label="{{T "Paid"}}">{{.Paid}}</td><td class="num" data-label="{{T "Revenue"}}">{{.Revenue}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}<p class="empty">{{T "No ad taps yet. They appear after someone messages the Page from an ad."}}</p>{{end}}
+    <p class="hint">{{T "Counts only chats that sent a message, so Ads Manager counts more. Chats: customers who tapped it in this period. Leads: of those, who asked about price or buying."}}</p>
+  </section>
+  {{end}}
+
   <details class="card">
     <summary>{{T "How sales are counted"}}</summary>
     <ul>

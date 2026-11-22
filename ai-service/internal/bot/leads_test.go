@@ -117,3 +117,84 @@ func TestProcess_StaffSenderNameIsNotTheLead(t *testing.T) {
 		t.Fatalf("customers = %v, want [%s]", rec.customers, want)
 	}
 }
+
+type fakeChatLinks struct {
+	mu    sync.Mutex
+	links []string
+	err   error
+}
+
+func (f *fakeChatLinks) LinkChat(_ context.Context, acct, conv, inbox int64, psid string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.links = append(f.links, fmt.Sprintf("%d/%d inbox=%d psid=%s", acct, conv, inbox, psid))
+	return f.err
+}
+
+func TestProcess_MessengerChatIsLinkedToItsCustomer(t *testing.T) {
+	// Arrange
+	cw, l := &fakeChatwoot{}, &fakeLLM{reply: "ok"}
+	b, _ := newBot(cw, l)
+	links := &fakeChatLinks{}
+	b.opts.ChatLinks = links
+	j := leadMsg("สวัสดีครับ")
+	j.Event.Conversation.Channel = "Channel::FacebookPage"
+	j.Event.Conversation.ContactInbox.SourceID = "PSID-77"
+	j.Event.Inbox.ID = 2
+
+	// Act
+	b.Process(context.Background(), j)
+
+	// Assert
+	if want := "1/7 inbox=2 psid=PSID-77"; len(links.links) != 1 || links.links[0] != want {
+		t.Fatalf("links = %v, want [%s]", links.links, want)
+	}
+}
+
+func TestProcess_OtherChannelsAndStaffAreNotLinked(t *testing.T) {
+	for name, set := range map[string]func(*Job){
+		"website chat": func(j *Job) { j.Event.Conversation.Channel = "Channel::WebWidget" },
+		"no source id": func(j *Job) { j.Event.Conversation.ContactInbox.SourceID = "" },
+		"staff sender": func(j *Job) { j.Event.Sender.Type = "user" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			cw, l := &fakeChatwoot{}, &fakeLLM{reply: "ok"}
+			b, _ := newBot(cw, l)
+			links := &fakeChatLinks{}
+			b.opts.ChatLinks = links
+			j := leadMsg("สวัสดีครับ")
+			j.Event.Conversation.Channel = "Channel::FacebookPage"
+			j.Event.Conversation.ContactInbox.SourceID = "PSID-77"
+			set(&j)
+
+			// Act
+			b.Process(context.Background(), j)
+
+			// Assert
+			if len(links.links) != 0 {
+				t.Fatalf("linked %v", links.links)
+			}
+		})
+	}
+}
+
+func TestProcess_ChatLinkErrorStillRepliesAndLogsNoPSID(t *testing.T) {
+	// Arrange
+	cw, l := &fakeChatwoot{}, &fakeLLM{reply: "ok"}
+	b, _ := newBot(cw, l)
+	var logs bytes.Buffer
+	b.opts.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	b.opts.ChatLinks = &fakeChatLinks{err: errors.New("db down")}
+	j := leadMsg("สวัสดีครับ")
+	j.Event.Conversation.Channel = "Channel::FacebookPage"
+	j.Event.Conversation.ContactInbox.SourceID = "PSID-77"
+
+	// Act
+	b.Process(context.Background(), j)
+
+	// Assert
+	if !strings.Contains(cw.joined(), "msg:ok") || !strings.Contains(logs.String(), "chat link not recorded") || strings.Contains(logs.String(), "PSID-77") {
+		t.Fatalf("reply %s logs %s", cw.joined(), logs.String())
+	}
+}

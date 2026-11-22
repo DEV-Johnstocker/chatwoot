@@ -16,6 +16,30 @@ type LeadRecorder interface {
 	Replied(ctx context.Context, accountID, conversationID int64, interest string, quoted bool) error
 }
 
+// ChatLinker records which Messenger customer a chat is with
+// (referral.Postgres).
+type ChatLinker interface {
+	LinkChat(ctx context.Context, accountID, conversationID, inboxID int64, psid string) error
+}
+
+// linkChat keeps the customer's Page-scoped id for a Messenger chat, which
+// Chatwoot's webhook carries, so the Leads and Sales pages can show the ad
+// or m.me link the customer came from. Only customer messages on Facebook
+// count. Best effort: a failure is logged (without the id) and the reply
+// goes on.
+func (b *Bot) linkChat(ctx context.Context, log *slog.Logger, ev webhook.Event) {
+	psid := ev.Conversation.ContactInbox.SourceID
+	if b.opts.ChatLinks == nil || ev.Conversation.Channel != "Channel::FacebookPage" || psid == "" {
+		return
+	}
+	if ev.Sender.Type != "" && ev.Sender.Type != "contact" {
+		return
+	}
+	if err := b.opts.ChatLinks.LinkChat(ctx, ev.Account.ID, ev.ConversationID(), ev.Inbox.ID, psid); err != nil {
+		log.Warn("chat link not recorded", "error", err)
+	}
+}
+
 // noteCustomer records a customer message for the lead list: a question
 // about price, buying or a promotion makes the chat a lead, and any later
 // message updates the lead's last contact. Best effort: a failure is logged

@@ -31,6 +31,7 @@ var RequiredTables = []string{
 	"ai_pending_changes",
 	"bot_schedules",
 	"business_profiles",
+	"chat_customers",
 	"chat_referrals",
 	"chatwoot_inboxes",
 	"fb_comments",

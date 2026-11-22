@@ -122,7 +122,10 @@ type Options struct {
 	Corrections Corrector
 	// Leads keeps the owner's lead list (who asked about price, who got a
 	// price or link); nil keeps none.
-	Leads          LeadRecorder
+	Leads LeadRecorder
+	// ChatLinks keeps which Messenger customer each chat is with, so /admin
+	// can match chats to the ad they came from (#156); nil keeps none.
+	ChatLinks      ChatLinker
 	History        *memory.History
 	Handoff        *handoff.Detector
 	SystemPrompt   string
@@ -411,6 +414,7 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "user", Content: in.text})
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		b.noteCustomer(ctx, log, ev, in.text)
+		b.linkChat(ctx, log, ev)
 		if b.opts.Handoff.Wants(in.text) {
 			tr.Outcome, tr.Output = "handoff:"+ReasonCustomerAsked, b.opts.HandoffMessage
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)

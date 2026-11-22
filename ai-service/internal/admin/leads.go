@@ -37,7 +37,9 @@ type leadView struct {
 	When       string
 	Link       string // the chat in Chatwoot, or the comment queue
 	LinkText   string
-	External   bool // Link opens Chatwoot in a new tab
+	External   bool   // Link opens Chatwoot in a new tab
+	Ad         string // the ad or link the customer came from last; "" none
+	AdEarlier  string // earlier ones, "Name (12 Nov), …"
 }
 
 type stageCount struct {
@@ -56,6 +58,7 @@ type leadsData struct {
 	Leads     []leadView
 	Full      bool
 	Error     string
+	AdsOn     bool // show the Ad column
 }
 
 // stageLabel is the English name of a stage; the page translates it.
@@ -113,6 +116,8 @@ func (h *Handler) showLeads(w http.ResponseWriter, r *http.Request) {
 	for _, l := range list {
 		data.Leads = append(data.Leads, h.toLeadView(lang, pk, l))
 	}
+	data.AdsOn = h.Ads != nil
+	h.addLeadAds(ctx, lang, data.AccountID, list, data.Leads)
 	h.renderPage(w, r, http.StatusOK, "leads.html", data)
 }
 
