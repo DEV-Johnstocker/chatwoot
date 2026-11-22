@@ -65,6 +65,7 @@ Facebook ──► ai-service POST /webhooks/messenger ──► Chatwoot /bot (
 | Subscription check that isn't one | 403; only `hub.mode`, `hub.verify_token`, `hub.challenge` forwarded; echo is plain text | `TestProxy_HandshakeRefusesAnythingButASubscriptionCheck`, `TestProxy_HandshakeForwardsOnlyTheCheckParameters` |
 | Chatwoot down during a check | 502; the verify token never reaches the logs | `TestProxy_HandshakeFailureLogsNoVerifyToken` |
 | Event without a timestamp | Skipped (would be saved as 1970) | `TestParse_SkipsEventsWithoutTimestamp` |
+| Timestamp in seconds (standalone referral) or milliseconds (message) | Both read correctly | `TestParse_TimestampInSecondsOrMilliseconds` |
 | Replayed signed delivery | Accepted risk: Facebook signs no timestamp. The unique key makes a replay a no-op here, and Chatwoot skips message ids it already has | `TestPostgres_AddIsIdempotentAndLatestWins` |
 
 ## Rules for readers (#156, #157)
@@ -103,4 +104,11 @@ callback at `https://<staging host>/webhooks/messenger`):
 
 ## Evidence
 
-- 2026-11-23, local: unit and scratch-DB tests pass (see PR #155's body).
+- 2026-11-23, local: unit and scratch-DB tests pass (PR #158).
+- 2026-11-23, STAGING: Meta app callback moved to `/webhooks/messenger` (Meta's
+  check passed through to Chatwoot); Page subscribed to `messaging_referrals`.
+  Opening the Page's chat with `?ref=adtest1` saved one row (`SHORTLINK`,
+  `adtest1`). Found: a standalone referral's timestamp is in seconds; fixed.
+- Chatwoot's own `/bot` accepts any verify token
+  (`config/initializers/facebook_messenger.rb` `valid_verify_token?` ignores
+  its argument); the pass-through only narrows what is echoed.

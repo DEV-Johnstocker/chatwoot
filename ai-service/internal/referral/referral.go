@@ -101,7 +101,7 @@ func Parse(body []byte) ([]Referral, error) {
 				Ref:        clean(raw.Ref, maxRefLen),
 				AdID:       clean(raw.AdID, maxIDLen),
 				AdTitle:    cleanRunes(raw.AdsContextData.AdTitle, MaxTitleRunes),
-				ReferredAt: time.UnixMilli(m.Timestamp).UTC(),
+				ReferredAt: eventTime(m.Timestamp),
 			}
 			if r.PageID == "" || r.PSID == "" || r.PSID == r.PageID || (r.Source == "" && r.AdID == "" && r.Ref == "") {
 				continue
@@ -142,4 +142,14 @@ func oneLine(s string) string {
 		return r
 	}, s)
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// eventTime reads Facebook's event timestamp. Messages carry milliseconds,
+// but a standalone referral carries seconds (STAGING, 2026-11-23); a value
+// below 10^11 cannot be milliseconds after 1973, so it is seconds.
+func eventTime(ts int64) time.Time {
+	if ts < 100_000_000_000 {
+		return time.Unix(ts, 0).UTC()
+	}
+	return time.UnixMilli(ts).UTC()
 }

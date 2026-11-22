@@ -134,3 +134,26 @@ func TestParse_SkipsEventsWithoutTimestamp(t *testing.T) {
 		t.Errorf("got %+v, %v; want none (would be saved as 1970)", got, err)
 	}
 }
+
+// Facebook sends a standalone referral's timestamp in seconds, not
+// milliseconds (STAGING, 2026-11-23: saved as 1970-01-21).
+func TestParse_TimestampInSecondsOrMilliseconds(t *testing.T) {
+	// Arrange
+	body := []byte(`{"object":"page","entry":[{"id":"111","messaging":[
+		{"sender":{"id":"A"},"recipient":{"id":"111"},"timestamp":1795376576,"referral":{"ref":"adtest1","source":"SHORTLINK"}},
+		{"sender":{"id":"B"},"recipient":{"id":"111"},"timestamp":1795376576225,"referral":{"ref":"x","source":"SHORTLINK"}}]}]}`)
+
+	// Act
+	got, err := Parse(body)
+
+	// Assert
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	want := time.Unix(1795376576, 0).UTC()
+	for _, r := range got {
+		if r.ReferredAt.Sub(want).Abs() > time.Second {
+			t.Errorf("%s: ReferredAt = %v, want about %v", r.PSID, r.ReferredAt, want)
+		}
+	}
+}
