@@ -59,3 +59,18 @@ func TestLoad_MessengerReferralsRejectsPartialOrBadSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_MessengerSecretIsTrimmed(t *testing.T) {
+	// Arrange
+	env := requiredEnv()
+	env["MESSENGER_APP_SECRET"] = "  app-secret\n"
+	env["CHATWOOT_MESSENGER_URL"] = "http://rails:3000/bot"
+
+	// Act
+	cfg, err := Load(lookupFrom(env))
+
+	// Assert
+	if err != nil || cfg.MessengerAppSecret != "app-secret" {
+		t.Fatalf("secret %q err %v", cfg.MessengerAppSecret, err)
+	}
+}

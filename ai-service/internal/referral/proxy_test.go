@@ -272,3 +272,71 @@ func TestProxy_DoesNotFollowRedirects(t *testing.T) {
 		t.Errorf("status %d, upstream hits %d, saved %d; want 301 passed back, 1 hit, nothing saved", rec.Code, hits, st.count())
 	}
 }
+
+func TestProxy_HandshakeFailureLogsNoVerifyToken(t *testing.T) {
+	// Arrange: Chatwoot too slow during a real subscription check.
+	up := &upstream{delay: time.Second}
+	var logs bytes.Buffer
+	mux := newProxy(t, up.server(t), &fakeStore{}, &logs)
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, WebhookPath+"?hub.mode=subscribe&hub.verify_token=VERIFY-SECRET-1&hub.challenge=777", nil)
+
+	// Act
+	mux.ServeHTTP(rec, r)
+
+	// Assert
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status %d, want 502", rec.Code)
+	}
+	if strings.Contains(logs.String(), "VERIFY-SECRET-1") {
+		t.Errorf("verify token in logs:\n%s", logs.String())
+	}
+}
+
+func TestProxy_HandshakeRefusesAnythingButASubscriptionCheck(t *testing.T) {
+	for name, q := range map[string]string{
+		"no mode":           "?hub.verify_token=t&hub.challenge=1",
+		"other mode":        "?hub.mode=unsubscribe&hub.verify_token=t&hub.challenge=1",
+		"html challenge":    "?hub.mode=subscribe&hub.verify_token=t&hub.challenge=%3Cscript%3E",
+		"missing challenge": "?hub.mode=subscribe&hub.verify_token=t",
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			up := &upstream{}
+			mux := newProxy(t, up.server(t), &fakeStore{}, nil)
+			rec := httptest.NewRecorder()
+
+			// Act
+			mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, WebhookPath+q, nil))
+
+			// Assert
+			if rec.Code != http.StatusForbidden {
+				t.Errorf("status %d, want 403", rec.Code)
+			}
+		})
+	}
+}
+
+func TestProxy_HandshakeForwardsOnlyTheCheckParameters(t *testing.T) {
+	// Arrange
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, r.URL.Query().Get("hub.challenge"))
+	}))
+	t.Cleanup(srv.Close)
+	mux := newProxy(t, srv, &fakeStore{}, nil)
+	rec := httptest.NewRecorder()
+
+	// Act
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, WebhookPath+"?hub.mode=subscribe&hub.verify_token=t&hub.challenge=42&extra=evil", nil))
+
+	// Assert
+	if rec.Code != http.StatusOK || rec.Body.String() != "42" || gotQuery.Has("extra") {
+		t.Errorf("status %d body %q forwarded %v", rec.Code, rec.Body.String(), gotQuery)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type %q, want text/plain", ct)
+	}
+}

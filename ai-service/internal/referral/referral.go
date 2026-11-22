@@ -87,8 +87,8 @@ func Parse(body []byte) ([]Referral, error) {
 			if raw == nil && m.Message != nil {
 				raw = m.Message.Referral
 			}
-			if raw == nil {
-				continue
+			if raw == nil || m.Timestamp <= 0 {
+				continue // no timestamp: it would be saved as 1970 and break de-duplication
 			}
 			page := clean(m.Recipient.ID, maxIDLen)
 			if page == "" {

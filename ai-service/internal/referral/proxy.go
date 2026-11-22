@@ -3,10 +3,12 @@ package referral
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"time"
 
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/comments"
@@ -52,11 +54,25 @@ func (p *Proxy) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+WebhookPath, p.receive)
 }
 
+// challengeRe bounds the challenge passed on and echoed back: Facebook sends a
+// number, so anything else is refused before it reaches Chatwoot.
+var challengeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
+
 // handshake passes Facebook's subscription check through to Chatwoot, which
-// owns the verify token.
+// owns the verify token. Only a real check goes through, with only its three
+// parameters, and the echo always goes back as plain text.
 func (p *Proxy) handshake(w http.ResponseWriter, r *http.Request) {
+	in := r.URL.Query()
+	if in.Get("hub.mode") != "subscribe" || !challengeRe.MatchString(in.Get("hub.challenge")) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	target := *p.Upstream
-	target.RawQuery = r.URL.RawQuery
+	target.RawQuery = url.Values{
+		"hub.mode":         {"subscribe"},
+		"hub.verify_token": {in.Get("hub.verify_token")},
+		"hub.challenge":    {in.Get("hub.challenge")},
+	}.Encode()
 	ctx, cancel := context.WithTimeout(r.Context(), p.timeout())
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
@@ -105,13 +121,21 @@ func (p *Proxy) relay(w http.ResponseWriter, req *http.Request, kind string) boo
 	res, err := p.client().Do(req)
 	if err != nil {
 		// Facebook retries a failed delivery; the retry saves the referral.
-		p.Logger.Warn("messenger forward failed", "kind", kind, "host", p.Upstream.Host, "error", err)
+		// The error is unwrapped: a *url.Error carries the full URL, and a
+		// handshake's URL holds the verify token.
+		level := slog.LevelWarn
+		if kind == "handshake" {
+			level = slog.LevelDebug // anyone can send a check; no log flood
+		}
+		p.Logger.Log(req.Context(), level, "messenger forward failed", "kind", kind, "host", p.Upstream.Host, "error", errorWithoutURL(err))
 		http.Error(w, "bad gateway", http.StatusBadGateway)
 		return false
 	}
 	defer res.Body.Close()
 	reply, _ := io.ReadAll(io.LimitReader(res.Body, maxUpstreamReply))
-	if ct := res.Header.Get("Content-Type"); ct != "" {
+	if kind == "handshake" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	} else if ct := res.Header.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -146,6 +170,15 @@ func (p *Proxy) save(parent context.Context, body []byte) {
 		p.Logger.Info("messenger referral", "page_id", r.PageID, "source", r.Source, "ad", r.AdID != "")
 	}
 	p.Logger.Debug("messenger referrals saved", "new", added, "seen", len(refs))
+}
+
+// errorWithoutURL drops the request URL from a client error.
+func errorWithoutURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
 }
 
 func (p *Proxy) timeout() time.Duration {

@@ -483,7 +483,7 @@ func normalizeEmail(raw string) (string, bool) {
 // Chatwoot URL come together; the URL is an internal http(s) address without
 // credentials.
 func loadMessenger(cfg *Config, get func(key, def string) string, errs []error) []error {
-	cfg.MessengerAppSecret = get("MESSENGER_APP_SECRET", "")
+	cfg.MessengerAppSecret = strings.TrimSpace(get("MESSENGER_APP_SECRET", ""))
 	raw := strings.TrimSpace(get("CHATWOOT_MESSENGER_URL", ""))
 	if cfg.MessengerAppSecret == "" && raw == "" {
 		return errs

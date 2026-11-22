@@ -121,3 +121,16 @@ func quote(s string) string {
 	b.WriteByte('"')
 	return b.String()
 }
+
+func TestParse_SkipsEventsWithoutTimestamp(t *testing.T) {
+	// Arrange
+	body := []byte(`{"object":"page","entry":[{"id":"111","messaging":[{"sender":{"id":"P"},"recipient":{"id":"111"},"referral":{"source":"ADS","ad_id":"1"}}]}]}`)
+
+	// Act
+	got, err := Parse(body)
+
+	// Assert
+	if err != nil || len(got) != 0 {
+		t.Errorf("got %+v, %v; want none (would be saved as 1970)", got, err)
+	}
+}

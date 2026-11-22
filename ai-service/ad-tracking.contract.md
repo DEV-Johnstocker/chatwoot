@@ -62,6 +62,19 @@ Facebook ──► ai-service POST /webhooks/messenger ──► Chatwoot /bot (
 | Long or hostile headline | One line, ≤ 120 characters | `TestParse_CleansAndCapsFields` |
 | Personal data in logs | No psid, message text, headline or secret logged | `TestProxy_LogsNoPersonalData` |
 | Retention | Rows older than 90 days deleted daily | `TestPostgres_PruneDropsOnlyOldRows` |
+| Subscription check that isn't one | 403; only `hub.mode`, `hub.verify_token`, `hub.challenge` forwarded; echo is plain text | `TestProxy_HandshakeRefusesAnythingButASubscriptionCheck`, `TestProxy_HandshakeForwardsOnlyTheCheckParameters` |
+| Chatwoot down during a check | 502; the verify token never reaches the logs | `TestProxy_HandshakeFailureLogsNoVerifyToken` |
+| Event without a timestamp | Skipped (would be saved as 1970) | `TestParse_SkipsEventsWithoutTimestamp` |
+| Replayed signed delivery | Accepted risk: Facebook signs no timestamp. The unique key makes a replay a no-op here, and Chatwoot skips message ids it already has | `TestPostgres_AddIsIdempotentAndLatestWins` |
+
+## Rules for readers (#156, #157)
+
+- The table has no account column: one Messenger app secret covers every Page on
+  the install, so rows are told apart by `page_id` only. A reader maps the
+  account to its own Facebook inbox's Page id and filters by that; it never
+  takes a `page_id` from a request.
+- Customers are linked through Chatwoot's contact inbox `source_id`, which is
+  the PSID for Facebook inboxes (verify on STAGING in #156).
 
 ## Acceptance commands
 
@@ -81,8 +94,8 @@ callback at `https://<staging host>/webhooks/messenger`):
 
 - Schema v26 is additive (one new table, two indexes, `lock_timeout` 5 s).
   Rolling back the code is safe; the table stays unused.
-- PRODUCTION: backup → deploy (Migrate applies v26) → check `chat_referrals`
-  exists → rebuild `/opt/aisvc-backup/restore-check` for v26 → set the two
+- PRODUCTION: rebuild `/opt/aisvc-backup/restore-check` for v26 → backup →
+  deploy (Migrate applies v26) → check `chat_referrals` exists → set the two
   env values → add the public route → move the Meta callback. Each step on the
   owner's go.
 - The Page must be subscribed to `messages`, `messaging_postbacks` and
