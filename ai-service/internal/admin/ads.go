@@ -20,7 +20,11 @@ type AdSources interface {
 }
 
 // adsPerLead is how many ads a lead's cell names: the latest and two earlier.
-const adsPerLead = 3
+// More taps are read, since repeat taps of one ad are named once.
+const (
+	adsPerLead = 3
+	adsRead    = 20
+)
 
 // addLeadAds fills the Ad column for chat leads. A failure is logged and the
 // page shows the leads without it.
@@ -37,13 +41,13 @@ func (h *Handler) addLeadAds(ctx context.Context, lang string, acct int64, list 
 	if len(convs) == 0 {
 		return
 	}
-	byChat, err := h.Ads.ForChats(ctx, acct, convs, adsPerLead)
+	byChat, err := h.Ads.ForChats(ctx, acct, convs, adsRead)
 	if err != nil {
 		h.Logger.Warn("lead ads not read", "account_id", acct, "error", err)
 		return
 	}
 	for i, l := range list {
-		refs := byChat[l.ConversationID]
+		refs := distinctAds(byChat[l.ConversationID], adsPerLead)
 		if l.Source != leads.SourceChat || len(refs) == 0 {
 			continue
 		}
@@ -54,6 +58,20 @@ func (h *Handler) addLeadAds(ctx context.Context, lang string, acct int64, list 
 		}
 		views[i].AdEarlier = strings.Join(earlier, ", ")
 	}
+}
+
+// distinctAds keeps each ad or link once (its newest tap), at most n.
+func distinctAds(refs []referral.Referral, n int) []referral.Referral {
+	seen := map[string]bool{}
+	var out []referral.Referral
+	for _, r := range refs {
+		if seen[r.Key()] || len(out) == n {
+			continue
+		}
+		seen[r.Key()] = true
+		out = append(out, r)
+	}
+	return out
 }
 
 // adName is an ad's headline, "Ad <id>" without one, or "Link: <ref>".

@@ -170,3 +170,22 @@ func TestSales_NoAdsSectionWithoutAdTracking(t *testing.T) {
 		t.Error("Ads section shown while ad tracking is off")
 	}
 }
+
+func TestLeads_RepeatTapsOfOneAdAreNamedOnce(t *testing.T) {
+	// Arrange
+	t1 := time.Date(2026, 11, 12, 3, 0, 0, 0, time.UTC)
+	ws := referral.Referral{Source: "ADS", AdID: "ws", AdTitle: "Workshop", ReferredAt: t1.Add(2 * time.Hour)}
+	ads := &fakeAds{chats: map[int64][]referral.Referral{41: {ws, ws, {Source: "ADS", AdID: "jac", AdTitle: "John Auto Cut", ReferredAt: t1}}}}
+	mux := adsEnv(t, ads, nil)
+
+	// Act
+	body := serve(mux, adGet("/admin/leads?account=3")).Body.String()
+
+	// Assert
+	if n := strings.Count(body, "Workshop"); n != 1 {
+		t.Errorf("Workshop named %d times, want once", n)
+	}
+	if !strings.Contains(body, "John Auto Cut") {
+		t.Error("earlier ad missing")
+	}
+}
