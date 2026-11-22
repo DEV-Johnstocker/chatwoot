@@ -203,6 +203,29 @@
     });
   }
 
+  // The menu scrolls on its own when it is taller than the window. Each
+  // click loads a new page, which used to draw the menu from the top again,
+  // so the item just clicked jumped out of sight (owner, 2026-11-23). Keep
+  // where it was for this tab; without a saved place (a bookmark, a new tab)
+  // scroll just far enough to show the open page's item.
+  const sidebar = document.querySelector('.sidebar');
+  const navScrollKey = 'admin_nav_scroll';
+  if (sidebar) {
+    let saved = null;
+    try { saved = sessionStorage.getItem(navScrollKey); } catch (_) { /* storage blocked */ }
+    if (saved !== null) sidebar.scrollTop = Number(saved) || 0;
+    const current = document.querySelector('.sidebar [aria-current="page"]');
+    if (current) {
+      const item = current.getBoundingClientRect();
+      const box = sidebar.getBoundingClientRect();
+      if (item.bottom > box.bottom) sidebar.scrollTop += item.bottom - box.bottom + 16;
+      else if (item.top < box.top) sidebar.scrollTop -= box.top - item.top + 16;
+    }
+    window.addEventListener('pagehide', () => {
+      try { sessionStorage.setItem(navScrollKey, String(sidebar.scrollTop)); } catch (_) { /* storage blocked */ }
+    });
+  }
+
   // The account dropdown opens the picked account at once; its Open button
   // stays only for browsers without scripts.
   for (const box of document.querySelectorAll('select[data-autosubmit]')) {

@@ -129,3 +129,32 @@ func TestPages_ConfirmAndCopyHooks(t *testing.T) {
 		t.Error("pages do not load admin.js")
 	}
 }
+
+// Clicking a link low in a scrolled menu loads a new page; without this the
+// menu opened at the top again and the clicked item jumped out of sight
+// (owner, 2026-11-23). Issue: DEV-Johnstocker/chatwoot#1
+func TestScript_KeepsMenuScrollAcrossPages(t *testing.T) {
+	// Arrange
+	js := string(adminJS)
+	layout, err := fs.ReadFile(pageFS, "layout.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Act
+	saves := strings.Contains(js, "pagehide") && strings.Contains(js, "sessionStorage.setItem(navScrollKey")
+	restores := strings.Contains(js, "sessionStorage.getItem(navScrollKey")
+	showsCurrent := strings.Contains(js, `.sidebar [aria-current="page"]`)
+	stableWidth := strings.Contains(string(layout), "scrollbar-gutter: stable")
+
+	// Assert
+	if !saves || !restores {
+		t.Errorf("menu scroll not kept: saves=%v restores=%v", saves, restores)
+	}
+	if !showsCurrent {
+		t.Error("the open page's menu item is not brought into view")
+	}
+	if !stableWidth {
+		t.Error("layout lacks scrollbar-gutter: stable; pages shift sideways when a scrollbar appears")
+	}
+}
