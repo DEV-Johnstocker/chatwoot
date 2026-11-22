@@ -29,6 +29,8 @@
       --focus: #c9c2ff;
   }
   * { box-sizing: border-box; }
+  /* Room for the scrollbar on every page, so short and long pages are the same width and the layout does not shift sideways. */
+  html { scrollbar-gutter: stable; }
   [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
