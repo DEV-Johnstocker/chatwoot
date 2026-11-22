@@ -193,6 +193,13 @@ services:
       META_PAGE_ID: ${META_PAGE_ID:-}
       META_PAGE_TOKEN: ${META_PAGE_TOKEN:-}
       META_ACCOUNT_ID: ${META_ACCOUNT_ID:-1}
+      # Messenger pass-through (#155): off unless both are set. The Meta app's
+      # Messenger callback then points at /webhooks/messenger (a public route of
+      # its own); ai-service checks the signature, forwards the event unchanged
+      # to Chatwoot's /bot and keeps which ad or m.me link the chat came from.
+      # MESSENGER_APP_SECRET is the same app secret Chatwoot uses for Messenger.
+      MESSENGER_APP_SECRET: ${MESSENGER_APP_SECRET:-}
+      CHATWOOT_MESSENGER_URL: ${CHATWOOT_MESSENGER_URL:-}
       # Shadow AI reviewer of drafted comment replies (records, never sends):
       # off | llm (main provider, or COMMENT_REVIEW_MODEL on it) | jev (TypeSafe).
       COMMENT_REVIEWER: ${COMMENT_REVIEWER:-llm}

@@ -6,6 +6,7 @@ import (
 
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -107,6 +108,11 @@ type Config struct {
 	MetaPageToken    string // Page access token for private replies; empty: no sending (secret)
 	MetaAccountID    int64  // the Chatwoot account the Page belongs to (default 1)
 	MetaGraphVersion string // Graph API version, e.g. v24.0
+	// Messenger referrals (/webhooks/messenger): ai-service forwards Messenger
+	// events to Chatwoot and keeps where each chat came from (an ad, an m.me
+	// link). On when both are set, with a database.
+	MessengerAppSecret   string   // the Messenger app's secret, as Chatwoot has it (secret)
+	ChatwootMessengerURL *url.URL // Chatwoot's Messenger endpoint, e.g. http://rails:3000/bot
 	// CommentReviewer is the shadow reviewer of drafted replies: off, llm
 	// (the main provider, or CommentReviewModel on it) or jev (TypeSafe).
 	// It records what it would do; it sends only with CommentAutoSend.
@@ -302,6 +308,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	errs = loadMeta(&cfg, get, errs)
+	errs = loadMessenger(&cfg, get, errs)
 	errs = loadAlerts(&cfg, get, errs)
 
 	required := []struct{ key, val string }{
@@ -470,4 +477,29 @@ func normalizeEmail(raw string) (string, bool) {
 		}
 	}
 	return string(b), true
+}
+
+// loadMessenger reads the Messenger pass-through settings. The secret and the
+// Chatwoot URL come together; the URL is an internal http(s) address without
+// credentials.
+func loadMessenger(cfg *Config, get func(key, def string) string, errs []error) []error {
+	cfg.MessengerAppSecret = strings.TrimSpace(get("MESSENGER_APP_SECRET", ""))
+	raw := strings.TrimSpace(get("CHATWOOT_MESSENGER_URL", ""))
+	if cfg.MessengerAppSecret == "" && raw == "" {
+		return errs
+	}
+	if cfg.MessengerAppSecret == "" || raw == "" {
+		return append(errs, errors.New("MESSENGER_APP_SECRET and CHATWOOT_MESSENGER_URL are required together"))
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		return append(errs, errors.New("CHATWOOT_MESSENGER_URL must be an http or https URL without a user or password"))
+	}
+	cfg.ChatwootMessengerURL = u
+	return errs
+}
+
+// MessengerProxyEnabled reports whether the Messenger pass-through is configured.
+func (c Config) MessengerProxyEnabled() bool {
+	return c.MessengerAppSecret != "" && c.ChatwootMessengerURL != nil
 }
