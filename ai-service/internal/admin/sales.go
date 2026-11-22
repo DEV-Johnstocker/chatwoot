@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/referral"
 	"github.com/DEV-Johnstocker/chatwoot/ai-service/internal/sales"
 )
 
@@ -45,15 +46,24 @@ type salesData struct {
 	Slips      []saleView
 	Full       bool // more paid chats than the list shows
 	Error      string
+	// Ads table (#156): shown when ad tracking is on.
+	AdsOn    bool
+	AdCredit referral.Credit
+	AdRows   []adRowView
+	AdsError string
 }
 
 func (h *Handler) showSales(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	lang := langOf(r)
-	data := salesData{Enabled: h.Sales != nil, AccountID: accountParam(q.Get("account")), Period: q.Get("period")}
+	data := salesData{Enabled: h.Sales != nil, AccountID: accountParam(q.Get("account")), Period: q.Get("period"),
+		AdCredit: creditParam(q.Get("credit"))}
 	from, to := h.salesPeriod(&data, lang, time.Now())
 	if h.Sales != nil {
 		h.loadSales(r.Context(), lang, &data, from, to)
+		ctx, cancel := context.WithTimeout(r.Context(), salesTimeout)
+		h.loadAds(ctx, lang, &data, from, to)
+		cancel()
 	}
 	h.renderPage(w, r, http.StatusOK, "sales.html", data)
 }

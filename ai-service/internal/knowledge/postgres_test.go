@@ -1402,3 +1402,51 @@ func TestMigrate_V23AddsLeadsClosedToAPIRoles(t *testing.T) {
 		t.Fatalf("insert ok=%v unknown stage=%v duplicate=%v long name=%v zero conversation=%v", okErr, unknown, dup, longName, zero)
 	}
 }
+
+func TestMigrate_V27AddsChatCustomersClosedAndIndexesReferralsByCustomer(t *testing.T) {
+	// Arrange: a version-26 database with a saved referral, where Supabase's
+	// API roles get every new table.
+	db := openTestDB(t)
+	ctx := context.Background()
+	if _, err := db.Pool.Exec(ctx, `DO $$ BEGIN
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+		END $$;
+		ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+		DROP TABLE IF EXISTS chat_customers;
+		DROP INDEX IF EXISTS chat_referrals_psid;
+		TRUNCATE chat_referrals;
+		INSERT INTO chat_referrals (page_id, psid, source, ad_id, referred_at) VALUES ('111', 'P', 'ADS', '1', now());
+		UPDATE kb_schema_version SET version = 26;`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated;`)
+	})
+
+	// Act
+	err := db.Migrate(ctx)
+	_, okLink := db.Pool.Exec(ctx, `INSERT INTO chat_customers (account_id, conversation_id, psid) VALUES (1, 10, 'P')`)
+	_, emptyPSID := db.Pool.Exec(ctx, `INSERT INTO chat_customers (account_id, conversation_id, psid) VALUES (1, 11, '')`)
+
+	// Assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	var version, referrals int
+	var rls, tableOpen, psidIndex bool
+	if err := db.Pool.QueryRow(ctx, `SELECT (SELECT version FROM kb_schema_version),
+		(SELECT count(*) FROM chat_referrals),
+		(SELECT relrowsecurity FROM pg_class WHERE relname = 'chat_customers'),
+		EXISTS (SELECT 1 FROM pg_roles r WHERE r.rolname IN ('anon', 'authenticated')
+			AND has_table_privilege(r.rolname, 'chat_customers', 'SELECT,INSERT,UPDATE,DELETE')),
+		to_regclass('chat_referrals_psid') IS NOT NULL`).Scan(&version, &referrals, &rls, &tableOpen, &psidIndex); err != nil {
+		t.Fatal(err)
+	}
+	if version != SchemaVersion || referrals != 1 || !rls || tableOpen || !psidIndex {
+		t.Fatalf("version=%d referrals=%d rls=%v table open=%v psid index=%v", version, referrals, rls, tableOpen, psidIndex)
+	}
+	if okLink != nil || emptyPSID == nil {
+		t.Fatalf("valid link err=%v, empty psid err=%v (want nil, refused)", okLink, emptyPSID)
+	}
+}

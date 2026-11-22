@@ -167,7 +167,8 @@ func run() error {
 	commentEchoes := &commentecho.Echoes{}
 	alertSettings := openAlertSettings(cfg, logger)
 	monitor := startAlerts(cfg, alertSettings, logger)
-	leadStore := leadsStore(profiles) // who asked about price, for /admin → Leads
+	leadStore := leadsStore(profiles)       // who asked about price, for /admin → Leads
+	adStore := referralStore(cfg, profiles) // which ad each Messenger chat came from (#155, #156)
 	b := bot.New(bot.Options{
 		Chatwoot:          chatwoot.New(cfg.ChatwootBaseURL, cfg.ChatwootBotToken, nil),
 		LLM:               metered(completer, rec, spend.PurposeReply, 0),
@@ -187,6 +188,7 @@ func run() error {
 		Corrections:       staffCorrections(cfg, mcpStore, profiles, reader),
 		Sales:             botSales(saleStore),
 		Leads:             botLeads(leadStore),
+		ChatLinks:         botChatLinks(adStore),
 		Tracer:            tracer,
 		History:           memory.NewHistory(cfg.HistoryLimit, 24*time.Hour, nil),
 		Handoff:           handoff.New(cfg.HandoffKeywords),
@@ -236,7 +238,7 @@ func run() error {
 	}
 	commentQueue := startComments(cfg, profiles, adminProfiles, metered(completer, rec, spend.PurposeComment, cfg.MetaAccountID), commentKnowledge,
 		commentReviewer(cfg, current, metered(completer, rec, spend.PurposeCommentReview, cfg.MetaAccountID), rec, logger), commentEchoes, chats, mux, logger)
-	startReferrals(cfg, profiles, mux, logger)
+	startReferrals(cfg, adStore, mux, logger)
 	var srvMCP *mcp.Server // nil while MCP is off
 	switch {
 	case !cfg.MCPEnabled:
@@ -289,6 +291,7 @@ func run() error {
 			Alerts: monitor, AlertSettings: alertSettings, SlackConfigured: cfg.Alerts.SlackWebhookURL != "",
 			Spend: adminSpend(profiles, spendMonitor),
 			Leads: adminLeads(leadStore),
+			Ads:   adminAds(adStore),
 			Nudge: nudgeSettings, NudgeReady: reader != nil,
 		}).Routes(mux)
 	} else {
@@ -468,26 +471,57 @@ func startComments(cfg config.Config, db *profile.Postgres, profiles profile.Sto
 	return q
 }
 
+// referralStore keeps referrals and chat links when the Messenger
+// pass-through is on and there is a database; otherwise nil, and no
+// Messenger ids are kept.
+func referralStore(cfg config.Config, profiles *profile.Postgres) *referral.Postgres {
+	if profiles == nil || !cfg.MessengerProxyEnabled() {
+		return nil
+	}
+	return &referral.Postgres{Pool: profiles.Pool}
+}
+
+// botChatLinks and adminAds keep a nil store a nil interface, which turns
+// chat linking and the ad views off.
+func botChatLinks(s *referral.Postgres) bot.ChatLinker {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+func adminAds(s *referral.Postgres) admin.AdSources {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
 // startReferrals serves the Messenger pass-through in front of Chatwoot and
 // keeps where each chat came from (#155), when it is configured and there is
-// a database. Old referrals are deleted daily.
-func startReferrals(cfg config.Config, db *profile.Postgres, mux *http.ServeMux, logger *slog.Logger) {
+// a database. Old referrals and chat links are deleted daily.
+func startReferrals(cfg config.Config, store *referral.Postgres, mux *http.ServeMux, logger *slog.Logger) {
 	if !cfg.MessengerProxyEnabled() {
 		logger.Info("messenger referrals off: set MESSENGER_APP_SECRET and CHATWOOT_MESSENGER_URL to keep which ad brought each chat")
 		return
 	}
-	if db == nil {
+	if store == nil {
 		logger.Warn("messenger referrals off: they need DATABASE_URL")
 		return
 	}
 	log := logger.With("component", "referrals")
-	store := &referral.Postgres{Pool: db.Pool}
 	(&referral.Proxy{AppSecret: cfg.MessengerAppSecret, Upstream: cfg.ChatwootMessengerURL,
 		Timeout: 8 * time.Second, Store: store, Logger: log}).Routes(mux)
 	go func() {
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-			if n, err := store.Prune(ctx, time.Now()); err != nil {
+			n, err := store.Prune(ctx, time.Now())
+			if err == nil {
+				var m int64
+				m, err = store.PruneChats(ctx, time.Now())
+				n += m
+			}
+			if err != nil {
 				log.Warn("prune messenger referrals failed", "error", err)
 			} else if n > 0 {
 				log.Info("old messenger referrals deleted", "count", n)

@@ -162,6 +162,10 @@ type Handler struct {
 	// Leads lists customers who showed buying interest; nil turns the
 	// Leads page off (no database).
 	Leads LeadList
+	// Ads matches chats to the ad or m.me link the customer came from
+	// (referral.Postgres): an Ad column on Leads and a per-ad table on
+	// Sales. nil shows neither.
+	Ads AdSources
 	// AlertSettings holds the Alerts page values (alerts.SettingsStore); nil
 	// turns that page off. SlackConfigured says whether the Slack link is set
 	// (the link itself is never shown).

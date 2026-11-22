@@ -37,12 +37,13 @@
   <p class="empty">{{if .Stage}}{{T "No leads at this stage."}}{{else}}{{T "No leads yet. A chat appears here when a customer asks the bot about price, buying or a promotion."}}{{end}}</p>
   {{else if .Leads}}
   <table>
-    <thead><tr><th scope="col">{{T "Name"}}</th><th scope="col">{{T "Channel"}}</th><th scope="col">{{T "Interest"}}</th><th scope="col">{{T "Stage"}}</th><th scope="col">{{T "Last contact"}}</th><th scope="col"><span class="visually-hidden">{{T "Chat"}}</span></th></tr></thead>
+    <thead><tr><th scope="col">{{T "Name"}}</th><th scope="col">{{T "Channel"}}</th>{{if $.AdsOn}}<th scope="col">{{T "Ad"}}</th>{{end}}<th scope="col">{{T "Interest"}}</th><th scope="col">{{T "Stage"}}</th><th scope="col">{{T "Last contact"}}</th><th scope="col"><span class="visually-hidden">{{T "Chat"}}</span></th></tr></thead>
     <tbody>
     {{range .Leads}}
       <tr>
         <td><strong>{{.Name}}</strong></td>
         <td data-label="{{T "Channel"}}">{{.Channel}}</td>
+        {{if $.AdsOn}}<td data-label="{{T "Ad"}}">{{if .Ad}}{{.Ad}}{{with .AdEarlier}}<br><span class="hint">{{T "Earlier: %s" .}}</span>{{end}}{{else}}<span class="hint">—</span>{{end}}</td>{{end}}
         <td data-label="{{T "Interest"}}">{{if .Interest}}{{.Interest}}{{else}}<span class="hint">{{T "Not known yet"}}</span>{{end}}</td>
         <td data-label="{{T "Stage"}}"><span class="badge{{if eq .Stage "paid"}} active{{else if or (eq .Stage "quoted") (eq .Stage "slip")}} scheduled{{end}}">{{.StageLabel}}</span></td>
         <td class="num" data-label="{{T "Last contact"}}">{{.When}}</td>
