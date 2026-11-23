@@ -10,6 +10,7 @@ Issues: DEV-Johnstocker/chatwoot#1, epic #154 (children #155, #156, #157).
 |---|---|---|
 | Messenger pass-through in front of Chatwoot's `/bot`; save referrals (`chat_referrals`, schema v26) | #155 | done (PR #158, #159) |
 | Leads **Ad** column; Sales per-ad table (first/last touch); `chat_customers` (v27) | #156 | done |
+| Chatwoot inbox: `ad` label + conversation attributes `ad_name`, `ad_id`, `ad_tapped_at` on chats whose customer tapped an ad in the last 7 days (owner's choice 2026-11-23) | #154 | done |
 | Bot gets the latest ad (≤ 7 days) as a product hint, never prices | #157 | planned |
 
 ## How it works (#155)
@@ -110,6 +111,17 @@ callback at `https://<staging host>/webhooks/messenger`):
   owner's go.
 - The Page must be subscribed to `messages`, `messaging_postbacks` and
   `messaging_referrals` in the Meta app (unverified for `messaging_referrals`).
+
+- Ad label (Chatwoot inbox): each account needs a one-time setup in
+  Chatwoot, done by hand like `paid`/`paid_amount`: a label `ad` (purple
+  `#7C3AED`, shown in the sidebar) and three conversation attribute
+  definitions: `ad_name` (text, "Ad"), `ad_id` (text, "Ad id"),
+  `ad_tapped_at` (date, "Ad tapped"). Without the definitions the values are
+  saved but not shown in the side panel. STAGING account 3 done 2026-11-23;
+  PRODUCTION account 1 on the owner's go.
+- Chat links are recorded for every customer message on a Messenger chat,
+  also when the bot is off or staff have the chat (before, only messages the
+  bot answered were linked).
 
 ## Evidence
 

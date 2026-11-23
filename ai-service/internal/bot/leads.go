@@ -25,19 +25,23 @@ type ChatLinker interface {
 // linkChat keeps the customer's Page-scoped id for a Messenger chat, which
 // Chatwoot's webhook carries, so the Leads and Sales pages can show the ad
 // or m.me link the customer came from. Only customer messages on Facebook
-// count. Best effort: a failure is logged (without the id) and the reply
+// count, whether or not the bot answers them (bot off, staff on the chat).
+// A linked chat whose customer tapped an ad is then marked in Chatwoot
+// (markAd). Best effort: a failure is logged (without the id) and the reply
 // goes on.
 func (b *Bot) linkChat(ctx context.Context, log *slog.Logger, ev webhook.Event) {
 	psid := ev.Conversation.ContactInbox.SourceID
 	if b.opts.ChatLinks == nil || ev.Conversation.Channel != "Channel::FacebookPage" || psid == "" {
 		return
 	}
-	if ev.Sender.Type != "" && ev.Sender.Type != "contact" {
+	if ev.MessageType != "incoming" || (ev.Sender.Type != "" && ev.Sender.Type != "contact") {
 		return
 	}
 	if err := b.opts.ChatLinks.LinkChat(ctx, ev.Account.ID, ev.ConversationID(), ev.Inbox.ID, psid); err != nil {
 		log.Warn("chat link not recorded", "error", err)
+		return
 	}
+	b.markAd(ctx, log, ev.Account.ID, ev.ConversationID())
 }
 
 // noteCustomer records a customer message for the lead list: a question
