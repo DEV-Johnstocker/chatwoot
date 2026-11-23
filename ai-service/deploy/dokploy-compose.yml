@@ -202,7 +202,7 @@ services:
   # Enable with COMPOSE_PROFILES=ai,admin and CF_TUNNEL_TOKEN in the Dokploy env.
   cloudflared:
     profiles: [admin]
-    image: cloudflare/cloudflared:2026.10.7
+    image: cloudflare/cloudflared:2026.11.0
     restart: unless-stopped
     depends_on: [ai-service]
     command: ['tunnel', '--no-autoupdate', 'run']

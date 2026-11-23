@@ -226,7 +226,7 @@ services:
       REPLY_LIMIT_WINDOW: ${REPLY_LIMIT_WINDOW:-1h}
 
   stg-cloudflared:
-    image: cloudflare/cloudflared:2026.10.7
+    image: cloudflare/cloudflared:2026.11.0
     restart: unless-stopped
     mem_limit: 64m
     cpus: 0.25
