@@ -165,6 +165,40 @@ func TestForChats_NewestFirstCapped(t *testing.T) {
 	}
 }
 
+func TestLatestAd_NewestAdInWindowOfTheAccountsOwnChat(t *testing.T) {
+	// Arrange
+	db := openReportDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 11, 20, 3, 0, 0, 0, time.UTC)
+	must(t, db.LinkChat(ctx, 1, 70, 2, "EVE"))
+	must(t, db.LinkChat(ctx, 2, 71, 9, "EVE")) // same customer, another account
+	_, err := db.Add(ctx, []Referral{
+		{PageID: "111", PSID: "EVE", Source: "ADS", AdID: "old", AdTitle: "Old ad", ReferredAt: t0.Add(-10 * 24 * time.Hour)},
+		{PageID: "111", PSID: "EVE", Source: "ADS", AdID: "new", AdTitle: "New ad", ReferredAt: t0},
+		{PageID: "111", PSID: "EVE", Source: "SHORTLINK", Ref: "bio", ReferredAt: t0.Add(time.Hour)}, // a link, not an ad
+	})
+	must(t, err)
+
+	// Act
+	got, found, err := db.LatestAd(ctx, 1, 70, t0.Add(-7*24*time.Hour))
+	_, foundLate, errLate := db.LatestAd(ctx, 1, 70, t0.Add(time.Minute))
+	_, foundOther, errOther := db.LatestAd(ctx, 1, 71, t0.Add(-30*24*time.Hour))
+
+	// Assert
+	must(t, err)
+	must(t, errLate)
+	must(t, errOther)
+	if !found || got.AdID != "new" || got.AdTitle != "New ad" || !got.ReferredAt.Equal(t0) {
+		t.Errorf("got %+v found=%v; want the newest ad, links skipped", got, found)
+	}
+	if foundLate {
+		t.Error("found an ad older than the window")
+	}
+	if foundOther {
+		t.Error("account 1 saw account 2's chat")
+	}
+}
+
 func TestPruneChats_DropsOnlyOldLinks(t *testing.T) {
 	// Arrange
 	db := openReportDB(t)

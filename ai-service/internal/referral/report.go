@@ -2,9 +2,12 @@ package referral
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // A chat is matched to its referrals through chat_customers (schema v27):
@@ -63,6 +66,22 @@ func (p *Postgres) ForChats(ctx context.Context, accountID int64, conversationID
 		}
 	}
 	return out, rows.Err()
+}
+
+// LatestAd returns the newest ad (not link) the chat's customer tapped at or
+// after since. It starts from the account's own chat, like ForChats.
+func (p *Postgres) LatestAd(ctx context.Context, accountID, conversationID int64, since time.Time) (Referral, bool, error) {
+	var r Referral
+	err := p.Pool.QueryRow(ctx, `SELECT r.page_id, r.psid, r.source, r.ref, r.ad_id, r.ad_title, r.referred_at
+		FROM chat_customers cc JOIN chat_referrals r ON r.psid = cc.psid
+		WHERE cc.account_id = $1 AND cc.conversation_id = $2
+			AND r.source = 'ADS' AND r.ad_id <> '' AND r.referred_at >= $3
+		ORDER BY r.referred_at DESC, r.id DESC LIMIT 1`, accountID, conversationID, since).
+		Scan(&r.PageID, &r.PSID, &r.Source, &r.Ref, &r.AdID, &r.AdTitle, &r.ReferredAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Referral{}, false, nil
+	}
+	return r, err == nil, err
 }
 
 // Credit says which tap gets a sale: the first or the last before payment.

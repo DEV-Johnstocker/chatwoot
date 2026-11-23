@@ -181,6 +181,10 @@ type Bot struct {
 	imagesMu   sync.Mutex
 	imagesSent map[imageKey]time.Time
 
+	// adMarked remembers which ad tap each chat was last marked for (adlabel.go).
+	adMu     sync.Mutex
+	adMarked map[convKey]string
+
 	// sendMu lets Close wait for every Enqueue in flight before it closes the
 	// queues; done wakes an Enqueue that is waiting for room.
 	sendMu sync.RWMutex
@@ -335,6 +339,10 @@ func (b *Bot) Process(parent context.Context, j Job) {
 	}
 
 	switch j.Decision {
+	case webhook.Record, webhook.HandOff, webhook.Reply:
+		b.linkChat(ctx, log, ev) // before the bot-off and staff checks: every customer message counts
+	}
+	switch j.Decision {
 	case webhook.Pause:
 		takeover := b.staffTookOver(ev)
 		if automated(ev, takeover) {
@@ -414,7 +422,6 @@ func (b *Bot) Process(parent context.Context, j Job) {
 		b.opts.History.Append(acct, conv, memory.Turn{Role: "user", Content: in.text})
 		b.saveEmail(ctx, log, acct, conv, in.text)
 		b.noteCustomer(ctx, log, ev, in.text)
-		b.linkChat(ctx, log, ev)
 		if b.opts.Handoff.Wants(in.text) {
 			tr.Outcome, tr.Output = "handoff:"+ReasonCustomerAsked, b.opts.HandoffMessage
 			b.handoff(ctx, log, acct, ev.Inbox.ID, conv, b.opts.HandoffMessage, ReasonCustomerAsked, nil)
